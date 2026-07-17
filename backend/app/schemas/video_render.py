@@ -3,6 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.schemas.video_render_artifact import VideoRenderArtifactSchema
+
 
 class VideoRenderTaskCreate(BaseModel):
     scene_sequence: int = Field(gt=0)
@@ -18,7 +20,7 @@ class VideoRenderTaskCreate(BaseModel):
         return cleaned
 
 
-class VideoRenderTaskSchema(BaseModel):
+class VideoRenderTaskDetails(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -36,4 +38,15 @@ class VideoRenderTaskSchema(BaseModel):
     error_message: str | None
     created_at: datetime
     updated_at: datetime
+
+
+class VideoRenderTaskSchema(VideoRenderTaskDetails):
     external_call: Literal[False] = False
+
+
+class VideoRenderExecutionSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    task: VideoRenderTaskDetails
+    artifact: VideoRenderArtifactSchema | None = None
+    external_call: bool

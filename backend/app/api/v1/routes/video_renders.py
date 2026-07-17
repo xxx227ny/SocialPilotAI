@@ -3,8 +3,16 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
+from app.api.dependencies import VisualProviderDep
 from app.db.session import get_db
-from app.schemas.video_render import VideoRenderTaskCreate, VideoRenderTaskSchema
+from app.schemas.video_render import (
+    VideoRenderExecutionSchema,
+    VideoRenderTaskCreate,
+    VideoRenderTaskSchema,
+)
+from app.services.video_render_execution_service import (
+    VideoRenderExecutionService,
+)
 from app.services.video_render_service import VideoRenderService
 
 router = APIRouter()
@@ -31,3 +39,29 @@ def get_video_render_task(
     task_id: int, db: DbSession
 ) -> VideoRenderTaskSchema:
     return VideoRenderService(db).get_render_task(task_id)
+
+
+@router.post(
+    "/video-render-tasks/{task_id}/submit",
+    response_model=VideoRenderExecutionSchema,
+)
+async def submit_video_render_task(
+    task_id: int,
+    db: DbSession,
+    provider: VisualProviderDep,
+) -> VideoRenderExecutionSchema:
+    result = await VideoRenderExecutionService(db, provider).submit(task_id)
+    return VideoRenderExecutionSchema.model_validate(result)
+
+
+@router.post(
+    "/video-render-tasks/{task_id}/refresh",
+    response_model=VideoRenderExecutionSchema,
+)
+async def refresh_video_render_task(
+    task_id: int,
+    db: DbSession,
+    provider: VisualProviderDep,
+) -> VideoRenderExecutionSchema:
+    result = await VideoRenderExecutionService(db, provider).refresh(task_id)
+    return VideoRenderExecutionSchema.model_validate(result)

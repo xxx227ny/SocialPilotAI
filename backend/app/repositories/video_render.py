@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.models import VideoRenderTask
@@ -14,6 +14,15 @@ class VideoRenderTaskRepository:
     def get_by_idempotency_key(self, key: str) -> VideoRenderTask | None:
         return self.session.scalar(
             select(VideoRenderTask).where(VideoRenderTask.idempotency_key == key)
+        )
+
+    def get_by_provider_task_id(
+        self, provider_task_id: str
+    ) -> VideoRenderTask | None:
+        return self.session.scalar(
+            select(VideoRenderTask).where(
+                VideoRenderTask.provider_task_id == provider_task_id
+            )
         )
 
     def create(
@@ -42,6 +51,46 @@ class VideoRenderTaskRepository:
             error_message=None,
         )
         self.session.add(task)
+        self.session.commit()
+        self.session.refresh(task)
+        return task
+
+    def claim_for_submission(self, task_id: int) -> VideoRenderTask | None:
+        result = self.session.execute(
+            update(VideoRenderTask)
+            .where(
+                VideoRenderTask.id == task_id,
+                VideoRenderTask.status == "CREATED",
+                VideoRenderTask.provider_task_id.is_(None),
+            )
+            .values(
+                status="SUBMITTED",
+                error_code=None,
+                error_message=None,
+            )
+            .execution_options(synchronize_session="fetch")
+        )
+        if result.rowcount != 1:
+            self.session.rollback()
+            return None
+        self.session.commit()
+        return self.get(task_id)
+
+    def record_submission(
+        self,
+        task: VideoRenderTask,
+        *,
+        provider_name: str,
+        provider_task_id: str,
+        status: str,
+        error_code: str | None = None,
+        error_message: str | None = None,
+    ) -> VideoRenderTask:
+        task.provider_name = provider_name
+        task.provider_task_id = provider_task_id
+        task.status = status
+        task.error_code = error_code
+        task.error_message = error_message
         self.session.commit()
         self.session.refresh(task)
         return task
