@@ -1,0 +1,1 @@
+"""SocialPilot AI backend application."""

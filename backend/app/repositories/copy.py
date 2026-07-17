@@ -1,0 +1,38 @@
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.models import CopyMatrix
+from app.schemas.copy import CopyMatrixSchema
+
+
+class CopyMatrixRepository:
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def create(
+        self,
+        product_id: int,
+        marketing_strategy_id: int,
+        data: CopyMatrixSchema,
+    ) -> CopyMatrix:
+        copy_matrix = CopyMatrix(
+            product_id=product_id,
+            marketing_strategy_id=marketing_strategy_id,
+            copies=[copy.model_dump() for copy in data.copies],
+        )
+        self.session.add(copy_matrix)
+        self.session.commit()
+        self.session.refresh(copy_matrix)
+        return copy_matrix
+
+    def get(self, copy_matrix_id: int) -> CopyMatrix | None:
+        return self.session.get(CopyMatrix, copy_matrix_id)
+
+    def get_latest_by_product(self, product_id: int) -> CopyMatrix | None:
+        statement = (
+            select(CopyMatrix)
+            .where(CopyMatrix.product_id == product_id)
+            .order_by(CopyMatrix.created_at.desc(), CopyMatrix.id.desc())
+            .limit(1)
+        )
+        return self.session.scalar(statement)

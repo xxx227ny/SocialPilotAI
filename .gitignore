@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+*.db
+
+# Node
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Environment and editor files
+.env
+.env.*
+*.key
+*.secret
+.idea/
+.vscode/
+*.log
+.DS_Store

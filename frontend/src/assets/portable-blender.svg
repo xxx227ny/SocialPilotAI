@@ -1,0 +1,24 @@
+<svg width="420" height="520" viewBox="0 0 420 520" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Portable blender concept illustration</title>
+  <desc id="desc">A stylized portable blender designed for the SocialPilot AI demo.</desc>
+  <defs>
+    <linearGradient id="glass" x1="120" y1="110" x2="320" y2="390" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E9FBFF" stop-opacity=".76"/><stop offset=".5" stop-color="#8EDAF1" stop-opacity=".26"/><stop offset="1" stop-color="#7188F4" stop-opacity=".42"/>
+    </linearGradient>
+    <linearGradient id="drink" x1="118" y1="252" x2="304" y2="390" gradientUnits="userSpaceOnUse"><stop stop-color="#6FE1B5"/><stop offset="1" stop-color="#54A6E9"/></linearGradient>
+    <linearGradient id="base" x1="122" y1="394" x2="305" y2="490" gradientUnits="userSpaceOnUse"><stop stop-color="#5B64DC"/><stop offset="1" stop-color="#22385F"/></linearGradient>
+    <filter id="shadow" x="52" y="42" width="316" height="460" filterUnits="userSpaceOnUse"><feGaussianBlur stdDeviation="22"/></filter>
+  </defs>
+  <ellipse cx="210" cy="455" rx="116" ry="25" fill="#5B62D9" fill-opacity=".2" filter="url(#shadow)"/>
+  <path d="M137 96C137 78.3 151.3 64 169 64H251C268.7 64 283 78.3 283 96V116H137V96Z" fill="#263A5F" stroke="#8EA8D8" stroke-opacity=".5" stroke-width="3"/>
+  <rect x="151" y="43" width="118" height="24" rx="12" fill="#3A527E"/>
+  <path d="M120 117H300L280 392C278.8 408.9 264.7 422 247.7 422H172.3C155.3 422 141.2 408.9 140 392L120 117Z" fill="url(#glass)" stroke="#C8EEFA" stroke-opacity=".7" stroke-width="4"/>
+  <path d="M139 263C181 241 241 287 283 258L274 385C273.2 396.9 263.3 406 251.4 406H168.6C156.7 406 146.8 396.9 146 385L139 263Z" fill="url(#drink)" fill-opacity=".82"/>
+  <circle cx="177" cy="305" r="18" fill="#F7CA67" fill-opacity=".9"/><circle cx="238" cy="328" r="24" fill="#F07D7A" fill-opacity=".86"/>
+  <path d="M205 285L223 311L199 321L205 285Z" fill="#C8F098"/><path d="M210 163V359" stroke="#F6FDFF" stroke-opacity=".5" stroke-width="3" stroke-linecap="round"/>
+  <path d="M171 374L210 349L249 374" stroke="#DFF7FF" stroke-opacity=".8" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M129 408H291V455C291 476 274 493 253 493H167C146 493 129 476 129 455V408Z" fill="url(#base)" stroke="#7D91E9" stroke-opacity=".55" stroke-width="3"/>
+  <circle cx="210" cy="451" r="18" fill="#142640" stroke="#9DA9FF" stroke-width="3"/><circle cx="210" cy="451" r="6" fill="#72D9C2"/>
+  <path d="M320 176C340 196 350 222 350 250" stroke="#75D9C4" stroke-width="3" stroke-linecap="round" stroke-dasharray="7 12"/><circle cx="349" cy="267" r="5" fill="#75D9C4"/>
+  <path d="M92 211C73 230 65 252 66 278" stroke="#7D8DEF" stroke-width="3" stroke-linecap="round" stroke-dasharray="7 12"/><circle cx="68" cy="295" r="5" fill="#7D8DEF"/>
+</svg>
