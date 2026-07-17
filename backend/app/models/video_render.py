@@ -11,6 +11,7 @@ from app.models.product import utc_now
 
 if TYPE_CHECKING:
     from app.models.video import VideoProject
+    from app.models.video_render_artifact import VideoRenderArtifact
 
 
 class VideoRenderTask(Base):
@@ -46,4 +47,9 @@ class VideoRenderTask(Base):
 
     video_project: Mapped[VideoProject] = relationship(
         back_populates="render_tasks"
+    )
+    artifact: Mapped[VideoRenderArtifact | None] = relationship(
+        back_populates="video_render_task",
+        cascade="all, delete-orphan",
+        uselist=False,
     )

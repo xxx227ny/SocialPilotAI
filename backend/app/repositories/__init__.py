@@ -8,6 +8,9 @@ from app.repositories.product import ProductRepository
 from app.repositories.strategy import MarketingStrategyRepository
 from app.repositories.video import VideoProjectRepository
 from app.repositories.video_render import VideoRenderTaskRepository
+from app.repositories.video_render_artifact_repository import (
+    VideoRenderArtifactRepository,
+)
 
 __all__ = [
     "CampaignRepository",
@@ -18,4 +21,5 @@ __all__ = [
     "ProductRepository",
     "VideoProjectRepository",
     "VideoRenderTaskRepository",
+    "VideoRenderArtifactRepository",
 ]

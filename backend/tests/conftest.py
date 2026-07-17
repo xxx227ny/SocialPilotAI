@@ -17,6 +17,7 @@ from app.models import (  # noqa: F401
     Product,
     ProductAsset,
     VideoProject,
+    VideoRenderArtifact,
     VideoRenderTask,
 )
 

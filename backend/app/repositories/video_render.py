@@ -45,3 +45,18 @@ class VideoRenderTaskRepository:
         self.session.commit()
         self.session.refresh(task)
         return task
+
+    def update_status(
+        self,
+        task: VideoRenderTask,
+        status: str,
+        *,
+        error_code: str | None = None,
+        error_message: str | None = None,
+    ) -> VideoRenderTask:
+        task.status = status
+        task.error_code = error_code
+        task.error_message = error_message
+        self.session.commit()
+        self.session.refresh(task)
+        return task

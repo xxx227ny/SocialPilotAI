@@ -2,11 +2,27 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppError
-from app.models import VideoRenderTask
+from app.models import VideoRenderArtifact, VideoRenderTask
 from app.repositories.video import VideoProjectRepository
 from app.repositories.video_render import VideoRenderTaskRepository
+from app.repositories.video_render_artifact_repository import (
+    VideoRenderArtifactRepository,
+)
 from app.schemas.video import VideoSceneSchema
 from app.schemas.video_render import VideoRenderTaskCreate
+from app.schemas.video_render_artifact import VideoRenderArtifactCreate
+
+RENDER_TASK_TRANSITIONS: dict[str, frozenset[str]] = {
+    "CREATED": frozenset({"SUBMITTED", "CANCELED"}),
+    "SUBMITTED": frozenset(
+        {"PENDING", "RUNNING", "SUCCEEDED", "FAILED", "CANCELED"}
+    ),
+    "PENDING": frozenset({"RUNNING", "SUCCEEDED", "FAILED", "CANCELED"}),
+    "RUNNING": frozenset({"SUCCEEDED", "FAILED", "CANCELED"}),
+    "SUCCEEDED": frozenset(),
+    "FAILED": frozenset(),
+    "CANCELED": frozenset(),
+}
 
 
 class VideoRenderService:
@@ -15,6 +31,7 @@ class VideoRenderService:
     def __init__(self, session: Session) -> None:
         self.video_repository = VideoProjectRepository(session)
         self.render_repository = VideoRenderTaskRepository(session)
+        self.artifact_repository = VideoRenderArtifactRepository(session)
 
     def create_render_task(
         self, video_project_id: int, data: VideoRenderTaskCreate
@@ -73,6 +90,60 @@ class VideoRenderService:
         if task is None:
             raise AppError("Video render task not found", status_code=404)
         return task
+
+    def transition_status(
+        self,
+        task_id: int,
+        new_status: str,
+        *,
+        error_code: str | None = None,
+        error_message: str | None = None,
+    ) -> VideoRenderTask:
+        task = self.get_render_task(task_id)
+        normalized_status = new_status.strip().upper()
+        allowed = RENDER_TASK_TRANSITIONS.get(task.status)
+        if allowed is None or normalized_status not in allowed:
+            raise AppError(
+                f"Render task cannot transition from {task.status} "
+                f"to {normalized_status}",
+                status_code=409,
+            )
+        if normalized_status == "FAILED" and not error_code:
+            raise AppError(
+                "Failed render tasks require an error code", status_code=422
+            )
+        return self.render_repository.update_status(
+            task,
+            normalized_status,
+            error_code=error_code if normalized_status == "FAILED" else None,
+            error_message=(
+                error_message if normalized_status == "FAILED" else None
+            ),
+        )
+
+    def save_artifact(
+        self, task_id: int, data: VideoRenderArtifactCreate
+    ) -> VideoRenderArtifact:
+        task = self.get_render_task(task_id)
+        if task.status != "SUCCEEDED":
+            raise AppError(
+                "Render artifact can only be saved for a succeeded task",
+                status_code=409,
+            )
+        existing = self.artifact_repository.get_by_task_id(task_id)
+        if existing is not None:
+            return self.artifact_repository.update(existing, data)
+        return self.artifact_repository.create(task_id, data)
+
+    def get_artifact(self, task_id: int) -> VideoRenderArtifact:
+        self.get_render_task(task_id)
+        artifact = self.artifact_repository.get_by_task_id(task_id)
+        if artifact is None:
+            raise AppError("Video render artifact not found", status_code=404)
+        return artifact
+
+    def list_artifacts(self) -> list[VideoRenderArtifact]:
+        return self.artifact_repository.list()
 
     @staticmethod
     def _build_render_prompt(

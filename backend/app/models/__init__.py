@@ -8,6 +8,7 @@ from app.models.product import Product, ProductAsset
 from app.models.strategy import MarketingStrategy
 from app.models.video import VideoProject
 from app.models.video_render import VideoRenderTask
+from app.models.video_render_artifact import VideoRenderArtifact
 
 __all__ = [
     "AdCampaign",
@@ -19,4 +20,5 @@ __all__ = [
     "ProductAsset",
     "VideoProject",
     "VideoRenderTask",
+    "VideoRenderArtifact",
 ]

@@ -24,6 +24,10 @@ from app.schemas.video import (
     VideoSceneSchema,
 )
 from app.schemas.video_render import VideoRenderTaskCreate, VideoRenderTaskSchema
+from app.schemas.video_render_artifact import (
+    VideoRenderArtifactCreate,
+    VideoRenderArtifactSchema,
+)
 
 __all__ = [
     "CampaignMetricsSchema",
@@ -48,4 +52,6 @@ __all__ = [
     "VideoSceneSchema",
     "VideoRenderTaskCreate",
     "VideoRenderTaskSchema",
+    "VideoRenderArtifactCreate",
+    "VideoRenderArtifactSchema",
 ]
