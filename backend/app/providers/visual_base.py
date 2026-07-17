@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 VisualTaskStatus = Literal[
@@ -34,6 +34,8 @@ class VisualTaskSnapshot:
     provider_request_id: str | None = None
     error_code: str | None = None
     error_message: str | None = None
+    provider_output_url: str | None = None
+    metadata: dict[str, object] = field(default_factory=dict)
 
 
 class VisualGenerationProvider(ABC):

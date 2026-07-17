@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     dashscope_api_key: SecretStr | None = None
     qwen_model: str = "qwen-plus"
     qwen_timeout: float = Field(default=30, gt=0, le=300)
+    wanx_api_key: SecretStr | None = None
+    wanx_model: str = "wan2.7-t2v"
+    wanx_region: str = "cn-beijing"
+    wanx_workspace_id: str | None = None
+    wanx_endpoint: str | None = None
+    wanx_timeout: float = Field(default=30, gt=0, le=300)
     cors_origins: list[str] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",

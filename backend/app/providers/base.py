@@ -13,6 +13,10 @@ class ProviderConnectionError(ProviderError):
     """Provider could not be reached before the configured timeout."""
 
 
+class ProviderConfigurationError(ProviderError):
+    """Provider configuration is missing or unsupported."""
+
+
 class ProviderModelError(ProviderError):
     """Provider returned an unsuccessful or unusable model response."""
 

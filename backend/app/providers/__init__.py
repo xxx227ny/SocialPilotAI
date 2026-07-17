@@ -2,6 +2,7 @@
 
 from app.providers.base import (
     ProviderAuthenticationError,
+    ProviderConfigurationError,
     ProviderConnectionError,
     ProviderError,
     ProviderModelError,
@@ -14,10 +15,12 @@ from app.providers.visual_base import (
     VisualTaskSnapshot,
     VisualTaskSubmission,
 )
+from app.providers.wanx_provider import WanxProvider
 
 __all__ = [
     "ProviderAuthenticationError",
     "ProviderConnectionError",
+    "ProviderConfigurationError",
     "ProviderError",
     "ProviderModelError",
     "QwenProvider",
@@ -26,4 +29,5 @@ __all__ = [
     "VisualGenerationRequest",
     "VisualTaskSnapshot",
     "VisualTaskSubmission",
+    "WanxProvider",
 ]
