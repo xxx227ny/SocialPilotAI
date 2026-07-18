@@ -63,6 +63,7 @@ class WanxProvider(VisualGenerationProvider):
         payload = await self._request(
             "POST",
             "/services/aigc/video-generation/video-synthesis",
+            enable_async=True,
             json={
                 "model": self.model,
                 "input": {"prompt": request.prompt.strip()},
@@ -119,13 +120,15 @@ class WanxProvider(VisualGenerationProvider):
         method: str,
         path: str,
         *,
+        enable_async: bool = False,
         json: dict[str, object] | None = None,
     ) -> dict[str, Any]:
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
-            "X-DashScope-Async": "enable",
         }
+        if enable_async:
+            headers["X-DashScope-Async"] = "enable"
         try:
             async with httpx.AsyncClient(
                 timeout=self.timeout,

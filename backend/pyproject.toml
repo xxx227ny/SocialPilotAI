@@ -31,7 +31,11 @@ packages = ["app"]
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-p no:cacheprovider"
-markers = ["smoke: tests that call external services"]
+markers = [
+    "smoke: tests that call external services",
+    "qwen_smoke: tests that make real Qwen API requests",
+    "wanx_smoke: tests that make real Wanx API requests",
+]
 
 [tool.ruff]
 target-version = "py311"

@@ -80,6 +80,8 @@ def test_fetch_maps_succeeded_result() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "GET"
         assert request.url.path == "/api/v1/tasks/task123"
+        assert request.headers["Authorization"] == f"Bearer {TEST_KEY}"
+        assert "X-DashScope-Async" not in request.headers
         return httpx.Response(
             200,
             json={

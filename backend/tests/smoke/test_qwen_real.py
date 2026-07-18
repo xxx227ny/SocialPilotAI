@@ -4,7 +4,7 @@ from app.core.config import settings
 from app.providers.qwen_provider import QwenProvider
 from app.schemas.strategy import MarketingStrategySchema
 
-pytestmark = pytest.mark.smoke
+pytestmark = [pytest.mark.smoke, pytest.mark.qwen_smoke]
 
 
 def test_qwen_real_structured_response() -> None:
