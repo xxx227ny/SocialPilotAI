@@ -1,10 +1,44 @@
+import { useCallback, useEffect, useState } from "react";
+
+import { getVideoRenderArtifacts } from "../api/videos";
 import { DemoContextBar } from "../components/showcase/DemoContextBar";
+import { LiveWanxGenerationPanel } from "../components/video/LiveWanxGenerationPanel";
 import { VideoHero } from "../components/video/VideoHero";
 import { VideoStoryboard } from "../components/video/VideoStoryboard";
+import { VerifiedWanxOutput } from "../components/video/VerifiedWanxOutput";
+import {
+  isLiveWanxDemoEnabled,
+  selectLatestPlayableArtifact,
+} from "../components/video/liveWanxGeneration";
 import { useDemoSnapshot } from "../hooks/useDemoSnapshot";
+import type { VideoRenderArtifact } from "../types/video";
 
 export function ContentStudioPage() {
   const { snapshot, loading, error } = useDemoSnapshot();
+  const [artifacts, setArtifacts] = useState<VideoRenderArtifact[]>([]);
+  const videoProjectId = snapshot?.video_project?.id;
+  const liveWanxEnabled = isLiveWanxDemoEnabled(
+    import.meta.env.VITE_ENABLE_LIVE_WANX_DEMO,
+  );
+
+  const loadArtifacts = useCallback(async () => {
+    if (videoProjectId === undefined) {
+      setArtifacts([]);
+      return;
+    }
+    try {
+      setArtifacts(await getVideoRenderArtifacts(videoProjectId));
+    } catch {
+      setArtifacts([]);
+    }
+  }, [videoProjectId]);
+
+  useEffect(() => {
+    setArtifacts([]);
+    void loadArtifacts();
+  }, [loadArtifacts]);
+
+  const playableArtifact = selectLatestPlayableArtifact(artifacts);
 
   return (
     <div className="competition-page video-blueprint-page">
@@ -15,6 +49,15 @@ export function ContentStudioPage() {
         <>
           <VideoHero project={snapshot.video_project} />
           <VideoStoryboard scenes={snapshot.video_project.scenes} />
+          {playableArtifact && (
+            <VerifiedWanxOutput artifact={playableArtifact} />
+          )}
+          {liveWanxEnabled && (
+            <LiveWanxGenerationPanel
+              videoProjectId={snapshot.video_project.id}
+              onArtifactReady={loadArtifacts}
+            />
+          )}
           <section className="video-blueprint-cta">
             <div><span>END CARD</span><h2>从生活方式故事走向购买行动</h2></div>
             <strong>{snapshot.video_project.cta}</strong>

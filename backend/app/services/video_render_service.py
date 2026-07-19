@@ -145,6 +145,15 @@ class VideoRenderService:
     def list_artifacts(self) -> list[VideoRenderArtifact]:
         return self.artifact_repository.list()
 
+    def list_succeeded_artifacts_by_video_project(
+        self, video_project_id: int
+    ) -> list[VideoRenderArtifact]:
+        if self.video_repository.get(video_project_id) is None:
+            raise AppError("Video project not found", status_code=404)
+        return self.artifact_repository.list_succeeded_by_video_project_id(
+            video_project_id
+        )
+
     @staticmethod
     def _build_render_prompt(
         scene: VideoSceneSchema, aspect_ratio: str

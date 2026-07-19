@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     wanx_workspace_id: str | None = None
     wanx_endpoint: str | None = None
     wanx_timeout: float = Field(default=30, gt=0, le=300)
+    enable_live_wanx_demo: bool = False
     cors_origins: list[str] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",

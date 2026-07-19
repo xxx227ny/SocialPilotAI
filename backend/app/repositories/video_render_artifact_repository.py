@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import VideoRenderArtifact
+from app.models import VideoRenderArtifact, VideoRenderTask
 from app.schemas.video_render_artifact import VideoRenderArtifactCreate
 
 
@@ -48,5 +50,26 @@ class VideoRenderArtifactRepository:
         statement = select(VideoRenderArtifact).order_by(
             VideoRenderArtifact.created_at.desc(),
             VideoRenderArtifact.id.desc(),
+        )
+        return list(self.session.scalars(statement).all())
+
+    def list_succeeded_by_video_project_id(
+        self, video_project_id: int
+    ) -> list[VideoRenderArtifact]:
+        statement = (
+            select(VideoRenderArtifact)
+            .join(
+                VideoRenderTask,
+                VideoRenderTask.id
+                == VideoRenderArtifact.video_render_task_id,
+            )
+            .where(
+                VideoRenderTask.video_project_id == video_project_id,
+                VideoRenderTask.status == "SUCCEEDED",
+            )
+            .order_by(
+                VideoRenderTask.scene_sequence,
+                VideoRenderArtifact.id,
+            )
         )
         return list(self.session.scalars(statement).all())

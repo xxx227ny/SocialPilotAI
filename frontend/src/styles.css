@@ -705,6 +705,45 @@ textarea { font: inherit; }
 .video-storyboard dl > div { padding: 11px 12px; background: #ffffff06; border-radius: 9px; }
 .video-storyboard dt { color: #7787a1; font-size: 10px; font-weight: 800; }
 .video-storyboard dd { margin: 4px 0 0; color: #d1d8e6; font-size: 13px; line-height: 1.45; }
+.verified-wanx-output { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(320px, .75fr); gap: 28px; margin-top: 18px; padding: 28px; background: radial-gradient(circle at 12% 18%, #4f8f7f24, transparent 35%), linear-gradient(125deg, #0b1729, #11233a); border: 1px solid #62d2aa42; border-radius: 20px; }
+.verified-wanx-output__player { display: grid; place-items: center; min-height: 320px; overflow: hidden; background: #030913; border: 1px solid #ffffff12; border-radius: 16px; }
+.verified-wanx-output__player video { display: block; width: 100%; max-height: 560px; background: #030913; object-fit: contain; }
+.verified-wanx-output__details { align-self: center; }
+.verified-wanx-output__details > span { color: #69d4ad; font-size: 11px; font-weight: 900; letter-spacing: 1.5px; text-transform: uppercase; }
+.verified-wanx-output__details h2 { margin: 9px 0 12px; color: #f2f6ff; font-size: 28px; }
+.verified-wanx-output__details > p { margin: 0; color: #9eacc0; font-size: 14px; line-height: 1.65; }
+.verified-wanx-output__trust { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 20px 0; padding: 13px 15px; background: #61cda716; border: 1px solid #61cda72b; border-radius: 10px; }
+.verified-wanx-output__trust strong { color: #7ae0ba; font-size: 14px; }
+.verified-wanx-output__trust small { color: #8d9caf; font-size: 10px; text-transform: uppercase; }
+.verified-wanx-output dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin: 0; }
+.verified-wanx-output dl > div { padding: 12px 13px; background: #ffffff06; border-radius: 9px; }
+.verified-wanx-output dt { color: #75859c; font-size: 9px; font-weight: 800; letter-spacing: .7px; text-transform: uppercase; }
+.verified-wanx-output dd { margin: 5px 0 0; color: #dce5f2; font-size: 13px; font-weight: 750; }
+.live-wanx-panel { margin-top: 18px; padding: 26px 28px; background: linear-gradient(125deg, #111c31, #182444); border: 1px solid #8e7fe43b; border-radius: 18px; }
+.live-wanx-panel > header { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.live-wanx-panel > header span { color: #9c91f2; font-size: 10px; font-weight: 900; letter-spacing: 1.4px; text-transform: uppercase; }
+.live-wanx-panel > header h2 { margin: 7px 0 0; color: #eef2ff; font-size: 24px; }
+.live-wanx-panel__status { padding: 7px 10px; color: #d9ddff; background: #7568df30; border: 1px solid #897de649; border-radius: 8px; font-size: 11px; letter-spacing: .8px; }
+.live-wanx-panel__status--succeeded { color: #79dfb8; background: #55cda522; border-color: #61d4ad47; }
+.live-wanx-panel__status--failed, .live-wanx-panel__status--canceled { color: #ff9d9d; background: #e66c6c20; border-color: #ed777744; }
+.live-wanx-panel__intro { display: flex; align-items: center; justify-content: space-between; gap: 28px; margin-top: 18px; }
+.live-wanx-panel__intro p, .live-wanx-panel__confirmation > p, .live-wanx-panel__progress p { margin: 0; color: #9ba9bd; font-size: 13px; line-height: 1.6; }
+.live-wanx-panel button { min-height: 40px; padding: 0 17px; color: #fff; background: #7265dc; border: 1px solid #8b80e7; border-radius: 9px; cursor: pointer; font-size: 12px; font-weight: 850; }
+.live-wanx-panel button:disabled { cursor: not-allowed; opacity: .55; }
+.live-wanx-panel__confirmation { margin-top: 20px; padding: 20px; background: #080f1e73; border: 1px solid #ffffff10; border-radius: 13px; }
+.live-wanx-panel__facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; margin-bottom: 16px; }
+.live-wanx-panel__facts > div { padding: 11px 12px; background: #ffffff07; border-radius: 8px; }
+.live-wanx-panel__facts small, .live-wanx-panel__facts strong { display: block; }
+.live-wanx-panel__facts small { color: #77879e; font-size: 9px; text-transform: uppercase; }
+.live-wanx-panel__facts strong { margin-top: 5px; color: #dce4f1; font-size: 12px; }
+.live-wanx-panel__actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 18px; }
+.live-wanx-panel .live-wanx-panel__cancel { color: #abb7ca; background: #ffffff07; border-color: #ffffff14; }
+.live-wanx-panel__progress { margin-top: 19px; padding: 16px; background: #080f1e70; border-radius: 11px; }
+.live-wanx-panel__progress > div { height: 4px; margin-bottom: 12px; overflow: hidden; background: #ffffff0a; border-radius: 4px; }
+.live-wanx-panel__progress > div.is-active::after { display: block; width: 35%; height: 100%; content: ""; background: linear-gradient(90deg, #7366df, #64d0ae); border-radius: 4px; animation: live-wanx-progress 1.4s ease-in-out infinite alternate; }
+.live-wanx-panel__progress small { display: block; margin-top: 9px; color: #74849a; font-size: 9px; letter-spacing: .5px; text-transform: uppercase; }
+.live-wanx-panel__message { margin: 16px 0 0; color: #ffaaaa; font-size: 12px; }
+@keyframes live-wanx-progress { from { transform: translateX(0); } to { transform: translateX(185%); } }
 .video-blueprint-cta { display: flex; align-items: center; justify-content: space-between; gap: 30px; margin-top: 18px; padding: 26px 30px; background: linear-gradient(110deg, #212650, #183654); border: 1px solid #7469df38; border-radius: 18px; }
 .video-blueprint-cta strong { max-width: 580px; color: #d7d4ff; font-size: 18px; line-height: 1.55; text-align: right; }
 
@@ -728,12 +767,20 @@ textarea { font: inherit; }
   .demo-context-bar > p { display: none; }
   .video-blueprint-hero { grid-template-columns: 1fr 1fr; }
   .video-storyboard__track { grid-template-columns: repeat(2, 1fr); }
+  .verified-wanx-output { grid-template-columns: 1fr 1fr; }
   .growth-content-loop .growth-feedback-track { grid-template-columns: 1fr 24px 1fr; }
   .growth-feedback-track > :nth-child(n + 6) { margin-top: 8px; }
 }
 
+@media (max-width: 900px) {
+  .verified-wanx-output { grid-template-columns: 1fr; }
+  .verified-wanx-output__player { min-height: 240px; }
+  .live-wanx-panel__intro { align-items: stretch; flex-direction: column; }
+  .live-wanx-panel__facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .video-blueprint-page, .video-blueprint-hero, .video-storyboard { animation: none; }
+  .video-blueprint-page, .video-blueprint-hero, .video-storyboard, .live-wanx-panel__progress > div.is-active::after { animation: none; }
 }
 
 /* Stage 9.3-C performance intelligence showcase */

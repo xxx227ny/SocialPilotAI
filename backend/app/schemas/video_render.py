@@ -50,3 +50,9 @@ class VideoRenderExecutionSchema(BaseModel):
     task: VideoRenderTaskDetails
     artifact: VideoRenderArtifactSchema | None = None
     external_call: bool
+
+
+class LiveVideoRenderRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    confirm_live_generation: Literal[True]
