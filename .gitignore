@@ -5,11 +5,16 @@ __pycache__/
 .ruff_cache/
 .venv/
 *.db
+*.sqlite
 
 # Node
 node_modules/
 dist/
+frontend/dist/
 *.tsbuildinfo
+
+# Local diagnostics
+backend/scripts/check_wanx_raw_request.py
 
 # Environment and editor files
 .env

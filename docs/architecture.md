@@ -1,5 +1,23 @@
 # SocialPilot AI 架构说明
 
+## 黑客松展示架构速览
+
+```text
+Product
+  ↓
+QwenProvider → Marketing Strategy → Copy Matrix → Video Blueprint
+                                                    ↓
+                                            VideoRenderTask
+                                                    ↓
+                                              WanxProvider
+                                                    ↓
+                                      VideoRenderArtifact → Frontend
+
+Campaign Data → Metrics Engine → Growth Copilot → Optimization Advice
+```
+
+Presentation Mode读取预置Demo Snapshot并保持`0 AI Calls`；Qwen与Wanx真实能力通过独立验证链证明。Growth Copilot当前输出Performance-driven Optimization建议，不会自动生成第二版内容。
+
 ## 业务模块
 
 ### Content Studio：短视频生产
@@ -22,8 +40,8 @@
   ▼
 营销分析
   │ 内容策略与受众假设
-  ├──────────────► Copy Matrix ───────► 多平台文案版本
-  └──────────────► Content Studio ────► 短视频素材版本
+  ├──────────────► Copy Matrix ───────► 多平台文案矩阵
+  └──────────────► Content Studio ────► 结构化 Video Blueprint
                                       │
                                       ▼
                                 投放结果数据
@@ -33,10 +51,25 @@
                                       │
                           预算 / 受众 / 素材优化建议
                                       │
-                                      └──► 回流营销分析与内容再生成
+                                      └──► 为下一轮内容策略提供人工参考
 ```
 
-产品、内容任务、素材版本、投放快照和优化建议将拥有独立的数据模型。模块之间通过应用服务调用与稳定的数据结构协作，避免前端直接拼接业务流程。
+产品、内容任务、投放快照和优化建议使用独立的数据模型。模块之间通过应用服务调用与稳定的数据结构协作，避免前端直接拼接业务流程。
+
+当前版本将广告表现转换为 Performance-driven Optimization 建议，供下一轮内容策略参考；尚未实现把建议自动写回 Prompt、自动生成第二版 Copy 或第二版 VideoProject，也没有创意版本追踪。
+
+## AI Provider Layer
+
+```text
+TextGenerationProvider                 VisualGenerationProvider
+          │                                       │
+          ▼                                       ▼
+    QwenProvider                              WanxProvider
+          │                                       │
+ Strategy / Copy / Video Plan          Video submit / task fetch
+```
+
+业务服务只依赖 Provider 契约。`QwenProvider` 负责结构化文本生成，`WanxProvider` 负责异步视频任务提交与查询；认证、连接、超时和供应商错误会映射为安全的内部异常，不向客户端暴露密钥、Authorization Header 或完整供应商响应。
 
 ## Stage 2 商品数据基础
 
@@ -155,7 +188,7 @@ VideoProject 通过三个外键记录商品、营销策略和文案矩阵来源�
 
 当前分镜包含镜头类型、视觉描述、动作和旁白文本；旁白只是制作脚本，不会触发 TTS。Schema 在数据库写入前验证分镜序号不重复、每段时长大于零，以及所有分镜时长之和等于项目总时长。Provider 返回不合规时不会持久化。
 
-Stage 6 继续复用共享 TextGenerationProvider，不创建虚假的视频 Provider。Stage 8.1 已增加独立的 `VisualGenerationProvider` 抽象和 `VideoRenderTask` 本地任务基础设施，但没有具体 Wanx Provider 或外部调用；供应商任务 ID、轮询状态和结果地址不会混入当前策划模型。
+Stage 6 继续复用共享 `TextGenerationProvider`，只生成结构化 Blueprint。真实视频生成由独立的 `VisualGenerationProvider`、`WanxProvider`、`VideoRenderTask` 和执行服务负责；供应商任务 ID、轮询状态和结果地址不会混入策划模型。
 
 ## Stage 7 Demo Dashboard
 
@@ -180,26 +213,35 @@ DemoService、DashboardService 及对应路由都不导入、不注入 TextGener
 
 Demo Snapshot 明确标记 `0 AI Calls` 和“使用预置演示数据”。该通道用于比赛现场稳定展示，不冒充实时生成结果；真实 AI 工作流仍通过各自独立的生成 API 运行。
 
-## Stage 8.1 VideoRenderTask 基础设施
+## Stage 8 / C3 Video Generation Pipeline
 
 ```text
+Product
+  │
+  ▼
 VideoProject（已校验的生产方案）
-        │ 1:N
-        ▼
-VideoRenderTask（本地 CREATED 任务）
-        │ 未来由独立执行器消费
-        ▼
-VisualGenerationProvider（submit / fetch 抽象）
-        │ 未来实现，当前不存在具体 Provider
-        ▼
-视频供应商
+  │ 1:N
+  ▼
+VideoRenderTask（幂等本地任务）
+  │
+  ▼
+VideoRenderExecutionService
+  │ submit once
+  ▼
+WanxProvider
+  │ asynchronous task polling
+  ▼
+VideoRenderArtifact
+  │ read-only API
+  ▼
+Frontend Verified Wanx Output
 ```
 
-`VideoRenderService` 当前只负责确认 VideoProject 和分镜存在、再次校验正时长、构造确定性渲染提示词以及幂等创建本地任务。API 和 Service 都不注入 `VisualGenerationProvider`，因此创建与查询任务不会触发网络请求。
+`VideoRenderService` 负责确认 VideoProject 和分镜存在、校验正时长、构造确定性渲染提示词以及幂等创建本地任务。创建任务本身不注入 Provider，因此不会触发网络请求。
 
-`VideoRenderTask` 保存来源项目、分镜序号、任务状态、供应商任务标识预留字段、渲染参数、幂等键和安全错误摘要。它不保存真实视频 URL。一个 VideoProject 可拆分为多个分镜任务，未来可由队列执行器按任务状态调用具体 Provider；Content Studio 继续只负责生成结构化 VideoProject，两条职责无需重构或相互耦合。
+`VideoRenderExecutionService` 对 `CREATED` 任务执行原子提交认领，保证同一任务只提交一次；后续 refresh 只调用 `fetch()`，同步 `SUBMITTED`、`PENDING`、`RUNNING`、`SUCCEEDED`、`FAILED` 或 `CANCELED` 状态。成功结果保存为独立 `VideoRenderArtifact`，Task 继续保存来源、供应商任务标识、渲染参数、幂等键和安全错误摘要。
 
-本阶段的 `VisualGenerationProvider` 只定义异步 `submit()` 与 `fetch()` 契约及供应商无关 DTO，没有 Wanx 实现、密钥配置或外部 SDK。未来接入时新增具体适配器和执行器即可，HTTP API、VideoProject 与任务持久化结构可以保持稳定。
+`WanxProvider` 已实现异步 submit/fetch HTTP 契约，并通过独立真实 smoke 验证完整任务链。Artifact Read API 只查询已有成功结果，不触发 submit、refresh 或 Provider。Live Render Facade 默认关闭，固定参数并复用服务端幂等键；已有成功 Artifact 或已有任务时不会新建第二个任务。
 
 ## 为什么采用模块化单体
 
@@ -217,26 +259,25 @@ VisualGenerationProvider（submit / fetch 抽象）
 - `core`：环境配置、异常处理、日志和后续安全能力。
 - `db`：数据库引擎、会话和声明式基类。
 
-## 后续模型接入位置（规划）
+## Provider 扩展位置
 
-以下目录是目标架构示意，不代表当前仓库已存在这些实现。模型能力应通过统一的 provider 接口接入，而不是直接写进 API 路由：
+当前 Qwen 与 Wanx 均通过统一 Provider 接口接入，模型能力不直接写进 API 路由：
 
 ```text
 app/
-├── services/
-│   ├── content_studio/       # 视频任务编排
-│   ├── copy_matrix/          # 文案任务编排
-│   └── growth_copilot/       # 投流洞察编排
-└── integrations/             # 后续新增
-    └── ai/
-        ├── router.py         # Model Router：按任务、成本与可用性选模型
-        ├── qwen.py           # 通义千问：分析、脚本、文案与结构化输出
-        ├── wanx.py           # 通义万相：图像/视频视觉素材
-        └── tts.py            # TTS：多语言配音
+├── providers/
+│   ├── qwen_provider.py      # 通义千问结构化文本适配
+│   ├── wanx_provider.py      # 通义万相异步视频适配
+│   ├── base.py               # 文本 Provider 契约与安全异常
+│   └── visual_base.py        # 视频 Provider 契约与 DTO
+└── services/
+    ├── content_studio_service.py
+    ├── video_render_execution_service.py
+    └── live_video_render_service.py
 ```
 
-- **通义千问**：当前已有 Qwen Provider、业务服务入口和默认跳过的真实 smoke 测试，但仓库内未保存可独立核验的真实成功调用证据。指标计算仍由可测试的确定性代码完成。
-- **通义万相**：当前未实现。现有 `VisualGenerationProvider` 和 `VideoRenderTask` 仅为供应商无关的架构占位；未来实现才会提交和轮询外部异步任务。
+- **通义千问**：已有 Qwen Provider、业务服务入口、默认跳过的真实 smoke，以及仓库内验证报告。指标计算仍由可测试的确定性代码完成。
+- **通义万相**：已有 Wanx Provider、提交/查询适配、执行服务、Artifact 持久化、真实 smoke 与前端只读展示。
 - **TTS**：作为 Content Studio 的独立语音 provider，输入经过审查的脚本与语言/音色配置。
 - **Model Router**：位于业务服务与具体模型 provider 之间，统一处理模型选择、超时、重试、限流、成本记录和降级。业务模块只依赖内部接口。
 
@@ -244,4 +285,4 @@ app/
 
 ## 当前阶段边界
 
-当前已具备商品资料、结构化营销策略、三平台文案、CSV 广告数据分析、短视频生产方案和零 AI 调用的一键比赛演示闭环。Demo Snapshot 是预置 fixture，不是实时 AI 结果。系统仍不包含 Performance-to-Prompt、内容二次生成、创意版本追踪、真实视频生成、通义万相、TTS、字幕、视频存储或发布、广告平台 API、自动投放、自动调预算、登录或支付。当前可验证状态以 `docs/version_status.md` 为准。
+当前已具备商品资料、结构化营销策略、三平台文案、CSV 广告数据分析、短视频生产方案、Wanx 真实视频生成、Artifact 展示和零 AI 调用的一键比赛演示链。Demo Snapshot 是预置 fixture，不是页面访问时实时 AI 生成的结果；Verified Wanx Output 读取已成功生成的独立 Artifact。系统仍不包含 Performance-to-Prompt、自动内容二次生成、创意版本追踪、TTS、字幕、长期视频存储或发布、广告平台 API、自动投放、自动调预算、登录或支付。当前可验证状态以 `docs/version_status.md` 为准。

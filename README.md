@@ -1,8 +1,95 @@
 # SocialPilot AI
 
-SocialPilot AI 是面向跨境电商商家的 AI 社媒营销增长平台。项目围绕商品资料、营销分析、内容生产、投放分析与优化建议形成闭环，覆盖 AI 短视频批量生产、AI 社媒文案矩阵和 AI 投流策略优化三个方向。
+## 项目简介
 
-当前稳定基线为 `C1 Baseline`。项目已完成模块化单体 Demo、Stage 9.4-A Presentation Flow 和零 AI 调用的预置 Demo Snapshot。Qwen Provider 已实现，但仓库内尚无可独立核验的真实成功调用证据；Wanx 尚未实现，仅有视频渲染任务与视觉 Provider 抽象占位；Performance-to-Prompt、内容二次生成和创意版本追踪尚未实现。完整状态见 [docs/version_status.md](docs/version_status.md)。
+SocialPilot AI 是面向跨境电商商家的 AI 社媒营销增长平台。项目围绕商品资料、营销分析、内容生产、投放分析与优化建议形成演示链，覆盖 AI 社媒文案矩阵、结构化视频 Blueprint、真实 Wanx 视频生成验证和投流优化建议。
+
+当前比赛基线为 `9e2312400c215f2cc130ad8c3a536dfe49bc2e42`。项目已完成模块化单体 Demo、Presentation Flow、零 AI 调用的预置 Demo Snapshot，以及 Qwen 和 Wanx 的真实 Provider 验证链路。系统支持从结构化 `VideoProject` 创建渲染任务，通过 Wanx 提交和轮询真实视频任务，并把成功结果保存为 `VideoRenderArtifact` 供前端只读展示。Performance-to-Prompt、内容二次生成和创意版本追踪仍未实现。完整状态见 [docs/version_status.md](docs/version_status.md)。
+
+## 背景痛点
+
+- **平台差异大**：TikTok、Instagram 和 Facebook 的内容节奏、视觉偏好与购买决策逻辑不同，重复改写成本高。
+- **营销能力门槛高**：中小卖家通常缺少完整的策略、文案、视频和投放分析团队。
+- **内容与商品脱节**：生成内容容易忽略真实卖点、目标市场和风险边界。
+- **视频链路复杂**：视频策划、异步任务、状态查询和结果管理需要稳定的工程编排。
+- **数据难以行动化**：CTR、CVR、CPA、ROAS 可以计算，但不容易转化为清晰的下一轮优化方向。
+
+## 解决方案
+
+SocialPilot AI 从结构化商品信息出发，让 Qwen 生成 Marketing Strategy、多平台 Copy Matrix 和 Video Blueprint；真实视频由独立的 Wanx Provider 与执行服务异步生成并保存为 Artifact。投放数据由确定性 Metrics Engine 计算，再由 Growth Copilot解释指标并给出优化建议。
+
+```text
+商品信息
+  ↓
+Qwen 商品理解与 Marketing Strategy
+  ↓
+TikTok / Instagram / Facebook Copy Matrix
+  ↓
+AI Video Blueprint
+  ↓
+Wanx VideoRenderTask → Polling → VideoRenderArtifact
+  ↓
+CTR / CVR / CPA / ROAS
+  ↓
+Performance-driven Optimization 建议
+```
+
+当前版本不会把Growth建议自动写回Prompt，也不会自动生成第二版Copy或VideoProject。
+
+## 核心功能
+
+### AI Marketing Strategy
+
+Qwen基于商品名称、品类、描述、卖点和目标市场生成结构化定位、受众洞察、营销角度、风险和商品依据。模型输出必须经过JSON解析与Pydantic校验后才能保存。
+
+### Copy Matrix
+
+一次生成TikTok、Instagram和Facebook三套差异化内容，每个平台包含Hook、Caption、Hashtags和CTA，并保留Marketing Strategy来源关系。
+
+### AI Video Blueprint
+
+将Product、Strategy和Copy转换为结构化短视频方案，包括主题、总时长、画幅、Scene顺序、镜头类型、视觉描述、动作、旁白和CTA。Blueprint与真实视频渲染相互解耦。
+
+### Verified Wanx Output
+
+系统已验证真实Wanx异步视频生成链。`VideoRenderExecutionService`只提交一次任务，后续通过fetch轮询状态，成功后保存`VideoRenderArtifact`。Frontend只读展示已有结果；没有Artifact时仍保留Blueprint。
+
+### Growth Copilot
+
+系统使用确定性代码聚合广告数据并计算CTR、CVR、CPA和ROAS，再结合既有Marketing Strategy生成问题、预算和素材优化建议。当前建议用于人工决策，不自动投放或二次生成内容。
+
+### Presentation Mode
+
+比赛模式按Overview → Copy Matrix → Video Blueprint → Growth Copilot展示统一Demo Snapshot。页面明确标记`preset_fixture`和`0 AI Calls`，避免现场页面访问自动消耗AI额度。
+
+## 技术架构
+
+```text
+React + TypeScript + Vite
+          │
+          ▼
+FastAPI API / Pydantic Schemas
+          │
+          ├── Business Services ── SQLAlchemy ── SQLite
+          │
+          ├── TextGenerationProvider ── QwenProvider
+          │
+          └── VisualGenerationProvider ── WanxProvider
+                                          │
+                                  VideoRenderExecutionService
+                                          │
+                                  VideoRenderTask / Artifact
+```
+
+系统采用模块化单体架构，按API、Service、Repository、Model、Schema和Provider分层。外部AI适配与业务编排分离，便于使用Mock测试核心流程，并通过Provider专属marker隔离真实smoke。
+
+## AI能力说明
+
+- **Qwen**：用于Marketing Strategy、Copy Matrix、Video Blueprint和Growth Recommendation的结构化文本生成；仓库包含真实验证报告。
+- **Wanx**：用于异步视频任务submit/fetch；已验证Task状态轮询和Artifact创建。
+- **Metrics Engine**：CTR、CVR、CPA、ROAS由代码计算，不交给模型计算。
+- **安全边界**：真实smoke默认跳过，API Key只从后端环境读取，错误响应不暴露凭据或完整供应商响应。
+- **未实现能力**：Performance-to-Prompt、自动第二版内容生成、创意版本追踪和长期视频对象存储。
 
 ## 当前已完成
 
@@ -32,8 +119,14 @@ SocialPilot AI 是面向跨境电商商家的 AI 社媒营销增长平台。项�
 - 聚合 Product、Strategy、Copy、Video 与 Growth 的比赛展示 Dashboard
 - 对缺失业务数据安全降级的 Dashboard 查询接口
 - Presentation Mode、比赛演示流程导航及 Dashboard / Copy Matrix / AI Video Blueprint / Growth Copilot 展示页
+- Qwen Provider 真实结构化响应 smoke 验证
+- Wanx Provider、异步任务提交与查询适配
+- `VideoRenderExecutionService` 提交、轮询和状态同步链路
+- `VideoRenderArtifact` 成功结果持久化与只读查询 API
+- AI Video Blueprint 页面中的 Verified Wanx Output 只读播放器
+- 默认关闭、固定参数、幂等保护的 Live Render Facade 和可选前端面板
 
-> 真实性边界：Demo Snapshot 使用预置 fixture，展示期间为 `0 AI Calls`；它不是实时 AI 生成结果。Qwen 的实现状态、Wanx 占位状态和增长闭环缺口以 `docs/version_status.md` 为准。
+> 真实性边界：Demo Snapshot 使用预置 fixture，展示期间为 `0 AI Calls`；它不是页面访问时实时生成的结果。Qwen 与 Wanx 的真实链路通过独立 smoke 和既有 Artifact 验证。Live Wanx Demo 默认关闭，仅在前后端显式启用并由用户确认后才允许进入安全 Facade。当前 Growth Copilot 只生成 Performance-driven Optimization 建议，不会自动生成第二版 Copy 或 VideoProject。
 
 ## Stage 2 API
 
@@ -51,9 +144,14 @@ SocialPilot AI 是面向跨境电商商家的 AI 社媒营销增长平台。项�
 | `POST` | `/api/v1/products/{id}/growth-analysis` | 返回聚合指标与 AI 优化建议 |
 | `POST` | `/api/v1/products/{id}/video-projects` | 生成并保存结构化短视频生产方案 |
 | `POST` | `/api/v1/demo/prepare` | 幂等准备预置演示快照，不调用 AI |
+| `GET` | `/api/v1/demo/snapshot` | 只读获取预置 Demo Snapshot，不调用 AI |
 | `GET` | `/api/v1/dashboard/products/{id}` | 读取商品完整营销闭环，不调用 AI |
 | `POST` | `/api/v1/video-projects/{id}/render-tasks` | 只创建本地 `CREATED` 视频渲染任务，不调用外部服务 |
 | `GET` | `/api/v1/video-render-tasks/{id}` | 查询本地视频渲染任务状态 |
+| `POST` | `/api/v1/video-render-tasks/{id}/submit` | 通过执行服务向 Wanx 提交一次渲染任务 |
+| `POST` | `/api/v1/video-render-tasks/{id}/refresh` | 查询供应商任务并同步状态与成功 Artifact |
+| `GET` | `/api/v1/video-projects/{id}/render-artifacts` | 只读查询已有成功视频 Artifact，不调用 Provider |
+| `POST` | `/api/v1/video-projects/{id}/live-render` | Feature Flag 保护的固定参数 Live Render Facade |
 
 应用启动时会通过 SQLAlchemy `create_all` 创建缺失表，重复启动不会报错。在 `APP_ENVIRONMENT=development` 时会幂等写入 Portable Blender 演示商品；生产环境应设置为 `production`，不会写入 Demo 数据。
 
@@ -120,11 +218,13 @@ Demo 页面会明确显示 `Demo Snapshot`、`0 AI Calls` 和“使用预置演�
 
 `/demo/prepare` 仅在 `APP_ENVIRONMENT=development` 时可用，重复调用保持幂等。Dashboard 也支持读取普通存量商品；缺少 Strategy、Copy、Video 或 Growth 时会返回 `missing`/`partial` 状态，不会自动调用 AI。
 
-## Stage 8.1 VideoRenderTask 基础设施
+## Stage 8 / C3 Video Render Execution
 
 `VideoProject` 可以创建多个按分镜追踪的 `VideoRenderTask`。创建接口只读取已经校验并保存的分镜，生成确定性的 `render_prompt`，再写入状态为 `CREATED` 的本地任务；同一个 `idempotency_key` 重复请求会返回原任务。
 
-当前仅定义供应商无关的 `VisualGenerationProvider.submit()` 与 `fetch()` 契约，没有具体 Provider、视频 API、外部 SDK、视频文件或结果 URL，也不会产生外部调用和费用。未来接入视频模型时，由独立渲染执行器消费 `CREATED` 任务，不需要改变 Content Studio 的策划生成链路。
+供应商无关的 `VisualGenerationProvider.submit()` 与 `fetch()` 契约由 `WanxProvider` 实现。`VideoRenderExecutionService` 负责一次提交、后续只查询不重复提交、状态转换、安全错误映射，以及成功后创建或更新 `VideoRenderArtifact`。真实 Wanx smoke 必须通过独立 `--run-wanx-smoke` 开关执行，普通 pytest 不会触发外部服务。
+
+前端 AI Video Blueprint 页面通过只读 Artifact API 展示 Verified Wanx Output；没有 Artifact 或读取失败时仍保留原有 Blueprint。Live Render Facade 默认关闭，固定 Scene 1、720P 和服务端幂等键；已有成功 Artifact 或运行中任务时直接返回现有结果，不创建第二个任务，也不自动重试。
 
 ## 目录结构
 
@@ -135,10 +235,11 @@ SocialPilotAI/
 │   │   ├── api/v1/routes/    # v1 API 路由
 │   │   ├── core/             # 配置与异常处理
 │   │   ├── db/               # 数据库基类、引擎和会话
-│   │   ├── models/           # SQLAlchemy 模型（预留）
-│   │   ├── repositories/     # 数据访问层（预留）
+│   │   ├── models/           # SQLAlchemy 业务与视频渲染模型
+│   │   ├── providers/        # Qwen / Wanx Provider 适配层
+│   │   ├── repositories/     # 数据访问层
 │   │   ├── schemas/          # Pydantic 数据结构
-│   │   ├── services/         # 业务服务层（预留）
+│   │   ├── services/         # 业务、渲染执行与 Live Facade 服务
 │   │   └── main.py           # FastAPI 入口
 │   ├── tests/
 │   └── pyproject.toml
@@ -215,6 +316,17 @@ npm run build
 
 前后端需要同时运行，首页才会显示“后端服务正常”。
 
+## Demo展示流程
+
+使用 `http://localhost:5173/?mode=presentation` 进入比赛展示模式：
+
+1. **Overview**：项目定位、Portable Blender商品理解、Marketing Strategy和增长闭环总览。
+2. **Copy Matrix**：展示TikTok、Instagram、Facebook三平台差异化内容。
+3. **Video Blueprint**：展示结构化Storyboard和既有Verified Wanx Output。
+4. **Growth Copilot**：展示CTR、CVR、CPA、ROAS及Performance-driven Optimization建议。
+
+比赛现场推荐保持Live Wanx Feature Flag关闭，使用预生成Artifact或本地`demo_assets/verified_wanx_output.mp4`，不现场重新调用Qwen或Wanx。
+
 ## 常见问题排查
 
 ### 页面显示“后端服务未连接”
@@ -247,4 +359,4 @@ CORS_ORIGINS=http://localhost:5173,http://localhost:5174
 
 ## 安全说明
 
-C1 基线不提交 `.env`、`.env.*`、`*.key` 或 `*.secret`；本机已有环境模板也会被忽略。后续接入模型或外部平台时，密钥必须从环境变量或密钥管理服务读取，禁止写入源码。
+当前比赛基线不提交 `.env`、`.env.*`、`*.key`、`*.secret`、SQLite 数据库、数据库备份或临时签名 URL。Qwen 与 Wanx 密钥只从后端环境变量或本地 `.env` 读取，禁止写入源码、前端变量或日志。真实 smoke 默认跳过，只有显式 Provider 开关才允许执行。
