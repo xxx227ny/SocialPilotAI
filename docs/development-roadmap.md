@@ -41,7 +41,7 @@ flowchart TB
     V2 --> V2C4["⏳ V2-C4 Performance-to-Prompt"]
     V2 --> V2C5["⏳ V2-C5 Project and history"]
     V2 --> V2C6["⏳ V2-C6 Deployment and stability"]
-    V2C1 --> V2C11A["⏳ V2-C1.1A Product form and validation"]
+    V2C1 --> V2C11A["✅ V2-C1.1A Product form and validation"]
     V2C1 --> V2C11B["⏳ V2-C1.1B Product list and detail"]
     V2C1 --> V2C12A["⏳ V2-C1.2A Market and platform selection"]
     V2C1 --> V2C12B["⏳ V2-C1.2B Task start entry"]
@@ -106,5 +106,11 @@ The labels below reconstruct submission work from tracked evidence. Only S0, S2,
 | V2-C4 | ⏳ | — | None | Not run | V2-C1–C3 | Feedback/version contracts absent | V2-C5 |
 | V2-C5 | ⏳ | — | None | Not run | V2-C4 | Retry/history semantics pending | V2-C6 |
 | V2-C6 | ⏳ | — | None | Not run | V2-C1–C5 | Deployment/rate-limit/smoke pending | Release review |
+
+### V2-C1.1A completion record
+
+| Status | Date | Modules | API reuse | Verified result | AI/provider calls | Next |
+|---|---:|---|---|---|---|---|
+| ✅ Completed | 2026-07-22 | Product create schema/tests; workspace form, API typing/error handling, route guard, and styles | Existing `POST /api/v1/products` with HTTP 201 and existing repository/service persistence | Product tests: 13 passed; full pytest: 89 passed, 2 skipped, 0 failed, 1 warning; Ruff passed; TypeScript passed; Vite production build passed (119 modules); isolated browser/API/SQLite smoke passed | None; no Qwen, Wanx, VideoProject, RenderTask, or Artifact created | V2-C1.1B Product list and detail |
 
 Substage gates are in [V2 Plan](v2-plan.md). Execution records belong in [Progress Log](progress-log.md).

@@ -46,6 +46,27 @@ The first frontend build attempt ran from the backend directory and failed with 
 - `docs/progress-log.md`
 - `docs/v2-plan.md`
 
+## 2026-07-22 — V2-C1.1A Product creation form and validation
+
+- Status: ✅ Completed; checkpoint not yet created.
+- Starting branch and HEAD: `competition-product-v2` at `50ab5a49e6da4a0e0c96293254c902aacd92f845`.
+- Scope: real workspace product creation only; no market/platform selection and no generated strategy, copy, or video.
+- Backend reuse: existing `POST /api/v1/products`, HTTP 201 response, Product repository/service, and SQLAlchemy persistence.
+- Backend change: strengthened `ProductCreate` request validation without changing the Product ORM model, tables, or migrations.
+- Frontend change: required Chinese-labeled form, field errors, dynamic 1–8 selling points, trimming/deduplication, loading lock, API error, success summary, and Presentation Mode route guard.
+- Product tests: 13 passed, 0 failed, 1 known Starlette warning.
+- Full default pytest: 91 collected; 89 passed; 2 real-provider smoke tests skipped; 0 failed; 1 known Starlette warning.
+- Ruff: all checks passed.
+- TypeScript and Vite production build: passed; 119 modules transformed.
+- Isolated smoke: created `USB Portable Blender` as Product ID 1 in a temporary SQLite database; all four fields persisted correctly.
+- Side-effect check: 1 Product; 0 MarketingStrategy, CopyMatrix, VideoProject, VideoRenderTask, and VideoRenderArtifact records.
+- UI regression: empty validation, dynamic add/delete, disabled submit during request, success display, API failure feedback, and Presentation Mode protection passed.
+- Demo protection: `/products?mode=presentation` redirected to `/?mode=presentation`; form absent and `0 AI Calls` present.
+- Provider/AI calls and cost: none.
+- Temporary services/database: stopped and removed; the repository database and Demo Snapshot were not modified.
+- Commit/push: none.
+- Single recommended next stage: V2-C1.1B Product list and detail.
+
 ## V2 stage update template
 
 ```markdown

@@ -66,6 +66,26 @@ def test_empty_product_name_fails(
     assert response.status_code == 422
 
 
+def test_empty_product_category_fails(
+    client: TestClient, product_payload: dict[str, object]
+) -> None:
+    product_payload["category"] = "   "
+
+    response = client.post("/api/v1/products", json=product_payload)
+
+    assert response.status_code == 422
+
+
+def test_short_product_description_fails(
+    client: TestClient, product_payload: dict[str, object]
+) -> None:
+    product_payload["description"] = "Too short"
+
+    response = client.post("/api/v1/products", json=product_payload)
+
+    assert response.status_code == 422
+
+
 def test_empty_selling_points_fails(
     client: TestClient, product_payload: dict[str, object]
 ) -> None:
@@ -74,6 +94,55 @@ def test_empty_selling_points_fails(
     response = client.post("/api/v1/products", json=product_payload)
 
     assert response.status_code == 422
+
+
+def test_blank_selling_point_fails(
+    client: TestClient, product_payload: dict[str, object]
+) -> None:
+    product_payload["selling_points"] = ["USB rechargeable", "   "]
+
+    response = client.post("/api/v1/products", json=product_payload)
+
+    assert response.status_code == 422
+
+
+def test_more_than_eight_selling_points_fails(
+    client: TestClient, product_payload: dict[str, object]
+) -> None:
+    product_payload["selling_points"] = [f"Selling point {index}" for index in range(9)]
+
+    response = client.post("/api/v1/products", json=product_payload)
+
+    assert response.status_code == 422
+
+
+def test_create_product_trims_and_deduplicates_selling_points(
+    client: TestClient, product_payload: dict[str, object]
+) -> None:
+    product_payload["name"] = "  USB Portable Blender  "
+    product_payload["category"] = "  Portable Kitchen Appliance  "
+    product_payload["description"] = (
+        "  A rechargeable portable blender designed for fresh drinks anywhere.  "
+    )
+    product_payload["selling_points"] = [
+        "  USB rechargeable  ",
+        "Compact portable design",
+        "USB rechargeable",
+    ]
+
+    response = client.post("/api/v1/products", json=product_payload)
+
+    assert response.status_code == 201
+    product = response.json()
+    assert product["name"] == "USB Portable Blender"
+    assert product["category"] == "Portable Kitchen Appliance"
+    assert product["description"] == (
+        "A rechargeable portable blender designed for fresh drinks anywhere."
+    )
+    assert product["selling_points"] == [
+        "USB rechargeable",
+        "Compact portable design",
+    ]
 
 
 def test_jpg_asset_succeeds(

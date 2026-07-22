@@ -24,5 +24,4 @@ export interface ProductCreatePayload {
   category: string;
   description: string;
   selling_points: string[];
-  target_markets: string[];
 }

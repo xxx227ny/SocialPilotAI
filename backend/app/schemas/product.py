@@ -1,7 +1,15 @@
 from datetime import datetime
 from pathlib import Path
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
 SUPPORTED_ASSET_TYPES = {"jpg", "jpeg", "png", "webp"}
 
@@ -39,8 +47,48 @@ class ProductBase(BaseModel):
         return [item.strip() for item in value if item.strip()]
 
 
-class ProductCreate(ProductBase):
-    pass
+ProductName = Annotated[str, StringConstraints(min_length=2, max_length=120)]
+ProductCategory = Annotated[str, StringConstraints(min_length=2, max_length=80)]
+ProductDescription = Annotated[str, StringConstraints(min_length=10, max_length=2000)]
+SellingPoint = Annotated[str, StringConstraints(min_length=2, max_length=160)]
+
+
+class ProductCreate(BaseModel):
+    name: ProductName
+    category: ProductCategory
+    description: ProductDescription
+    selling_points: list[SellingPoint] = Field(min_length=1, max_length=8)
+    target_markets: list[str] = Field(default_factory=list)
+
+    @field_validator("name", "category", "description", mode="before")
+    @classmethod
+    def trim_create_text(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("selling_points", mode="before")
+    @classmethod
+    def clean_create_selling_points(cls, value: object) -> object:
+        if not isinstance(value, list):
+            return value
+
+        cleaned: list[object] = []
+        seen: set[str] = set()
+        for item in value:
+            if not isinstance(item, str):
+                cleaned.append(item)
+                continue
+            normalized = item.strip()
+            if not normalized:
+                raise ValueError("selling_points cannot contain empty values")
+            if normalized not in seen:
+                cleaned.append(normalized)
+                seen.add(normalized)
+        return cleaned
+
+    @field_validator("target_markets")
+    @classmethod
+    def clean_create_target_markets(cls, value: list[str]) -> list[str]:
+        return [item.strip() for item in value if item.strip()]
 
 
 class ProductUpdate(BaseModel):

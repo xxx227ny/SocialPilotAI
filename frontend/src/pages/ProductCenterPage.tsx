@@ -1,26 +1,17 @@
-import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-import { createProduct, listProducts } from "../api/products";
+import { listProducts } from "../api/products";
 import { generateCopyMatrix } from "../api/copies";
 import { generateMarketingStrategy } from "../api/strategies";
+import { ProductCreateForm } from "../components/product/ProductCreateForm";
 import type { CopyMatrix } from "../types/copy";
-import type { Product, ProductCreatePayload } from "../types/product";
+import type { Product } from "../types/product";
 import type { MarketingStrategy } from "../types/strategy";
 import { GrowthCopilotPanel } from "../components/GrowthCopilotPanel";
 
-const initialForm = {
-  name: "",
-  category: "",
-  description: "",
-  sellingPoints: "",
-  targetMarkets: "",
-};
-
 export function ProductCenterPage() {
   const [products, setProducts] = useState<Product[]>([]);
-  const [form, setForm] = useState(initialForm);
   const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
   const [generatingProductId, setGeneratingProductId] = useState<number | null>(
     null,
   );
@@ -51,38 +42,12 @@ export function ProductCenterPage() {
     void loadProducts();
   }, [loadProducts]);
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const payload: ProductCreatePayload = {
-      name: form.name.trim(),
-      category: form.category.trim(),
-      description: form.description.trim(),
-      selling_points: form.sellingPoints
-        .split("\n")
-        .map((item) => item.trim())
-        .filter(Boolean),
-      target_markets: form.targetMarkets
-        .split(/[,，\n]/)
-        .map((item) => item.trim())
-        .filter(Boolean),
-    };
-
-    if (!payload.name || payload.selling_points.length === 0) {
-      setMessage("请填写商品名称，并至少添加一个卖点。");
-      return;
-    }
-
-    try {
-      setSubmitting(true);
-      setMessage("");
-      await createProduct(payload);
-      setForm(initialForm);
-      await loadProducts();
-    } catch {
-      setMessage("商品创建失败，请检查表单内容后重试。");
-    } finally {
-      setSubmitting(false);
-    }
+  function handleProductCreated(product: Product) {
+    setProducts((current) => [
+      product,
+      ...current.filter((item) => item.id !== product.id),
+    ]);
+    setMessage("");
   }
 
   async function handleGenerateStrategy(productId: number) {
@@ -129,79 +94,7 @@ export function ProductCenterPage() {
       </header>
 
       <div className="product-layout">
-        <section className="product-panel product-panel--form">
-          <div className="panel-heading">
-            <div>
-              <span className="panel-heading__icon">＋</span>
-              <div>
-                <h2>创建商品</h2>
-                <p>名称与卖点为必填项</p>
-              </div>
-            </div>
-          </div>
-
-          <form className="product-form" onSubmit={handleSubmit}>
-            <label>
-              商品名称 <em>*</em>
-              <input
-                value={form.name}
-                onChange={(event) => setForm({ ...form, name: event.target.value })}
-                placeholder="例如：Portable Blender"
-                required
-              />
-            </label>
-            <label>
-              类别
-              <input
-                value={form.category}
-                onChange={(event) =>
-                  setForm({ ...form, category: event.target.value })
-                }
-                placeholder="例如：Portable Kitchen Appliance"
-              />
-            </label>
-            <label>
-              描述
-              <textarea
-                value={form.description}
-                onChange={(event) =>
-                  setForm({ ...form, description: event.target.value })
-                }
-                placeholder="简要描述商品、使用场景和核心价值"
-                rows={3}
-              />
-            </label>
-            <label>
-              卖点 <em>*</em>
-              <textarea
-                value={form.sellingPoints}
-                onChange={(event) =>
-                  setForm({ ...form, sellingPoints: event.target.value })
-                }
-                placeholder={"每行一个卖点\nPortable design\nUSB rechargeable"}
-                rows={4}
-                required
-              />
-              <small>每行输入一个卖点</small>
-            </label>
-            <label>
-              目标市场
-              <input
-                value={form.targetMarkets}
-                onChange={(event) =>
-                  setForm({ ...form, targetMarkets: event.target.value })
-                }
-                placeholder="USA, Canada"
-              />
-              <small>多个市场请使用逗号分隔</small>
-            </label>
-
-            {message && <div className="form-message">{message}</div>}
-            <button className="primary-button" type="submit" disabled={submitting}>
-              {submitting ? "正在保存…" : "保存商品资料"}
-            </button>
-          </form>
-        </section>
+        <ProductCreateForm onCreated={handleProductCreated} />
 
         <section className="product-panel product-panel--list">
           <div className="panel-heading">
