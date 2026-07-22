@@ -43,7 +43,7 @@ flowchart TB
     V2 --> V2C6["⏳ V2-C6 Deployment and stability"]
     V2C1 --> V2C11A["✅ V2-C1.1A Product form and validation"]
     V2C1 --> V2C11B["✅ V2-C1.1B Product list and detail"]
-    V2C1 --> V2C12A["⏳ V2-C1.2A Market and platform selection"]
+    V2C1 --> V2C12A["✅ V2-C1.2A Market and platform selection"]
     V2C1 --> V2C12B["⏳ V2-C1.2B Task start entry"]
     V2C2 --> V2C21A["⏳ V2-C2.1A Strategy operation entry"]
     V2C2 --> V2C21B["⏳ V2-C2.1B State failure and result UI"]
@@ -118,5 +118,11 @@ The labels below reconstruct submission work from tracked evidence. Only S0, S2,
 | Status | Date | Modules | API reuse | Verified result | Known limitation | Next |
 |---|---:|---|---|---|---|---|
 | ✅ Completed | 2026-07-22 | Real product list, independent detail view, create-to-refresh/select linkage, loading/empty/error/retry/selected states, stale-request protection, and responsive styles | Existing `GET /api/v1/products` and `GET /api/v1/products/{product_id}` with existing Product schema/repository/service; no Backend or database change | Product tests: 13 passed; full pytest: 89 passed, 2 skipped, 0 failed, 1 warning; Ruff passed; TypeScript passed; Vite production build passed (119 modules); isolated three-product browser/API/SQLite smoke and Presentation Mode regression passed | Product list API has no limit/offset, so this stage uses the complete response in a bounded scroll area; no frontend test framework was added | V2-C1.2A Target market and platform selection |
+
+### V2-C1.2A completion record
+
+| Status | Date | Modules | Market persistence | Platform boundary | Verified result | Known limitation | Next |
+|---|---:|---|---|---|---|---|---|
+| ✅ Completed | 2026-07-22 | Product update client/type, per-product marketing-task configuration, readiness summary, save/error/retry states, race guards, and responsive styles | Existing `PATCH /api/v1/products/{product_id}` updates `Product.target_markets`; no Backend, ORM, table, or migration change | TikTok, Instagram, and Facebook are per-product frontend session drafts only; explicitly not persisted until a future task-start contract | Product tests: 13 passed; full pytest: 89 passed, 2 skipped, 0 failed, 1 warning; Ruff passed; TypeScript passed; Vite production build passed (120 modules); isolated browser/API/SQLite smoke passed | Platform drafts reset on a full page reload; historical unknown market values remain visible and preserved until explicit user removal/save | V2-C1.2B Task start entry |
 
 Substage gates are in [V2 Plan](v2-plan.md). Execution records belong in [Progress Log](progress-log.md).

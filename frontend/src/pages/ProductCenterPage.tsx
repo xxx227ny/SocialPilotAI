@@ -5,13 +5,15 @@ import { getApiErrorMessage } from "../api/client";
 import { getProduct, listProducts } from "../api/products";
 import { generateMarketingStrategy } from "../api/strategies";
 import { GrowthCopilotPanel } from "../components/GrowthCopilotPanel";
+import { MarketingTaskConfig } from "../components/product/MarketingTaskConfig";
 import { ProductCreateForm } from "../components/product/ProductCreateForm";
-import type { CopyMatrix } from "../types/copy";
+import type { CopyMatrix, PlatformCopy } from "../types/copy";
 import type { Product } from "../types/product";
 import type { MarketingStrategy } from "../types/strategy";
 
 type ListState = "loading" | "refreshing" | "ready" | "error";
 type DetailState = "idle" | "loading" | "ready" | "error";
+type PlatformName = PlatformCopy["platform"];
 
 export function ProductCenterPage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -23,6 +25,9 @@ export function ProductCenterPage() {
   const [detailError, setDetailError] = useState("");
   const [detailRetryKey, setDetailRetryKey] = useState(0);
   const [newlyCreatedId, setNewlyCreatedId] = useState<number | null>(null);
+  const [platformDrafts, setPlatformDrafts] = useState<
+    Record<number, PlatformName[]>
+  >({});
   const listRequestId = useRef(0);
 
   const [generatingProductId, setGeneratingProductId] = useState<number | null>(
@@ -119,6 +124,19 @@ export function ProductCenterPage() {
   function selectProduct(productId: number) {
     setSelectedProductId(productId);
     setNewlyCreatedId((current) => (current === productId ? current : null));
+  }
+
+  function handleProductUpdated(product: Product) {
+    setProducts((current) =>
+      current.map((item) => (item.id === product.id ? product : item)),
+    );
+    setSelectedProduct((current) =>
+      current?.id === product.id ? product : current,
+    );
+  }
+
+  function updatePlatformDraft(productId: number, platforms: PlatformName[]) {
+    setPlatformDrafts((current) => ({ ...current, [productId]: platforms }));
   }
 
   async function handleGenerateStrategy(productId: number) {
@@ -271,6 +289,11 @@ export function ProductCenterPage() {
                   generatingStrategy={generatingProductId === selectedProduct.id}
                   generatingCopy={generatingCopyProductId === selectedProduct.id}
                   workflowMessage={workflowMessage}
+                  selectedPlatforms={platformDrafts[selectedProduct.id] ?? []}
+                  onPlatformsChange={(platforms) =>
+                    updatePlatformDraft(selectedProduct.id, platforms)
+                  }
+                  onProductUpdated={handleProductUpdated}
                   onGenerateStrategy={() =>
                     void handleGenerateStrategy(selectedProduct.id)
                   }
@@ -319,6 +342,9 @@ function ProductDetail({
   generatingStrategy,
   generatingCopy,
   workflowMessage,
+  selectedPlatforms,
+  onPlatformsChange,
+  onProductUpdated,
   onGenerateStrategy,
   onGenerateCopy,
 }: {
@@ -328,6 +354,9 @@ function ProductDetail({
   generatingStrategy: boolean;
   generatingCopy: boolean;
   workflowMessage: string;
+  selectedPlatforms: PlatformName[];
+  onPlatformsChange: (platforms: PlatformName[]) => void;
+  onProductUpdated: (product: Product) => void;
   onGenerateStrategy: () => void;
   onGenerateCopy: () => void;
 }) {
@@ -386,6 +415,13 @@ function ProductDetail({
           </ul>
         )}
       </section>
+
+      <MarketingTaskConfig
+        product={product}
+        selectedPlatforms={selectedPlatforms}
+        onPlatformsChange={onPlatformsChange}
+        onProductUpdated={onProductUpdated}
+      />
 
       <section className="product-detail-card__existing-workflow">
         <div className="product-item__actions">

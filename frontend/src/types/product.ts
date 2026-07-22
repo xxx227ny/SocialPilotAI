@@ -25,3 +25,7 @@ export interface ProductCreatePayload {
   description: string;
   selling_points: string[];
 }
+
+export interface ProductUpdatePayload {
+  target_markets?: string[];
+}

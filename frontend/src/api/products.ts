@@ -1,4 +1,8 @@
-import type { Product, ProductCreatePayload } from "../types/product";
+import type {
+  Product,
+  ProductCreatePayload,
+  ProductUpdatePayload,
+} from "../types/product";
 import { apiClient } from "./client";
 
 export async function listProducts(): Promise<Product[]> {
@@ -20,5 +24,13 @@ export async function createProduct(
   payload: ProductCreatePayload,
 ): Promise<Product> {
   const response = await apiClient.post<Product>("/products", payload);
+  return response.data;
+}
+
+export async function updateProduct(
+  productId: number,
+  payload: ProductUpdatePayload,
+): Promise<Product> {
+  const response = await apiClient.patch<Product>(`/products/${productId}`, payload);
   return response.data;
 }

@@ -93,6 +93,35 @@ The first frontend build attempt ran from the backend directory and failed with 
 - Commit/push/tag: none.
 - Single recommended next stage: V2-C1.2A Target market and platform selection.
 
+## 2026-07-22 — V2-C1.2A Target market and platform selection
+
+- Status: ✅ Completed; checkpoint not yet created.
+- Starting branch and HEAD: `competition-product-v2` at `723b1e2d51fe431a53322400ee57d8b57128604b`.
+- Scope: target-market selection and persistence, per-product platform session drafts, readiness summary, state handling, and Presentation Mode regression only; no task start or AI generation.
+- Preconditions: clean working tree; `master` and `competition-freeze-v1` both remained at `98772160208840eff2f00b97b78ae34809b1786f`.
+- Existing-contract audit: `Product.target_markets` is `list[str]`; existing `PATCH /api/v1/products/{product_id}` returns `ProductRead` and already persists partial updates through ProductService/ProductRepository. MarketingBrief has `platforms`, Copy supports exactly TikTok/Instagram/Facebook, and VideoProject has a single platform, but none is a correct Product-level persistence field.
+- Data ownership: markets are persisted on Product through the existing PATCH endpoint; platform selection is an in-memory `Record<product_id, Platform[]>` draft for the current frontend session and is explicitly described as not written to Backend until a future task-start contract.
+- Backend/database impact: none; Product schema/model/repository/service/routes, ORM tables, migrations, and repository database were not modified.
+- Market behavior: US, CA, UK, DE, FR, AU, JP, and SG options; 1–5 semantic selections; duplicate prevention; selected-count display; Backend refill; dirty/saving/success/error/retry states; disabled save when unchanged; selected Product/list synchronization; historical aliases and unknown values remain visible and are removed only by explicit user action followed by save.
+- Platform behavior: TikTok, Instagram, and Facebook only; 1–3 selection validation; purpose descriptions; count display; per-product isolation; no publishing/OAuth claim; no Backend persistence claim.
+- Readiness behavior: evaluates real Product identity/content, selling points, saved market state, and platform draft; the V2-C1.2B task-start control remains disabled and has no action handler.
+- Concurrency safety: save lock prevents duplicate PATCH; request ID and active Product guards ignore stale save results; existing detail AbortController/active guard remains in force.
+- Smoke correction: the first save successfully persisted US/CA but parent synchronization immediately replaced the success message with the generic synced state. The component was corrected to preserve the success feedback, rebuilt, and the following saves/retry visibly passed.
+- Product tests: 13 passed, 0 failed, 1 known Starlette warning.
+- Full default pytest: 89 passed, 2 real-provider smoke tests skipped, 0 failed, 1 known Starlette warning.
+- Ruff: all checks passed.
+- TypeScript and Vite production build: passed after the correction; 120 modules transformed.
+- Isolated smoke: created Atlas Travel Bottle and Beacon Reading Light through the UI; saved A=US/CA and B=UK; product switching preserved independent market and platform states; full reload restored markets from Backend while intentionally clearing session-only platform drafts.
+- Compatibility/error smoke: a third Product with `Legacy Export Zone` remained visible and unchanged; adding US retained the historical value; all three supported platforms were selectable; Backend-down save showed an error and retry succeeded after recovery.
+- Idempotency evidence: exactly three successful Product PATCH requests for the three intended saves; rapid duplicate submission is blocked by the synchronous save lock and disabled control.
+- Isolated database side effects: 3 Products; 0 ProductAssets, MarketingBriefs, MarketingStrategies, CopyMatrices, VideoProjects, VideoRenderTasks, and VideoRenderArtifacts.
+- Presentation regression: `/products?mode=presentation` redirected to `/?mode=presentation`; Product configuration was absent and `0 AI Calls` remained visible. The clean test database intentionally had no seeded Demo Snapshot, so it honestly displayed the snapshot-not-ready state without reading workspace products.
+- Provider/AI calls and cost: none; no Qwen or Wanx request was made and no cost was incurred.
+- Temporary services/database: stopped; the stage-named temporary SQLite and logs were permanently removed after verification.
+- Known limitations: platform drafts are intentionally lost on full reload because no approved task-draft persistence contract exists; the existing frontend has no large component-test framework.
+- Commit/push/tag: none.
+- Single recommended next stage: V2-C1.2B Task start entry.
+
 ## V2 stage update template
 
 ```markdown
