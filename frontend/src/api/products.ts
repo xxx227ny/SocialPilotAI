@@ -6,6 +6,16 @@ export async function listProducts(): Promise<Product[]> {
   return response.data;
 }
 
+export async function getProduct(
+  productId: number,
+  signal?: AbortSignal,
+): Promise<Product> {
+  const response = await apiClient.get<Product>(`/products/${productId}`, {
+    signal,
+  });
+  return response.data;
+}
+
 export async function createProduct(
   payload: ProductCreatePayload,
 ): Promise<Product> {

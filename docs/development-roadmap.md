@@ -42,7 +42,7 @@ flowchart TB
     V2 --> V2C5["⏳ V2-C5 Project and history"]
     V2 --> V2C6["⏳ V2-C6 Deployment and stability"]
     V2C1 --> V2C11A["✅ V2-C1.1A Product form and validation"]
-    V2C1 --> V2C11B["⏳ V2-C1.1B Product list and detail"]
+    V2C1 --> V2C11B["✅ V2-C1.1B Product list and detail"]
     V2C1 --> V2C12A["⏳ V2-C1.2A Market and platform selection"]
     V2C1 --> V2C12B["⏳ V2-C1.2B Task start entry"]
     V2C2 --> V2C21A["⏳ V2-C2.1A Strategy operation entry"]
@@ -112,5 +112,11 @@ The labels below reconstruct submission work from tracked evidence. Only S0, S2,
 | Status | Date | Modules | API reuse | Verified result | AI/provider calls | Next |
 |---|---:|---|---|---|---|---|
 | ✅ Completed | 2026-07-22 | Product create schema/tests; workspace form, API typing/error handling, route guard, and styles | Existing `POST /api/v1/products` with HTTP 201 and existing repository/service persistence | Product tests: 13 passed; full pytest: 89 passed, 2 skipped, 0 failed, 1 warning; Ruff passed; TypeScript passed; Vite production build passed (119 modules); isolated browser/API/SQLite smoke passed | None; no Qwen, Wanx, VideoProject, RenderTask, or Artifact created | V2-C1.1B Product list and detail |
+
+### V2-C1.1B completion record
+
+| Status | Date | Modules | API reuse | Verified result | Known limitation | Next |
+|---|---:|---|---|---|---|---|
+| ✅ Completed | 2026-07-22 | Real product list, independent detail view, create-to-refresh/select linkage, loading/empty/error/retry/selected states, stale-request protection, and responsive styles | Existing `GET /api/v1/products` and `GET /api/v1/products/{product_id}` with existing Product schema/repository/service; no Backend or database change | Product tests: 13 passed; full pytest: 89 passed, 2 skipped, 0 failed, 1 warning; Ruff passed; TypeScript passed; Vite production build passed (119 modules); isolated three-product browser/API/SQLite smoke and Presentation Mode regression passed | Product list API has no limit/offset, so this stage uses the complete response in a bounded scroll area; no frontend test framework was added | V2-C1.2A Target market and platform selection |
 
 Substage gates are in [V2 Plan](v2-plan.md). Execution records belong in [Progress Log](progress-log.md).

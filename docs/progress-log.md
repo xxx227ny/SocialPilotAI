@@ -67,6 +67,32 @@ The first frontend build attempt ran from the backend directory and failed with 
 - Commit/push: none.
 - Single recommended next stage: V2-C1.1B Product list and detail.
 
+## 2026-07-22 — V2-C1.1B Product list and detail
+
+- Status: ✅ Completed; checkpoint not yet created.
+- Starting branch and HEAD: `competition-product-v2` at `8ce1c73f598d6c548315f562d1b416a5f45e877e`.
+- Scope: real workspace product list, independent product detail, create-to-refresh/select linkage, complete UI states, and Presentation Mode regression only.
+- Preconditions: clean working tree; `master` and `competition-freeze-v1` both remained at `98772160208840eff2f00b97b78ae34809b1786f`.
+- Backend audit: existing `GET /api/v1/products` returns creation-time-descending `ProductRead[]` with no query parameters; existing `GET /api/v1/products/{product_id}` returns complete `ProductRead`, including selling points, target markets, timestamps, and assets.
+- Backend/database impact: none; Product model, schema, repository, service, routes, tables, migrations, and repository database were not modified.
+- Frontend implementation: added the single-product API client call; implemented initial loading, bounded-scroll list, empty/error/retry/refresh states, selected and newly-created visual states, independent detail loading/error/retry/empty states, and complete field/asset display.
+- Creation linkage: the existing `ProductCreateForm.onCreated(product)` callback immediately selects/highlights the returned product and triggers a real list refresh without replacing the form-owned success message.
+- Race protection: every detail selection owns an `AbortController` and active-request guard, so cleanup aborts the prior request and ignores any late result.
+- Product tests: 13 passed, 0 failed, 1 known Starlette warning.
+- Full default pytest: 89 passed, 2 real-provider smoke tests skipped, 0 failed, 1 known Starlette warning.
+- Ruff: all checks passed.
+- TypeScript and Vite production build: passed; 119 modules transformed.
+- Isolated smoke: empty state passed; created three different products; list showed all three API records; switching products loaded their independent details; the third create refreshed, selected, and highlighted the new product; detail failure and retry recovery passed.
+- Smoke setup note: the first temporary frontend used port 4175 and correctly reached the list error state because that origin is not in the existing CORS allowlist; the services were restarted on the already-allowed port 5173, where all normal-path checks passed without changing CORS configuration.
+- Isolated database side effects: 3 Products; 0 ProductAssets, MarketingStrategies, CopyMatrices, VideoProjects, VideoRenderTasks, and VideoRenderArtifacts.
+- Presentation regression: `/products?mode=presentation` redirected to `/?mode=presentation`; Product Center was absent; Demo Snapshot and `0 AI Calls` remained visible.
+- Provider/AI calls and cost: none; no Qwen or Wanx request was made and no cost was incurred.
+- Temporary services/database: stopped; all stage-named temporary SQLite and log directories were removed permanently after verification.
+- Security/privacy: no secret files were read; final source scan found no credential, workspace ID, signed URL, database, log, screenshot, or build artifact in the working tree.
+- Known limitations: the existing list API has no limit/offset, so the UI loads the complete list into a bounded scroll area; no large frontend test framework was introduced.
+- Commit/push/tag: none.
+- Single recommended next stage: V2-C1.2A Target market and platform selection.
+
 ## V2 stage update template
 
 ```markdown
