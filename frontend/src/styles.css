@@ -247,7 +247,22 @@ textarea { font: inherit; }
 .task-readiness-summary dl > div { padding: 8px; background: #f7f8fa; border-radius: 7px; }
 .task-readiness-summary dt { color: #929baa; font-size: 7px; }
 .task-readiness-summary dd { margin: 3px 0 0; color: #4f5a70; font-size: 8px; overflow-wrap: anywhere; }
-.task-readiness-summary > button { width: 100%; min-height: 34px; color: #8d94a2; background: #eceef2; border: 0; border-radius: 7px; cursor: not-allowed; font-size: 8px; font-weight: 750; }
+.task-ai-boundary { margin: 9px 0; padding: 8px 9px; color: #426c5b; background: #eef9f3; border-radius: 7px; font-size: 7px; line-height: 1.5; }
+.task-readiness-summary > button { width: 100%; min-height: 34px; color: #fff; background: #6559d9; border: 0; border-radius: 7px; cursor: pointer; font-size: 8px; font-weight: 750; }
+.task-readiness-summary > button:disabled { color: #8d94a2; background: #eceef2; cursor: not-allowed; }
+.task-record-state { margin-top: 10px; }
+.task-record-state > p { margin: 0; color: #788397; font-size: 8px; }
+.task-record-error { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px; color: #a64655; background: #fff2f3; border-radius: 7px; }
+.task-record-error p { margin: 0; font-size: 8px; line-height: 1.45; }
+.task-record-error button { flex: 0 0 auto; padding: 5px 8px; color: #a64655; background: #fff; border: 1px solid #e9bfc5; border-radius: 6px; cursor: pointer; font-size: 7px; }
+.task-record-card { margin-top: 10px; padding: 11px; background: #f2fbf6; border: 1px solid #cde9d9; border-radius: 9px; }
+.task-record-card > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.task-record-card > header span, .task-record-card > header strong { display: block; }
+.task-record-card > header span { color: #2f8a66; font-size: 7px; font-weight: 850; letter-spacing: .8px; }
+.task-record-card > header strong { margin-top: 3px; color: #35614f; font-size: 10px; }
+.task-record-card time { color: #71887f; font-size: 7px; }
+.task-record-card dl { margin-bottom: 8px; }
+.task-record-card > p { margin: 0; color: #2f7257; font-size: 8px; font-weight: 700; }
 .product-detail-card__existing-workflow { padding-top: 16px; border-top: 1px solid #eceef3; }
 .product-detail-card__existing-workflow > .form-message { margin-top: 10px; }
 .strategy-result { margin-top: 16px; padding: 16px; background: linear-gradient(135deg, #f7f6ff, #f6f9fe); border: 1px solid #e4e2fa; border-radius: 12px; }

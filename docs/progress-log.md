@@ -122,6 +122,35 @@ The first frontend build attempt ran from the backend directory and failed with 
 - Commit/push/tag: none.
 - Single recommended next stage: V2-C1.2B Task start entry.
 
+## 2026-07-22 — V2-C1.2B Marketing task start entry
+
+- Status: ✅ Completed; checkpoint not yet created.
+- Starting branch and HEAD: `competition-product-v2` at `7e71d6091f8b483c516f93cf61272160abcbe79b`.
+- Scope: save and restore a real MarketingBrief task input for a selected Product, saved target markets, and selected platforms only; no strategy, copy, video, render, artifact, publishing, authentication, or payment work.
+- Preconditions: clean working tree; `master` and `competition-freeze-v1` both remained at `98772160208840eff2f00b97b78ae34809b1786f`.
+- Existing-chain audit: MarketingBrief already owns `product_id`, `audience`, `language`, `platforms`, `tone`, `objective`, and `created_at`; existing `POST /api/v1/marketing-tasks` only saves through MarketingRepository/MarketingService. Qwen is injected only by the separate `POST /api/v1/products/{product_id}/strategy` route and its MarketingStrategyService. CopyMatrix and VideoProject depend on later generated objects and were not invoked.
+- API decision: reused and hardened `POST /api/v1/marketing-tasks`; added `GET /api/v1/marketing-tasks/{task_id}` and `GET /api/v1/marketing-tasks/latest?product_id=...` on the same repository/service/data model. No second Product API, duplicate data layer, ORM field, table, or migration was added.
+- Data ownership: `Product.target_markets` remains the validated creation source; TikTok, Instagram, and Facebook are canonicalized/deduplicated and persisted in `MarketingBrief.platforms`. The canonical markets are snapshotted inside the existing geographic `audience` semantics and projected as `target_markets` in read responses, so later Product market changes do not rewrite an earlier task input.
+- Backend validation: Product existence; 1–5 supported semantic markets (US, CA, UK, DE, FR, AU, JP, SG and documented aliases); 1–3 supported platforms; empty/unsupported platforms rejected; duplicate platforms removed; correct Product association and HTTP 201/404/422 behavior.
+- Frontend implementation: the former disabled V2-C1.2B area now shows the factual Product/market/platform/selling-point/description summary and an accurately named “创建营销任务输入” action. Success displays the Backend ID, Product, saved market snapshot, platforms, creation time, persistence confirmation, and “任务输入已保存，等待 V2-C2 AI 策略生成”.
+- Recovery and empty/error states: selecting a Product loads its latest Brief with an AbortController and request/product guards; no history displays an explicit empty state; load/create errors retain user configuration and expose retry. An uncertain create response first queries the latest record and adopts only a newly observed ID instead of blindly creating again. Initial latest-read failure disables creation until history is known.
+- Duplicate/race protection: a synchronous submit lock prevents rapid double-click duplication independently of button disabled state; request IDs, AbortController, and active Product checks discard stale cross-Product results. Market selection/save also maintains a synchronous latest-value ref so a fast save cannot read an older render.
+- MarketingBrief tests: 7 passed, 0 failed, 1 known Starlette/httpx deprecation warning. Covered creation, missing Product, empty/unsupported platforms, platform deduplication, saved-market validation, single/latest reads, Product isolation, immutable market snapshot recovery, and zero downstream generated objects.
+- Product tests: 13 passed, 0 failed, 1 known Starlette/httpx deprecation warning.
+- Full default pytest: 94 passed, 2 real-provider smoke tests skipped, 0 failed, 1 known Starlette/httpx deprecation warning.
+- Ruff: all checks passed.
+- TypeScript and Vite production build: passed; 121 modules transformed.
+- Isolated browser/API/SQLite smoke: final database started empty; created Atlas Travel Bottle and Beacon Reading Light; A saved CA/US with TikTok/Instagram and restored MarketingBrief #1 after reload; B first showed no task, then saved UK with Facebook as MarketingBrief #2; switching Products restored only the matching Brief. A double-click produced one record. Database totals were exactly 2 Products and 2 MarketingBriefs, one per Product.
+- Error/recovery smoke: the first isolated Frontend port required a temporary local CORS override and then the visible list retry succeeded. With Backend stopped, task creation displayed a clear error and “重试创建”; after restoring the same SQLite, reload/read recovered Brief #2 without a blind duplicate.
+- Browser-driven correction: accelerated market interaction exposed stale render timing; market selection/save was changed to track the latest values synchronously, then the final smoke advanced on observable 1/5 and 2/5 states before saving. Browser console finished with 0 warnings and 0 errors.
+- Presentation regression: `/products?mode=presentation` redirected to `/?mode=presentation`; the task configuration was absent and `0 AI Calls` remained visible. Demo Snapshot did not read workspace MarketingBriefs.
+- Provider/AI calls and cost: none. No Qwen, Wanx, text/visual Provider, strategy, copy, video, render, or artifact generation route was called; no AI cost was incurred.
+- Isolated database side effects: 2 MarketingBriefs; 0 MarketingStrategies, CopyMatrices, VideoProjects, VideoRenderTasks, and VideoRenderArtifacts. Service logs contained no strategy/copy/video/Qwen/Wanx/Provider route match.
+- Temporary services/database: stopped; all stage-named temporary SQLite databases and logs were permanently removed. Repository database files were not modified.
+- Known limitations: the workspace restores only the latest Brief for a Product rather than a complete history center; audience/language/tone/objective are truthful stage defaults without editing UI; MarketingStrategy generation does not consume the Brief until V2-C2; no large frontend test framework was introduced.
+- Commit/push/tag: none.
+- Single recommended next stage: V2-C2 Operable Qwen content chain, beginning with V2-C2.1A Strategy operation entry and requiring separate real-AI approval before any paid call.
+
 ## V2 stage update template
 
 ```markdown

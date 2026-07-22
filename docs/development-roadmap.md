@@ -35,7 +35,7 @@ flowchart TB
     FREEZE --> S3["⚠️ S3 External submission package"]
     FREEZE --> SFINAL["✅ S-FINAL Repository freeze"]
     V2 --> V2C0["✅ V2-C0 Branch and roadmap baseline"]
-    V2 --> V2C1["⏳ V2-C1 Operable workspace"]
+    V2 --> V2C1["✅ V2-C1 Operable workspace"]
     V2 --> V2C2["⏳ V2-C2 Operable Qwen content chain"]
     V2 --> V2C3["⏳ V2-C3 Wanx task hardening"]
     V2 --> V2C4["⏳ V2-C4 Performance-to-Prompt"]
@@ -44,7 +44,7 @@ flowchart TB
     V2C1 --> V2C11A["✅ V2-C1.1A Product form and validation"]
     V2C1 --> V2C11B["✅ V2-C1.1B Product list and detail"]
     V2C1 --> V2C12A["✅ V2-C1.2A Market and platform selection"]
-    V2C1 --> V2C12B["⏳ V2-C1.2B Task start entry"]
+    V2C1 --> V2C12B["✅ V2-C1.2B Task start entry"]
     V2C2 --> V2C21A["⏳ V2-C2.1A Strategy operation entry"]
     V2C2 --> V2C21B["⏳ V2-C2.1B State failure and result UI"]
     V2C2 --> V2C22A["⏳ V2-C2.2A Copy Matrix operation entry"]
@@ -100,7 +100,7 @@ The labels below reconstruct submission work from tracked evidence. Only S0, S2,
 | Node | Status | Date | Commit or tag | Test result | Prerequisite | Known issue | Next |
 |---|---|---:|---|---|---|---|---|
 | V2-C0 | ✅ | 2026-07-21 | Start: `competition-freeze-v1` at `98772160208840eff2f00b97b78ae34809b1786f`; V2-C0 checkpoint: see this Git commit | Backend: 84 passed, 2 deselected, 0 failed, 1 warning; Ruff passed; TypeScript passed; Vite production build passed, 118 modules | Freeze verified | None within V2-C0 scope | V2-C1.1A Product creation form and validation only |
-| V2-C1 | ⏳ | — | None | Not run | V2-C0 accepted | Snapshot-first paths remain | V2-C2 |
+| V2-C1 | ✅ | 2026-07-22 | V2-C1.1A through V2-C1.2B checkpoints/development tree | MarketingBrief: 7 passed; Product: 13 passed; full pytest: 94 passed, 2 skipped, 0 failed, 1 warning; Ruff passed; TypeScript passed; Vite production build passed (121 modules); isolated browser/API/SQLite smoke passed | V2-C0 accepted | Task input stores a single latest-readable MarketingBrief per Product in this UI; no full history center or AI generation in V2-C1 | V2-C2 Operable Qwen content chain |
 | V2-C2 | ⏳ | — | None | Not run | V2-C1 | Real Qwen needs cost approval | V2-C3 |
 | V2-C3 | ⏳ | — | None | Not run | V2-C1/existing C3 | Temporary asset URLs | V2-C4 |
 | V2-C4 | ⏳ | — | None | Not run | V2-C1–C3 | Feedback/version contracts absent | V2-C5 |
@@ -124,5 +124,11 @@ The labels below reconstruct submission work from tracked evidence. Only S0, S2,
 | Status | Date | Modules | Market persistence | Platform boundary | Verified result | Known limitation | Next |
 |---|---:|---|---|---|---|---|---|
 | ✅ Completed | 2026-07-22 | Product update client/type, per-product marketing-task configuration, readiness summary, save/error/retry states, race guards, and responsive styles | Existing `PATCH /api/v1/products/{product_id}` updates `Product.target_markets`; no Backend, ORM, table, or migration change | TikTok, Instagram, and Facebook are per-product frontend session drafts only; explicitly not persisted until a future task-start contract | Product tests: 13 passed; full pytest: 89 passed, 2 skipped, 0 failed, 1 warning; Ruff passed; TypeScript passed; Vite production build passed (120 modules); isolated browser/API/SQLite smoke passed | Platform drafts reset on a full page reload; historical unknown market values remain visible and preserved until explicit user removal/save | V2-C1.2B Task start entry |
+
+### V2-C1.2B completion record
+
+| Status | Date | Modules | MarketingBrief persistence and recovery | AI boundary | Verified result | Known limitation | Next |
+|---|---:|---|---|---|---|---|---|
+| ✅ Completed | 2026-07-22 | Existing MarketingBrief schema/repository/service/routes, focused API tests, typed frontend client, real task-start/recovery states, duplicate/race guards, and responsive result UI | Reused `POST /api/v1/marketing-tasks`; added `GET /api/v1/marketing-tasks/{task_id}` and `GET /api/v1/marketing-tasks/latest?product_id=...`; platforms persist on MarketingBrief, while a canonical target-market snapshot is stored within the existing geographic audience semantics and returned explicitly; no ORM/table/migration change | Save/read routes do not inject or call a Provider and create no MarketingStrategy, CopyMatrix, VideoProject, RenderTask, or Artifact | MarketingBrief tests: 7 passed; Product tests: 13 passed; full pytest: 94 passed, 2 skipped, 0 failed, 1 warning; Ruff passed; TypeScript passed; Vite production build passed (121 modules); isolated two-product browser/API/SQLite smoke, Backend-down recovery, console check, and Presentation Mode regression passed | Workspace restores only the latest Brief per Product; audience/language/tone/objective use current stage defaults and have no editing UI; V2-C2 generation remains pending | V2-C2 Operable Qwen content chain |
 
 Substage gates are in [V2 Plan](v2-plan.md). Execution records belong in [Progress Log](progress-log.md).

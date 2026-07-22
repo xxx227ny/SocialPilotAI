@@ -4,6 +4,12 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.schemas.product import clean_required_text
 
+SUPPORTED_MARKETING_PLATFORMS = {
+    "tiktok": "TikTok",
+    "instagram": "Instagram",
+    "facebook": "Facebook",
+}
+
 
 class MarketingTaskCreate(BaseModel):
     product_id: int
@@ -21,12 +27,20 @@ class MarketingTaskCreate(BaseModel):
     @field_validator("platforms")
     @classmethod
     def validate_platforms(cls, value: list[str]) -> list[str]:
-        cleaned = [platform.strip() for platform in value]
-        if any(not platform for platform in cleaned):
-            raise ValueError("platforms cannot contain empty values")
-        normalized = [platform.casefold() for platform in cleaned]
-        if len(normalized) != len(set(normalized)):
-            raise ValueError("platforms cannot contain duplicates")
+        cleaned: list[str] = []
+        seen: set[str] = set()
+        for platform in value:
+            normalized = platform.strip().casefold()
+            if not normalized:
+                raise ValueError("platforms cannot contain empty values")
+            canonical = SUPPORTED_MARKETING_PLATFORMS.get(normalized)
+            if canonical is None:
+                raise ValueError("platform is not supported")
+            if normalized not in seen:
+                cleaned.append(canonical)
+                seen.add(normalized)
+        if len(cleaned) > 3:
+            raise ValueError("platforms cannot contain more than 3 values")
         return cleaned
 
 
@@ -34,4 +48,5 @@ class MarketingTaskRead(MarketingTaskCreate):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    target_markets: list[str]
     created_at: datetime
