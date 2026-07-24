@@ -3,7 +3,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { generateCopyMatrix } from "../api/copies";
 import { getApiErrorMessage } from "../api/client";
 import { getProduct, listProducts } from "../api/products";
-import { generateMarketingStrategy } from "../api/strategies";
 import { GrowthCopilotPanel } from "../components/GrowthCopilotPanel";
 import { MarketingTaskConfig } from "../components/product/MarketingTaskConfig";
 import { ProductCreateForm } from "../components/product/ProductCreateForm";
@@ -30,15 +29,10 @@ export function ProductCenterPage() {
   >({});
   const listRequestId = useRef(0);
 
-  const [generatingProductId, setGeneratingProductId] = useState<number | null>(
-    null,
-  );
   const [generatingCopyProductId, setGeneratingCopyProductId] = useState<
     number | null
   >(null);
-  const [strategies, setStrategies] = useState<Record<number, MarketingStrategy>>(
-    {},
-  );
+  const [strategies] = useState<Record<number, MarketingStrategy>>({});
   const [copyMatrices, setCopyMatrices] = useState<Record<number, CopyMatrix>>(
     {},
   );
@@ -137,19 +131,6 @@ export function ProductCenterPage() {
 
   function updatePlatformDraft(productId: number, platforms: PlatformName[]) {
     setPlatformDrafts((current) => ({ ...current, [productId]: platforms }));
-  }
-
-  async function handleGenerateStrategy(productId: number) {
-    try {
-      setGeneratingProductId(productId);
-      setWorkflowMessage("");
-      const strategy = await generateMarketingStrategy(productId);
-      setStrategies((current) => ({ ...current, [productId]: strategy }));
-    } catch {
-      setWorkflowMessage("营销分析生成失败，请检查百炼配置或稍后重试。");
-    } finally {
-      setGeneratingProductId(null);
-    }
   }
 
   async function handleGenerateCopy(productId: number) {
@@ -286,7 +267,6 @@ export function ProductCenterPage() {
                   product={selectedProduct}
                   strategy={strategies[selectedProduct.id]}
                   copyMatrix={copyMatrices[selectedProduct.id]}
-                  generatingStrategy={generatingProductId === selectedProduct.id}
                   generatingCopy={generatingCopyProductId === selectedProduct.id}
                   workflowMessage={workflowMessage}
                   selectedPlatforms={platformDrafts[selectedProduct.id] ?? []}
@@ -294,9 +274,6 @@ export function ProductCenterPage() {
                     updatePlatformDraft(selectedProduct.id, platforms)
                   }
                   onProductUpdated={handleProductUpdated}
-                  onGenerateStrategy={() =>
-                    void handleGenerateStrategy(selectedProduct.id)
-                  }
                   onGenerateCopy={() => void handleGenerateCopy(selectedProduct.id)}
                 />
               ) : null}
@@ -339,25 +316,21 @@ function ProductDetail({
   product,
   strategy,
   copyMatrix,
-  generatingStrategy,
   generatingCopy,
   workflowMessage,
   selectedPlatforms,
   onPlatformsChange,
   onProductUpdated,
-  onGenerateStrategy,
   onGenerateCopy,
 }: {
   product: Product;
   strategy?: MarketingStrategy;
   copyMatrix?: CopyMatrix;
-  generatingStrategy: boolean;
   generatingCopy: boolean;
   workflowMessage: string;
   selectedPlatforms: PlatformName[];
   onPlatformsChange: (platforms: PlatformName[]) => void;
   onProductUpdated: (product: Product) => void;
-  onGenerateStrategy: () => void;
   onGenerateCopy: () => void;
 }) {
   return (
@@ -427,10 +400,10 @@ function ProductDetail({
         <div className="product-item__actions">
           <button
             type="button"
-            onClick={onGenerateStrategy}
-            disabled={generatingStrategy}
+            disabled
+            title="请在上方完成 V2-C2.1A 只读生成前检查"
           >
-            {generatingStrategy ? "分析中…" : "生成营销分析"}
+            真实策略生成已迁移至授权流程
           </button>
           <button
             className="copy-action-button"

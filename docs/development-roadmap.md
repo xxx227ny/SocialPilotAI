@@ -45,7 +45,7 @@ flowchart TB
     V2C1 --> V2C11B["✅ V2-C1.1B Product list and detail"]
     V2C1 --> V2C12A["✅ V2-C1.2A Market and platform selection"]
     V2C1 --> V2C12B["✅ V2-C1.2B Task start entry"]
-    V2C2 --> V2C21A["⏳ V2-C2.1A Strategy operation entry"]
+    V2C2 --> V2C21A["✅ V2-C2.1A Strategy operation entry"]
     V2C2 --> V2C21B["⏳ V2-C2.1B State failure and result UI"]
     V2C2 --> V2C22A["⏳ V2-C2.2A Copy Matrix operation entry"]
     V2C2 --> V2C22B["⏳ V2-C2.2B Save and history"]
@@ -130,5 +130,11 @@ The labels below reconstruct submission work from tracked evidence. Only S0, S2,
 | Status | Date | Modules | MarketingBrief persistence and recovery | AI boundary | Verified result | Known limitation | Next |
 |---|---:|---|---|---|---|---|---|
 | ✅ Completed | 2026-07-22 | Existing MarketingBrief schema/repository/service/routes, focused API tests, typed frontend client, real task-start/recovery states, duplicate/race guards, and responsive result UI | Reused `POST /api/v1/marketing-tasks`; added `GET /api/v1/marketing-tasks/{task_id}` and `GET /api/v1/marketing-tasks/latest?product_id=...`; platforms persist on MarketingBrief, while a canonical target-market snapshot is stored within the existing geographic audience semantics and returned explicitly; no ORM/table/migration change | Save/read routes do not inject or call a Provider and create no MarketingStrategy, CopyMatrix, VideoProject, RenderTask, or Artifact | MarketingBrief tests: 7 passed; Product tests: 13 passed; full pytest: 94 passed, 2 skipped, 0 failed, 1 warning; Ruff passed; TypeScript passed; Vite production build passed (121 modules); isolated two-product browser/API/SQLite smoke, Backend-down recovery, console check, and Presentation Mode regression passed | Workspace restores only the latest Brief per Product; audience/language/tone/objective use current stage defaults and have no editing UI; V2-C2 generation remains pending | V2-C2 Operable Qwen content chain |
+
+### V2-C2.1A completion record
+
+| Status | Date | Modules | Read-only preflight contract | Provider and cost boundary | Verified result | Known limitation | Next |
+|---|---:|---|---|---|---|---|---|
+| ✅ Completed | 2026-07-23 | Strategy preflight schema/service/route/tests; pure Product-input preparation; typed frontend client; task-scoped preflight, consent, failure/retry, reset, and disabled execution UI | Added `GET /api/v1/marketing-tasks/{task_id}/strategy-preflight`; reads Product and the saved MarketingBrief snapshot, reports requirements and Provider configuration as a boolean, and creates no downstream record | The endpoint never resolves or instantiates a Provider. UI identifies Qwen/model and potential Credits cost; consent defaults false, is session-only, and never enables a generation handler in this stage | Related tests: 25 passed; full pytest: 99 passed, 2 skipped, 0 failed, 1 warning; Ruff passed; TypeScript passed; Vite production build passed (122 modules); isolated two-product UI/API/SQLite smoke, context reset, Backend-down error/retry, and zero-downstream-record checks passed | The existing real generation endpoint still consumes Product input only; MarketingBrief-to-prompt execution and all real Provider calls remain V2-C2.1B work. Final Presentation browser navigation was blocked by the browser security policy, so the unchanged route guard and `0 AI Calls` component were verified by source/type/build checks rather than a new browser assertion | V2-C2.1B State, failure, and result UI |
 
 Substage gates are in [V2 Plan](v2-plan.md). Execution records belong in [Progress Log](progress-log.md).

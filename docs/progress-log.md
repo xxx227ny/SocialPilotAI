@@ -151,6 +151,31 @@ The first frontend build attempt ran from the backend directory and failed with 
 - Commit/push/tag: none.
 - Single recommended next stage: V2-C2 Operable Qwen content chain, beginning with V2-C2.1A Strategy operation entry and requiring separate real-AI approval before any paid call.
 
+## 2026-07-23 — V2-C2.1A Strategy operation entry
+
+- Status: ✅ Completed; checkpoint not yet created.
+- Starting branch and HEAD: `competition-product-v2` at `b139d579c3f95de011d6da925349dd3c0b4b8fcc`.
+- Scope: read-only strategy preflight and explicit future-cost acknowledgment only; no real generation, result persistence, copy generation, or video work.
+- Existing-chain audit: the real endpoint remains `POST /api/v1/products/{product_id}/strategy`; it resolves `QwenProvider`, calls `provider.generate()`, validates JSON, and saves `MarketingStrategy`. The existing prompt currently consumes Product fields rather than MarketingBrief.
+- Backend implementation: added `GET /api/v1/marketing-tasks/{task_id}/strategy-preflight`, a read-only service, structured response, and focused tests. Product input preparation is now a pure reusable step separated from Provider execution without changing the existing generation API contract.
+- Preflight facts: validates task/Product association, Product content, immutable target-market snapshot, supported platforms, audience/language/tone/objective stage defaults, Qwen Provider type, model label, and a boolean configuration signal. No key, token, workspace ID, or secret value is returned.
+- Frontend implementation: a saved MarketingBrief now exposes idle/checking/passed/blocked/error/retry states, task/Product/market/platform/default-field context, Provider/model/configuration facts, cost notice, and a session-only acknowledgment that defaults false and resets on Product or task change.
+- Execution boundary: the real generation control is disabled and has no action handler. The prior Product Center generation action was neutralized; no workspace component imports or calls the existing real strategy function.
+- Provider/AI calls and cost: 0. The preflight route does not resolve, instantiate, or call Qwen/Wanx/another Provider; no cost was incurred.
+- Downstream data: isolated SQLite ended with 2 Products and 2 MarketingBriefs; MarketingStrategy, CopyMatrix, VideoProject, VideoRenderTask, and VideoRenderArtifact were all 0.
+- Related backend tests: 25 passed, 0 failed, 1 known Starlette warning.
+- Full default pytest: 99 passed, 2 real-provider smoke tests skipped, 0 failed, 1 known Starlette warning.
+- Ruff: all checks passed.
+- TypeScript: both frontend TypeScript project checks passed.
+- Vite production build: passed with 122 modules transformed; output was written outside the repository and removed after verification.
+- Isolated UI smoke: two Product/Brief contexts loaded; Alpha preflight passed with safe placeholder configuration; consent defaulted false; consent true still left execution disabled; switching to Beta reset consent and preflight state; Backend-down produced a retry action and recovery passed after restart.
+- Concurrency/race protection: synchronous request lock, AbortController, request ID, active task/Product guard, response identity checks, and context-reset cleanup prevent duplicate or stale UI results.
+- Presentation protection: `ProductCenterRoute` still redirects presentation mode to `/?mode=presentation`, and the existing DemoContextBar still owns `Demo Snapshot · 0 AI Calls`. A final new browser navigation assertion was blocked by browser security policy, so this item is supported by unchanged source plus successful TypeScript/build checks rather than a new browser pass.
+- Temporary services/database/build output: stopped and permanently removed; no repository database, `.env`, log, screenshot, or build artifact was added.
+- Known limitation: the current real strategy execution still accepts Product input only. Consuming MarketingBrief, obtaining separate authorization, calling Qwen, persisting/showing results, and failure/result-state execution remain exclusively V2-C2.1B.
+- Commit/push/tag: none.
+- Single recommended next stage: V2-C2.1B State, failure, and result UI, only after explicit approval for any real AI call and cost.
+
 ## V2 stage update template
 
 ```markdown

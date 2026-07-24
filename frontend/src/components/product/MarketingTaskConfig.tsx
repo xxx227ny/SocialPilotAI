@@ -9,6 +9,7 @@ import { updateProduct } from "../../api/products";
 import type { PlatformCopy } from "../../types/copy";
 import type { MarketingTask } from "../../types/marketing";
 import type { Product } from "../../types/product";
+import { StrategyPreflightPanel } from "./StrategyPreflightPanel";
 
 type PlatformName = PlatformCopy["platform"];
 type SaveState = "synced" | "dirty" | "saving" | "success" | "error";
@@ -562,7 +563,8 @@ export function MarketingTaskConfig({
             </div>
           )}
           {savedTask && taskState === "ready" && (
-            <article className="task-record-card">
+            <>
+              <article className="task-record-card">
               <header>
                 <div>
                   <span>BACKEND SAVED</span>
@@ -577,7 +579,9 @@ export function MarketingTaskConfig({
                 <div><dt>保存状态</dt><dd>Backend 真实记录已保存</dd></div>
               </dl>
               <p>任务输入已保存，等待 V2-C2 AI 策略生成。</p>
-            </article>
+              </article>
+              <StrategyPreflightPanel task={savedTask} product={product} />
+            </>
           )}
         </div>
       </div>

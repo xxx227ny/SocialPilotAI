@@ -25,3 +25,32 @@ class MarketingStrategySchema(BaseModel):
         if any(not item for item in cleaned):
             raise ValueError("strategy lists cannot contain empty values")
         return cleaned
+
+
+class StrategyPreflightProductSummary(BaseModel):
+    id: int
+    name: str
+    category: str
+    description: str
+    selling_points: list[str]
+
+
+class StrategyPreflightRead(BaseModel):
+    task_id: int
+    product_id: int
+    ready: bool
+    missing_requirements: list[str]
+    product_summary: StrategyPreflightProductSummary
+    target_market_snapshot: list[str]
+    platforms: list[str]
+    audience: str
+    language: str
+    tone: str
+    objective: str
+    provider_label: str
+    model_label: str
+    provider_configured: bool
+    preflight_only: bool = True
+    execution_will_call_ai: bool = True
+    execution_will_create_strategy: bool = True
+    cost_notice: str
