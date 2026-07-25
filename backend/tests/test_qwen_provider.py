@@ -11,6 +11,7 @@ from app.providers.base import (
     ProviderAuthenticationError,
     ProviderConnectionError,
     ProviderModelError,
+    ProviderQuotaError,
 )
 from app.providers.qwen_provider import QwenProvider
 
@@ -63,6 +64,18 @@ def test_qwen_provider_maps_connection_error() -> None:
     )
 
     with pytest.raises(ProviderConnectionError):
+        provider.generate("Return JSON")
+
+
+def test_qwen_provider_maps_rate_limit_error() -> None:
+    provider = make_provider()
+    request = httpx.Request("POST", "https://example.invalid")
+    response = httpx.Response(429, request=request)
+    provider.client.chat.completions.create.side_effect = openai.RateLimitError(
+        "rate limited", response=response, body=None
+    )
+
+    with pytest.raises(ProviderQuotaError):
         provider.generate("Return JSON")
 
 

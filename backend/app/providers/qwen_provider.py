@@ -6,6 +6,7 @@ from app.providers.base import (
     ProviderAuthenticationError,
     ProviderConnectionError,
     ProviderModelError,
+    ProviderQuotaError,
     TextGenerationProvider,
 )
 
@@ -51,6 +52,10 @@ class QwenProvider(TextGenerationProvider):
             ) from exc
         except (openai.APITimeoutError, openai.APIConnectionError) as exc:
             raise ProviderConnectionError("Qwen service is unavailable") from exc
+        except openai.RateLimitError as exc:
+            raise ProviderQuotaError(
+                "Qwen quota or rate limit reached"
+            ) from exc
         except openai.APIStatusError as exc:
             raise ProviderModelError(
                 f"Qwen request failed with status {exc.status_code}"

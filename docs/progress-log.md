@@ -176,6 +176,44 @@ The first frontend build attempt ran from the backend directory and failed with 
 - Commit/push/tag: none.
 - Single recommended next stage: V2-C2.1B State, failure, and result UI, only after explicit approval for any real AI call and cost.
 
+## 2026-07-24 — V2-C2.1B Strategy state, failure, and result UI
+
+- Status: ✅ Completed; checkpoint not yet created.
+- Starting branch and HEAD: `competition-product-v2` at `8eb4517def9d8a1e187f6405bf6988c7e4ed5530`.
+- Preconditions: clean working tree; `master` and `competition-freeze-v1` both remained at `98772160208840eff2f00b97b78ae34809b1786f`.
+- Scope: strategy operation states, safe failures, retry, Product-latest result read/recovery, default-off execution, and offline Fake Provider verification only. No real Qwen/Wanx call, CopyMatrix, video, migration, or history center.
+- Association audit: `MarketingStrategy` has `product_id` but no `marketing_brief_id` or other direct MarketingBrief relationship. The UI and API do not invent task-to-strategy version ownership; recovered/uncertain records are labeled as the Product's latest strategy with an explicit boundary notice.
+- Read API: added `GET /api/v1/products/{product_id}/strategies/latest`, returning the real persisted Strategy ID, Product ID, schema fields, and creation time. Missing Product and empty strategy both return clear 404s. Reads are Product-scoped, ordered by creation time/ID, Provider-free, and write-free.
+- Existing execution compatibility: retained `POST /api/v1/products/{product_id}/strategy`; its response now additively includes persisted identity/time through `MarketingStrategyRead`. Product-only prompt behavior remains unchanged and documented as a limitation.
+- Provider failure mapping: authentication, quota/rate-limit, network/unavailable, invalid output, Backend, missing record, and unknown failures map to fixed safe UI messages. Raw Provider responses, stack traces, keys, headers, workspace IDs, and signed URLs are never rendered.
+- Feature flag: `VITE_ENABLE_STRATEGY_EXECUTION` is false when missing. The default production build and a separate browser pass kept the execution button disabled and displayed “当前构建未开放真实策略执行”. No enabling `.env` was created.
+- State model: preflight uses idle/checking/ready/blocked/failed; execution uses idle/submitting/succeeded/failed/recovering/recovered. Product or Brief change resets consent and inapplicable state.
+- Execution guards: preflight ready, `provider_configured`, session-only explicit cost consent, enabled build flag, matching task/Product identity, and no active submission must all pass both rendering and handler checks. No Effect, preflight success, Product switch, or reload automatically generates.
+- Duplicate/race protection: synchronous execution lock, AbortController, context request ID, active Product/task guard, and response identity checks prevent double submits and stale UI overwrite. An uncertain failure reads Product latest before offering a user-controlled retry and never blindly repeats.
+- Result UI: distinguishes “本次请求已保存” from “Backend 最近已保存记录” and shows Strategy ID, Product, creation time, positioning, audience insights, marketing angles, evidence/content pillars, risks, and source boundary. No nonexistent platform recommendation field is fabricated.
+- Backend related tests: 42 passed, 0 failed, 1 known Starlette warning. Coverage includes latest read missing/empty/single/latest/Product isolation, Provider-free/read-only behavior, success, safe Provider failures, invalid output, one-strategy success, zero-strategy failure, and zero downstream generated objects.
+- Full default pytest: 107 passed, 2 real-provider smoke tests skipped, 0 failed, 1 known Starlette warning.
+- Ruff: all checks passed.
+- TypeScript and Vite production build: passed; 123 modules transformed. Build output was written outside the repository and removed.
+- Fake Provider isolation: a temporary FastAPI dependency override supplied deterministic JSON or deterministic authentication/quota/network/invalid-output failures. It ran from a temporary workspace with placeholder configuration and temporary SQLite; it contained no production debug route, made no network request, and was removed after the smoke.
+- Offline browser smoke: 6 Products and 6 MarketingBriefs covered consent disabled/enabled, submitting, rapid double-click, direct success, reload/latest recovery, four safe failure categories, retry/re-preflight controls, and slow-result Product switching. The double-click success scenario logged exactly one Fake Provider call.
+- Temporary database result: 2 Fake MarketingStrategies were intentionally created (one direct success and one completed slow-request race); CopyMatrix, VideoProject, VideoRenderTask, and VideoRenderArtifact counts were all 0. Failed Provider scenarios created no Strategy.
+- Production-default regression: with the test flag removed, a ready preflight plus checked consent still left “调用 Qwen 生成策略” disabled and showed the default-off notice.
+- Presentation regression: `/products?mode=presentation` redirected to `/?mode=presentation`; SocialPilot AI, 比赛演示模式, Demo Snapshot, `0 AI Calls`, and Overview/Copy Matrix/Video Blueprint/Growth Copilot were visible. Product Center, Preflight, execution state, and strategy result were absent; no strategy/AI request occurred and no page crash was observed.
+- Provider/AI calls and cost: real Qwen 0, Wanx 0, external AI network requests 0, real credential use/output 0, AI cost 0. Fake Provider calls were local deterministic test calls only.
+- Temporary cleanup: backend/frontend stopped; temporary SQLite, logs, Fake script, feature-flag process setting, and build output removed. Repository `.env`, databases, Demo Snapshot, and frozen evidence assets were not modified.
+- Known limitations: strategies remain Product-owned rather than Brief-versioned; latest recovery cannot prove ownership by the current Brief and is labeled honestly; prompt input is still Product-only; full history and real Qwen/cost evidence remain future work; no large frontend test framework was added.
+- Commit/push/tag: none.
+- Single recommended next stage: V2-C2.2A Copy Matrix operation entry. Any real Qwen call still requires separate explicit authorization.
+
+### V2-C2.1B-R1 correction
+
+- Checkpoint review found that the list-item trim/blank validator had moved from `MarketingStrategySchema` to `MarketingStrategyRead`, while Provider output is validated through the base schema.
+- Restored the validator to `MarketingStrategySchema`; `MarketingStrategyRead` now only adds persisted read fields and inherits the same content constraints.
+- Added parameterized coverage for every generated `list[str]` field, including whitespace rejection, valid trimming, safe API errors, and zero Strategy/downstream writes for invalid Provider output.
+- Result source labels now distinguish “本次生成策略” from “商品最新策略”, while retaining the explicit no-direct-MarketingBrief-version boundary.
+- Real AI calls and cost: 0. No Qwen, Wanx, or external AI request was made.
+
 ## V2 stage update template
 
 ```markdown

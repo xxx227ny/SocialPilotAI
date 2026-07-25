@@ -6,6 +6,7 @@ from app.providers.base import (
     ProviderConnectionError,
     ProviderError,
     ProviderModelError,
+    ProviderQuotaError,
     TextGenerationProvider,
 )
 from app.providers.qwen_provider import QwenProvider
@@ -23,6 +24,7 @@ __all__ = [
     "ProviderConfigurationError",
     "ProviderError",
     "ProviderModelError",
+    "ProviderQuotaError",
     "QwenProvider",
     "TextGenerationProvider",
     "VisualGenerationProvider",

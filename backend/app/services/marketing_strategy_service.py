@@ -9,6 +9,7 @@ from app.providers import (
     ProviderAuthenticationError,
     ProviderConnectionError,
     ProviderModelError,
+    ProviderQuotaError,
     TextGenerationProvider,
 )
 from app.repositories.product import ProductRepository
@@ -35,6 +36,10 @@ class MarketingStrategyService:
             raise AppError("Qwen authentication failed", status_code=502) from exc
         except ProviderConnectionError as exc:
             raise AppError("Qwen service is unavailable", status_code=503) from exc
+        except ProviderQuotaError as exc:
+            raise AppError(
+                "Qwen quota or rate limit reached", status_code=429
+            ) from exc
         except ProviderModelError as exc:
             raise AppError("Qwen generation failed", status_code=502) from exc
 
@@ -72,3 +77,20 @@ class MarketingStrategyService:
             "only on the supplied product data). Product data:\n"
             f"{json.dumps(product_data, ensure_ascii=False)}"
         )
+
+
+class MarketingStrategyQueryService:
+    """Read persisted Product strategies without resolving a Provider."""
+
+    def __init__(self, session: Session) -> None:
+        self.product_repository = ProductRepository(session)
+        self.strategy_repository = MarketingStrategyRepository(session)
+
+    def get_latest_for_product(self, product_id: int) -> MarketingStrategy:
+        if self.product_repository.get(product_id) is None:
+            raise AppError("Product not found", status_code=404)
+
+        strategy = self.strategy_repository.get_latest_by_product(product_id)
+        if strategy is None:
+            raise AppError("Marketing strategy not found", status_code=404)
+        return strategy

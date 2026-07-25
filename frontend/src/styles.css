@@ -263,33 +263,34 @@ textarea { font: inherit; }
 .task-record-card time { color: #71887f; font-size: 7px; }
 .task-record-card dl { margin-bottom: 8px; }
 .task-record-card > p { margin: 0; color: #2f7257; font-size: 8px; font-weight: 700; }
-.strategy-preflight { margin-top: 12px; padding: 13px; background: #fff; border: 1px solid #d9dff0; border-radius: 10px; }
-.strategy-preflight__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.strategy-preflight__header span { color: #675bd7; font-size: 7px; font-weight: 900; letter-spacing: .9px; }
-.strategy-preflight__header h5 { margin: 4px 0; color: #303b54; font-size: 11px; }
-.strategy-preflight__header p { margin: 0; color: #7a869b; font-size: 8px; line-height: 1.5; }
-.strategy-preflight__status { flex: 0 0 auto; padding: 5px 7px; color: #667189; background: #eef1f7; border-radius: 6px; font-size: 7px; }
-.strategy-preflight__status--passed { color: #24704f; background: #e1f5ea; }
-.strategy-preflight__status--blocked, .strategy-preflight__status--error { color: #9a4e42; background: #fff0ed; }
+.strategy-preflight { margin-top: 12px; padding: 14px; background: #fff; border: 1px solid #d9dff0; border-radius: 10px; }
+.strategy-preflight__heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.strategy-preflight__heading h4 { margin: 4px 0 0; color: #303b54; font-size: 12px; }
+.strategy-preflight__status { flex: 0 0 auto; padding: 5px 7px; color: #667189; background: #eef1f7; border-radius: 6px; font-size: 7px; font-weight: 800; }
+.strategy-preflight__status--ready { color: #24704f; background: #e1f5ea; }
+.strategy-preflight__status--blocked, .strategy-preflight__status--failed { color: #9a4e42; background: #fff0ed; }
 .strategy-preflight__status--checking { color: #5f54c5; background: #eeecff; }
-.strategy-preflight__boundary { margin-top: 10px; padding: 8px 9px; color: #5e559c; background: #f0efff; border-left: 3px solid #7468dc; border-radius: 6px; font-size: 8px; line-height: 1.5; }
-.strategy-preflight__context, .strategy-preflight__result dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin: 10px 0; }
-.strategy-preflight__context > div, .strategy-preflight__result dl > div { padding: 7px 8px; background: #f7f8fb; border-radius: 6px; }
-.strategy-preflight dt { color: #7e899c; font-size: 7px; }
-.strategy-preflight dd { margin: 3px 0 0; overflow-wrap: anywhere; color: #3f4b61; font-size: 8px; font-weight: 700; }
-.strategy-preflight__run, .strategy-preflight__execute { width: 100%; min-height: 32px; border: 0; border-radius: 7px; font-size: 8px; font-weight: 850; }
-.strategy-preflight__run { color: #fff; background: #6d61d9; cursor: pointer; }
+.strategy-preflight__intro, .strategy-preflight__note { color: #7a869b; font-size: 8px; line-height: 1.55; }
 .strategy-preflight button:disabled { cursor: not-allowed; opacity: .58; }
-.strategy-preflight__result { margin-top: 9px; padding: 9px; background: #fafbfe; border: 1px solid #e4e7f0; border-radius: 7px; }
+.strategy-preflight__result { margin-top: 10px; padding: 10px; background: #fafbfe; border: 1px solid #e4e7f0; border-radius: 7px; }
 .strategy-preflight__missing strong { color: #9a4e42; font-size: 8px; }
 .strategy-preflight__missing ul { margin: 5px 0 0; padding-left: 15px; color: #8a574f; font-size: 8px; line-height: 1.5; }
-.strategy-preflight__cost, .strategy-preflight__error { margin: 8px 0 0; font-size: 8px; line-height: 1.5; }
-.strategy-preflight__cost { color: #735a25; }
-.strategy-preflight__error { color: #a2453a; }
-.strategy-preflight__acknowledgment { display: flex; align-items: flex-start; gap: 7px; margin-top: 10px; color: #4c566b; font-size: 8px; font-weight: 700; line-height: 1.45; }
-.strategy-preflight__acknowledgment input { margin: 0; accent-color: #6d61d9; }
-.strategy-preflight__eligibility { margin: 7px 0; color: #778397; font-size: 8px; line-height: 1.45; }
-.strategy-preflight__execute { color: #7d8290; background: #eceef3; border: 1px solid #dde0e7; }
+.strategy-execution-gate { margin: 9px 0; padding: 8px 9px; color: #735a25; background: #fff8e7; border-left: 3px solid #d4a33a; border-radius: 6px; font-size: 8px; line-height: 1.5; }
+.strategy-preflight__acknowledgement { display: flex; align-items: flex-start; gap: 7px; margin: 10px 0; color: #4c566b; font-size: 8px; font-weight: 700; line-height: 1.45; }
+.strategy-preflight__acknowledgement input { margin: 0; accent-color: #6d61d9; }
+.strategy-operation-progress { margin: 10px 0 0; padding: 9px; color: #5f54c5; background: #eeecff; border-radius: 7px; font-size: 8px; line-height: 1.5; }
+.strategy-operation-issue { margin-top: 10px; padding: 10px; color: #8c3d35; background: #fff0ed; border: 1px solid #f3c9c2; border-radius: 7px; font-size: 8px; line-height: 1.5; }
+.strategy-operation-issue p { margin: 5px 0 8px; }
+.strategy-operation-issue--quota { color: #7e5c22; background: #fff8e7; border-color: #ead49c; }
+.strategy-operation-result { margin-top: 12px; padding: 12px; color: #364157; background: linear-gradient(145deg, #f9fbff, #f3f1ff); border: 1px solid #dcd9f4; border-radius: 9px; }
+.strategy-operation-result__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.strategy-operation-result__header h5 { margin: 3px 0 0; font-size: 12px; }
+.strategy-operation-result__header > span { padding: 5px 7px; color: #5e559c; background: #e8e5ff; border-radius: 6px; font-size: 7px; font-weight: 800; }
+.strategy-operation-result h6 { margin: 10px 0 5px; color: #4a5570; font-size: 9px; }
+.strategy-operation-result p, .strategy-operation-list ul { margin: 0; font-size: 8px; line-height: 1.6; }
+.strategy-operation-list ul { padding-left: 16px; }
+.strategy-operation-list--warning { color: #855044; }
+.strategy-operation-result__boundary { margin-top: 11px !important; padding: 8px 9px; color: #5e559c; background: #eae8ff; border-left: 3px solid #7468dc; border-radius: 6px; }
 .product-detail-card__existing-workflow { padding-top: 16px; border-top: 1px solid #eceef3; }
 .product-detail-card__existing-workflow > .form-message { margin-top: 10px; }
 .strategy-result { margin-top: 16px; padding: 16px; background: linear-gradient(135deg, #f7f6ff, #f6f9fe); border: 1px solid #e4e2fa; border-radius: 12px; }

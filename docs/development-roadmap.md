@@ -46,7 +46,7 @@ flowchart TB
     V2C1 --> V2C12A["✅ V2-C1.2A Market and platform selection"]
     V2C1 --> V2C12B["✅ V2-C1.2B Task start entry"]
     V2C2 --> V2C21A["✅ V2-C2.1A Strategy operation entry"]
-    V2C2 --> V2C21B["⏳ V2-C2.1B State failure and result UI"]
+    V2C2 --> V2C21B["✅ V2-C2.1B State failure and result UI"]
     V2C2 --> V2C22A["⏳ V2-C2.2A Copy Matrix operation entry"]
     V2C2 --> V2C22B["⏳ V2-C2.2B Save and history"]
     V2C3 --> V2C31A["⏳ V2-C3.1A VideoProject to RenderTask"]
@@ -136,5 +136,11 @@ The labels below reconstruct submission work from tracked evidence. Only S0, S2,
 | Status | Date | Modules | Read-only preflight contract | Provider and cost boundary | Verified result | Known limitation | Next |
 |---|---:|---|---|---|---|---|---|
 | ✅ Completed | 2026-07-23 | Strategy preflight schema/service/route/tests; pure Product-input preparation; typed frontend client; task-scoped preflight, consent, failure/retry, reset, and disabled execution UI | Added `GET /api/v1/marketing-tasks/{task_id}/strategy-preflight`; reads Product and the saved MarketingBrief snapshot, reports requirements and Provider configuration as a boolean, and creates no downstream record | The endpoint never resolves or instantiates a Provider. UI identifies Qwen/model and potential Credits cost; consent defaults false, is session-only, and never enables a generation handler in this stage | Related tests: 25 passed; full pytest: 99 passed, 2 skipped, 0 failed, 1 warning; Ruff passed; TypeScript passed; Vite production build passed (122 modules); isolated two-product UI/API/SQLite smoke, context reset, Backend-down error/retry, and zero-downstream-record checks passed | The existing real generation endpoint still consumes Product input only; MarketingBrief-to-prompt execution and all real Provider calls remain V2-C2.1B work. Final Presentation browser navigation was blocked by the browser security policy, so the unchanged route guard and `0 AI Calls` component were verified by source/type/build checks rather than a new browser assertion | V2-C2.1B State, failure, and result UI |
+
+### V2-C2.1B completion record
+
+| Status | Date | Modules | Result and recovery contract | Execution safety boundary | Verified result | Known limitation | Next |
+|---|---:|---|---|---|---|---|---|
+| ✅ Completed | 2026-07-24 | Latest-strategy read schema/service/route/tests; safe Provider quota mapping; typed frontend result/error client; feature flag; centralized preflight/execution states; result, failure, retry, and recovery UI | Added read-only `GET /api/v1/products/{product_id}/strategies/latest`; Product existence and empty state return clear 404s; latest is selected by creation time/ID, scoped to Product, creates nothing, and never resolves a Provider | `VITE_ENABLE_STRATEGY_EXECUTION` is false when absent. Preflight ready, safe Provider configuration, explicit cost consent, matching Product/Brief identity, feature flag, and a synchronous submission lock are all required and rechecked in the handler. The flag is a build gate, not authorization. Fake execution was enabled only against an injected offline Provider and temporary SQLite | Strategy-related tests: 42 passed; full pytest: 107 passed, 2 real-provider smoke tests skipped, 0 failed, 1 warning; Ruff passed; TypeScript passed; Vite production build passed (123 modules). Browser/Fake smoke covered default consent, submitting, double-click protection, success, reload recovery, authentication/quota/network/invalid-output errors, retry controls, stale Product switching, default-off execution, and Presentation redirect/navigation isolation | MarketingStrategy remains related to Product only and has no MarketingBrief foreign key; restored or uncertain results are therefore labeled as the Product's latest saved strategy. The current prompt still consumes Product fields only. No platform-advice field exists in the real Strategy schema, so none is invented. Real Qwen/cost verification and full history remain pending | V2-C2.2A Copy Matrix operation entry |
 
 Substage gates are in [V2 Plan](v2-plan.md). Execution records belong in [Progress Log](progress-log.md).

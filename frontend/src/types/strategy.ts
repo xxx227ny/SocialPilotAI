@@ -1,9 +1,28 @@
 export interface MarketingStrategy {
+  id: number;
+  product_id: number;
   positioning: string;
   audience_insights: string[];
   angles: string[];
   risks: string[];
   evidence: string[];
+  created_at: string;
+}
+
+export type StrategyExecutionIssueCategory =
+  | "configuration"
+  | "authentication"
+  | "quota"
+  | "network"
+  | "invalid-output"
+  | "backend"
+  | "not-found"
+  | "unknown";
+
+export interface StrategyExecutionIssue {
+  category: StrategyExecutionIssueCategory;
+  message: string;
+  retryable: boolean;
 }
 
 export interface StrategyPreflightProductSummary {

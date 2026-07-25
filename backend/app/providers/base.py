@@ -13,6 +13,10 @@ class ProviderConnectionError(ProviderError):
     """Provider could not be reached before the configured timeout."""
 
 
+class ProviderQuotaError(ProviderError):
+    """Provider quota, credits, or rate limit prevents execution."""
+
+
 class ProviderConfigurationError(ProviderError):
     """Provider configuration is missing or unsupported."""
 

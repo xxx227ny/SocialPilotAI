@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
@@ -25,6 +27,12 @@ class MarketingStrategySchema(BaseModel):
         if any(not item for item in cleaned):
             raise ValueError("strategy lists cannot contain empty values")
         return cleaned
+
+
+class MarketingStrategyRead(MarketingStrategySchema):
+    id: int
+    product_id: int
+    created_at: datetime
 
 
 class StrategyPreflightProductSummary(BaseModel):
