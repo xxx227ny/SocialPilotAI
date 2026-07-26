@@ -14,6 +14,7 @@ import type {
   StrategyExecutionIssue,
   StrategyPreflight,
 } from "../../types/strategy";
+import { CopyPreflightPanel } from "./CopyPreflightPanel";
 
 type PreflightState = "idle" | "checking" | "ready" | "blocked" | "failed";
 type ExecutionState =
@@ -304,7 +305,17 @@ export function StrategyPreflightPanel({
         </div>
       ) : null}
 
-      {strategy ? <StrategyResult strategy={strategy} product={product} source={resultSource ?? "latest"} sourceTaskId={sourceTaskId} associationNotice={associationNotice} /> : executionState === "idle" ? <p className="strategy-preflight__note">当前商品尚无可展示的已保存策略。</p> : null}
+      {strategy ? (
+        <>
+          <StrategyResult strategy={strategy} product={product} source={resultSource ?? "latest"} sourceTaskId={sourceTaskId} associationNotice={associationNotice} />
+          <CopyPreflightPanel
+            task={task}
+            product={product}
+            strategy={strategy}
+            strategySource={resultSource ?? "latest"}
+          />
+        </>
+      ) : executionState === "idle" ? <p className="strategy-preflight__note">当前商品尚无可展示的已保存策略；Copy Matrix入口将在Strategy可用后显示。</p> : null}
     </section>
   );
 }

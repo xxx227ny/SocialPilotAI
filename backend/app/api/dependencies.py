@@ -43,6 +43,21 @@ StrategyExecutionGateDep = Annotated[
 ]
 
 
+def require_copy_execution_enabled(
+    app_settings: Annotated[Settings, Depends(get_settings)],
+) -> None:
+    if not app_settings.enable_copy_execution:
+        raise AppError(
+            "Copy execution is disabled by the server",
+            status_code=503,
+        )
+
+
+CopyExecutionGateDep = Annotated[
+    None, Depends(require_copy_execution_enabled)
+]
+
+
 def get_visual_generation_provider() -> VisualGenerationProvider:
     try:
         return WanxProvider()

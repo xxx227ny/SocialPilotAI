@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { generateCopyMatrix } from "../api/copies";
 import { getApiErrorMessage } from "../api/client";
 import { getProduct, listProducts } from "../api/products";
 import { GrowthCopilotPanel } from "../components/GrowthCopilotPanel";
 import { MarketingTaskConfig } from "../components/product/MarketingTaskConfig";
 import { ProductCreateForm } from "../components/product/ProductCreateForm";
-import type { CopyMatrix, PlatformCopy } from "../types/copy";
+import type { PlatformCopy } from "../types/copy";
 import type { Product } from "../types/product";
-import type { MarketingStrategy } from "../types/strategy";
 
 type ListState = "loading" | "refreshing" | "ready" | "error";
 type DetailState = "idle" | "loading" | "ready" | "error";
@@ -28,15 +26,6 @@ export function ProductCenterPage() {
     Record<number, PlatformName[]>
   >({});
   const listRequestId = useRef(0);
-
-  const [generatingCopyProductId, setGeneratingCopyProductId] = useState<
-    number | null
-  >(null);
-  const [strategies] = useState<Record<number, MarketingStrategy>>({});
-  const [copyMatrices, setCopyMatrices] = useState<Record<number, CopyMatrix>>(
-    {},
-  );
-  const [workflowMessage, setWorkflowMessage] = useState("");
 
   const loadProducts = useCallback(async (preferredProductId?: number) => {
     const requestId = ++listRequestId.current;
@@ -131,19 +120,6 @@ export function ProductCenterPage() {
 
   function updatePlatformDraft(productId: number, platforms: PlatformName[]) {
     setPlatformDrafts((current) => ({ ...current, [productId]: platforms }));
-  }
-
-  async function handleGenerateCopy(productId: number) {
-    try {
-      setGeneratingCopyProductId(productId);
-      setWorkflowMessage("");
-      const copyMatrix = await generateCopyMatrix(productId);
-      setCopyMatrices((current) => ({ ...current, [productId]: copyMatrix }));
-    } catch {
-      setWorkflowMessage("社媒文案生成失败，请先完成营销分析或稍后重试。");
-    } finally {
-      setGeneratingCopyProductId(null);
-    }
   }
 
   return (
@@ -265,16 +241,11 @@ export function ProductCenterPage() {
               ) : selectedProduct ? (
                 <ProductDetail
                   product={selectedProduct}
-                  strategy={strategies[selectedProduct.id]}
-                  copyMatrix={copyMatrices[selectedProduct.id]}
-                  generatingCopy={generatingCopyProductId === selectedProduct.id}
-                  workflowMessage={workflowMessage}
                   selectedPlatforms={platformDrafts[selectedProduct.id] ?? []}
                   onPlatformsChange={(platforms) =>
                     updatePlatformDraft(selectedProduct.id, platforms)
                   }
                   onProductUpdated={handleProductUpdated}
-                  onGenerateCopy={() => void handleGenerateCopy(selectedProduct.id)}
                 />
               ) : null}
             </div>
@@ -314,24 +285,14 @@ function ProductState({
 
 function ProductDetail({
   product,
-  strategy,
-  copyMatrix,
-  generatingCopy,
-  workflowMessage,
   selectedPlatforms,
   onPlatformsChange,
   onProductUpdated,
-  onGenerateCopy,
 }: {
   product: Product;
-  strategy?: MarketingStrategy;
-  copyMatrix?: CopyMatrix;
-  generatingCopy: boolean;
-  workflowMessage: string;
   selectedPlatforms: PlatformName[];
   onPlatformsChange: (platforms: PlatformName[]) => void;
   onProductUpdated: (product: Product) => void;
-  onGenerateCopy: () => void;
 }) {
   return (
     <article className="product-detail-card">
@@ -397,77 +358,9 @@ function ProductDetail({
       />
 
       <section className="product-detail-card__existing-workflow">
-        <div className="product-item__actions">
-          <button
-            type="button"
-            disabled
-            title="请在上方完成 V2-C2.1A 只读生成前检查"
-          >
-            真实策略生成已迁移至授权流程
-          </button>
-          <button
-            className="copy-action-button"
-            type="button"
-            title={strategy ? "一次生成三个平台文案" : "请先生成营销分析"}
-            onClick={onGenerateCopy}
-            disabled={!strategy || generatingCopy}
-          >
-            {generatingCopy ? "生成中…" : "生成社媒文案"}
-          </button>
-        </div>
-        {workflowMessage && <p className="form-message">{workflowMessage}</p>}
-        {strategy && (
-          <div className="strategy-result">
-            <div className="strategy-result__header">
-              <span>QWEN MARKETING ANALYSIS</span>
-              <strong>营销分析</strong>
-            </div>
-            <div className="strategy-result__positioning">
-              <small>定位</small>
-              <p>{strategy.positioning}</p>
-            </div>
-            <div className="strategy-result__grid">
-              <StrategyList title="目标用户" items={strategy.audience_insights} />
-              <StrategyList title="营销角度" items={strategy.angles} />
-              <StrategyList title="风险提示" items={strategy.risks} warning />
-            </div>
-          </div>
-        )}
-        {copyMatrix && (
-          <div className="copy-matrix-result">
-            <div className="copy-matrix-result__header">
-              <div>
-                <span>COPY MATRIX</span>
-                <strong>三平台社媒文案</strong>
-              </div>
-              <small>一次生成 · 3 个平台</small>
-            </div>
-            <div className="copy-platform-grid">
-              {copyMatrix.copies.map((copy) => (
-                <article
-                  className={`copy-platform-card copy-platform-card--${copy.platform.toLowerCase()}`}
-                  key={copy.platform}
-                >
-                  <div className="copy-platform-card__title">
-                    <strong>{copy.platform}</strong>
-                    <span>{platformLabel(copy.platform)}</span>
-                  </div>
-                  <CopyField title="Hook" content={copy.hook} />
-                  <CopyField title="Caption" content={copy.caption} />
-                  <div className="copy-field">
-                    <small>Hashtags</small>
-                    <div className="copy-hashtags">
-                      {copy.hashtags.map((hashtag) => (
-                        <span key={hashtag}>{hashtag}</span>
-                      ))}
-                    </div>
-                  </div>
-                  <CopyField title="CTA" content={copy.cta} accent />
-                </article>
-              ))}
-            </div>
-          </div>
-        )}
+        <p className="strategy-preflight__note">
+          Strategy与Copy Matrix操作已迁移到上方的受控流程；普通工作区不再调用旧Product-only Copy入口。
+        </p>
         <GrowthCopilotPanel productId={product.id} />
       </section>
     </article>
@@ -481,50 +374,4 @@ function formatDateTime(value: string) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(date);
-}
-
-function platformLabel(platform: "TikTok" | "Instagram" | "Facebook") {
-  return {
-    TikTok: "UGC · 情绪驱动",
-    Instagram: "Lifestyle · 品牌感",
-    Facebook: "功能价值 · 理性购买",
-  }[platform];
-}
-
-function CopyField({
-  title,
-  content,
-  accent = false,
-}: {
-  title: string;
-  content: string;
-  accent?: boolean;
-}) {
-  return (
-    <div className={`copy-field${accent ? " copy-field--accent" : ""}`}>
-      <small>{title}</small>
-      <p>{content}</p>
-    </div>
-  );
-}
-
-function StrategyList({
-  title,
-  items,
-  warning = false,
-}: {
-  title: string;
-  items: string[];
-  warning?: boolean;
-}) {
-  return (
-    <div className={`strategy-list${warning ? " strategy-list--warning" : ""}`}>
-      <strong>{title}</strong>
-      <ul>
-        {items.map((item) => (
-          <li key={item}>{item}</li>
-        ))}
-      </ul>
-    </div>
-  );
 }

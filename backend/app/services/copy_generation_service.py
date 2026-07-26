@@ -3,12 +3,14 @@ import json
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
+from app.core.config import Settings
 from app.core.exceptions import AppError
 from app.models import CopyMatrix, MarketingStrategy, Product
 from app.providers import (
     ProviderAuthenticationError,
     ProviderConnectionError,
     ProviderModelError,
+    ProviderQuotaError,
     TextGenerationProvider,
 )
 from app.repositories.copy import CopyMatrixRepository
@@ -19,14 +21,19 @@ from app.schemas.copy import CopyMatrixSchema
 
 class CopyGenerationService:
     def __init__(
-        self, session: Session, provider: TextGenerationProvider
+        self,
+        session: Session,
+        provider: TextGenerationProvider,
+        settings: Settings,
     ) -> None:
         self.product_repository = ProductRepository(session)
         self.strategy_repository = MarketingStrategyRepository(session)
         self.copy_repository = CopyMatrixRepository(session)
         self.provider = provider
+        self.settings = settings
 
     def generate_for_product(self, product_id: int) -> CopyMatrix:
+        self._require_execution_enabled()
         product = self.product_repository.get(product_id)
         if product is None:
             raise AppError("Product not found", status_code=404)
@@ -45,6 +52,10 @@ class CopyGenerationService:
             raise AppError("Qwen authentication failed", status_code=502) from exc
         except ProviderConnectionError as exc:
             raise AppError("Qwen service is unavailable", status_code=503) from exc
+        except ProviderQuotaError as exc:
+            raise AppError(
+                "Qwen quota or rate limit reached", status_code=429
+            ) from exc
         except ProviderModelError as exc:
             raise AppError("Qwen generation failed", status_code=502) from exc
 
@@ -58,6 +69,13 @@ class CopyGenerationService:
             raise AppError("Qwen returned invalid copy data", status_code=502) from exc
 
         return self.copy_repository.create(product.id, strategy.id, copy_matrix)
+
+    def _require_execution_enabled(self) -> None:
+        if not self.settings.enable_copy_execution:
+            raise AppError(
+                "Copy execution is disabled by the server",
+                status_code=503,
+            )
 
     @staticmethod
     def _build_prompt(product: Product, strategy: MarketingStrategy) -> str:

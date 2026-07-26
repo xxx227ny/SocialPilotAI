@@ -254,6 +254,28 @@ The first frontend build attempt ran from the backend directory and failed with 
 - Authorization state: the one-call authorization is exhausted. Any later real AI call requires new explicit user authorization and must never start automatically.
 - Next stage: V2-C2.2A Copy Matrix operation entry remains pending and was not started.
 
+## 2026-07-26 — V2-C2.2A Copy Matrix operation entry
+
+- Status: ✅ Completed; checkpoint not yet created.
+- Starting branch and HEAD: `competition-product-v2` at `813f4fbb683650daa4e7ffdda7be0e41ede2face`; working tree and staged area were clean, and protected `master`/`competition-freeze-v1` remained at `98772160208840eff2f00b97b78ae34809b1786f`.
+- Existing-chain audit: `POST /api/v1/products/{product_id}/copy` injects Qwen, selects the Product's latest MarketingStrategy, builds a Product/Strategy Prompt, requires exactly TikTok, Instagram, and Facebook, and ignores MarketingBrief platforms. No ordinary-workspace Copy read API exists.
+- Real association: CopyMatrix persists `product_id` and `marketing_strategy_id`, so a saved matrix can prove its exact Strategy. It has no MarketingBrief ID, and the Strategy itself still has no persisted Brief relationship; neither the preflight nor a reload can prove Brief-version ownership.
+- Backend safety: added independent `ENABLE_COPY_EXECUTION`, default false. The old Copy route checks it before Provider resolution, and CopyGenerationService checks it again before reads, Provider calls, or writes. It is separate from Strategy execution and Provider configuration.
+- Preflight API: added read-only `GET /api/v1/marketing-tasks/{task_id}/strategies/{strategy_id}/copy-preflight`. It resolves only the exact URL Brief and Strategy, validates both Product associations, Product and Strategy fields, the immutable market prefix, and supported Brief platforms. It does not resolve a Provider, construct a Provider request, select a latest record, or write CopyMatrix.
+- Honest contract result: `contract_ready=false` and `ready_for_execution=false`. The missing requirement identifies the future Brief-aware, exact-Strategy Copy contract because the compatible old executor still chooses latest Strategy and forces all three platforms.
+- Frontend safety: added independent `VITE_ENABLE_COPY_EXECUTION`, default false; no enabling environment file was added. The old Product Center Copy handler was removed. The new panel appears only with a Strategy, displays exact Product/Brief/Strategy/source/market/platform facts, runs only Preflight, resets consent on context changes, and uses AbortController, request IDs, active-context checks, and a synchronous lock.
+- Cost and action boundary: consent defaults unchecked and is session-only. The “调用Qwen生成Copy Matrix” button remains natively disabled after consent and has no action handler; it states that V2-C2.2B must complete first and that generation is neither publishing nor social-account authorization.
+- Backend verification: Copy/Strategy/Marketing/Product focused suite 89 passed; full default pytest 153 passed, 2 real-provider smoke tests skipped, 0 failed, 1 known Starlette warning; Ruff passed.
+- Frontend verification: TypeScript passed; Vite production build passed with 124 modules transformed; the dedicated temporary output directory was removed.
+- Offline smoke: isolated SQLite contained exactly 2 Products, 2 MarketingBriefs, and 2 deterministic MarketingStrategies. Exact preflights returned the requested IDs and Brief platforms; cross-Product pairing was rejected; rapid double-click produced one request for that context; switching Product reset consent and showed the second Brief/Strategy without stale data.
+- Browser safety result: Backend Copy and Frontend Copy flags were false; the generated action remained disabled before and after consent. Access logs contained 2 intended Copy Preflight GETs and 0 Copy/Strategy execution POSTs. CopyMatrix, VideoProject, VideoRenderTask, and VideoRenderArtifact remained 0.
+- Presentation regression: `/products?mode=presentation` redirected to `/?mode=presentation`; Demo Snapshot, `0 AI Calls`, four-stage navigation, and the read-only three-platform Copy Matrix were visible from a temporary database copy. The ordinary Copy Preflight, consent, and execution controls were absent; console finished with 0 errors and 0 warnings.
+- Provider/AI calls and cost: real Qwen 0, Wanx 0, Fake Provider 0, external AI requests 0, AI cost 0.
+- Cleanup and repository protection: temporary services, both temporary SQLite files, logs, and build output were removed. Repository `.env` and database metadata/hash remained unchanged; no ORM, table, migration, frozen evidence, or Demo Snapshot source was modified.
+- Known limitations: no Brief-aware Copy Prompt/executor, no partial platform matrix, no Copy read/recovery UI, and no persisted MarketingBrief association. V2-C2.2B remains pending.
+- Commit/push/tag: none.
+- Single recommended next stage: V2-C2.2B Brief-aware exact-Strategy Copy execution, save, and recovery contract; any real AI call still requires separate explicit authorization.
+
 ## V2 stage update template
 
 ```markdown

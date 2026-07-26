@@ -44,3 +44,42 @@ class CopyMatrixSchema(BaseModel):
                 "copies must contain TikTok, Instagram and Facebook exactly once"
             )
         return self
+
+
+class CopyPreflightProductSummary(BaseModel):
+    id: int
+    name: str
+    category: str
+    description: str
+    selling_points: list[str]
+
+
+class CopyPreflightStrategySummary(BaseModel):
+    id: int
+    positioning: str
+    audience_insights_count: int
+    angles_count: int
+    risks_count: int
+    evidence_count: int
+
+
+class CopyPreflightRead(BaseModel):
+    task_id: int
+    strategy_id: int
+    product_id: int
+    ready: bool
+    input_ready: bool
+    provider_configured: bool
+    execution_enabled: bool
+    contract_ready: bool
+    ready_for_execution: bool
+    missing_requirements: list[str]
+    platforms: list[str]
+    product_summary: CopyPreflightProductSummary
+    strategy_summary: CopyPreflightStrategySummary
+    association_persisted: bool = False
+    association_notice: str
+    preflight_only: bool = True
+    execution_will_call_ai: bool = True
+    execution_will_create_copy_matrix: bool = True
+    cost_notice: str

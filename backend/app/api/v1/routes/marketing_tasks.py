@@ -6,11 +6,13 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import StrategyExecutionGateDep, TextProviderDep
 from app.core.config import Settings, get_settings
 from app.db.session import get_db
+from app.schemas.copy import CopyPreflightRead
 from app.schemas.marketing import MarketingTaskCreate, MarketingTaskRead
 from app.schemas.strategy import (
     MarketingStrategyExecutionRead,
     StrategyPreflightRead,
 )
+from app.services.copy_preflight import CopyPreflightService
 from app.services.marketing import MarketingService
 from app.services.marketing_strategy_service import MarketingStrategyService
 from app.services.strategy_preflight import StrategyPreflightService
@@ -41,6 +43,19 @@ def get_strategy_preflight(
     task_id: int, db: DbSession, app_settings: SettingsDep
 ) -> StrategyPreflightRead:
     return StrategyPreflightService(db, app_settings).run(task_id)
+
+
+@router.get(
+    "/{task_id}/strategies/{strategy_id}/copy-preflight",
+    response_model=CopyPreflightRead,
+)
+def get_copy_preflight(
+    task_id: int,
+    strategy_id: int,
+    db: DbSession,
+    app_settings: SettingsDep,
+) -> CopyPreflightRead:
+    return CopyPreflightService(db, app_settings).run(task_id, strategy_id)
 
 
 @router.post(

@@ -49,7 +49,7 @@ flowchart TB
     V2C2 --> V2C21B["✅ V2-C2.1B State failure and result UI"]
     V2C2 --> V2C21C["✅ V2-C2.1C MarketingBrief-aware contract"]
     V2C21C --> V2C21D["✅ Controlled real Qwen verification"]
-    V2C21D --> V2C22A["⏳ V2-C2.2A Copy Matrix operation entry"]
+    V2C21D --> V2C22A["✅ V2-C2.2A Copy Matrix operation entry"]
     V2C2 --> V2C22B["⏳ V2-C2.2B Save and history"]
     V2C3 --> V2C31A["⏳ V2-C3.1A VideoProject to RenderTask"]
     V2C3 --> V2C31B["⏳ V2-C3.1B Status and polling UI"]
@@ -156,5 +156,11 @@ The labels below reconstruct submission work from tracked evidence. Only S0, S2,
 | Status | Date | Contract commit | Controlled execution | Verified result | Association boundary | Next |
 |---|---:|---|---|---|---|---|
 | ✅ Completed | 2026-07-26 | `dc0b04eb45dc02f6350eee45d983becd37ff90b2` | One separately authorized task-bound `qwen-plus` call against isolated temporary SQLite; one actual Provider call; zero automatic retries | HTTP 200; MarketingBrief-aware inputs reached the Prompt; execution response and MarketingStrategy schema passed; 1 Strategy and 0 CopyMatrix/VideoProject/VideoRenderTask/VideoRenderArtifact records; temporary environment cleanup passed | MarketingStrategy still persists only `product_id`. Brief association is execution-response metadata and reload can recover only the Product's latest Strategy, not prove ownership by a specific Brief | V2-C2.2A Copy Matrix operation entry |
+
+### V2-C2.2A Copy Matrix operation entry completion record
+
+| Status | Date | Exact preflight contract | Execution safety boundary | Verified result | Known limitation | Next |
+|---|---:|---|---|---|---|---|
+| ✅ Completed; checkpoint pending | 2026-07-26 | Added read-only `GET /api/v1/marketing-tasks/{task_id}/strategies/{strategy_id}/copy-preflight`; it reads the exact URL Brief and Strategy, validates their shared Product, Product/Strategy content, the Brief market prefix and supported platform snapshot, and reports safe Provider/execution booleans | Backend `ENABLE_COPY_EXECUTION` and frontend `VITE_ENABLE_COPY_EXECUTION` independently default false. The compatible Product-only Copy POST now stops before Provider resolution when disabled, and the service repeats the gate. The workspace generation button is always disabled and has no handler | Copy/Strategy/Marketing/Product focused tests: 89 passed; full pytest: 153 passed, 2 real-provider tests skipped, 1 warning; Ruff, TypeScript, and Vite production build passed (124 modules). Isolated two-Product browser/API/SQLite smoke and Presentation Copy Matrix regression passed with 0 console errors/warnings, 0 Provider calls, 0 execution POSTs, and 0 CopyMatrix/downstream records | `contract_ready=false`: the old executor still selects the Product's latest Strategy, ignores the requested MarketingBrief platforms, and requires TikTok/Instagram/Facebook together. CopyMatrix persists `product_id` and `marketing_strategy_id`, but no MarketingBrief ID; there is no ordinary-workspace Copy read API | V2-C2.2B Brief-aware exact-Strategy Copy execution, save, and recovery contract |
 
 Substage gates are in [V2 Plan](v2-plan.md). Execution records belong in [Progress Log](progress-log.md).

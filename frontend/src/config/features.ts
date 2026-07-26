@@ -5,3 +5,7 @@ function isEnabledFeatureFlag(value: string | undefined): boolean {
 export const strategyExecutionEnabled = isEnabledFeatureFlag(
   import.meta.env.VITE_ENABLE_STRATEGY_EXECUTION,
 );
+
+export const copyExecutionEnabled = isEnabledFeatureFlag(
+  import.meta.env.VITE_ENABLE_COPY_EXECUTION,
+);

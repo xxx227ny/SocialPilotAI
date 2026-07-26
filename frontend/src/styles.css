@@ -291,6 +291,14 @@ textarea { font: inherit; }
 .strategy-operation-list ul { padding-left: 16px; }
 .strategy-operation-list--warning { color: #855044; }
 .strategy-operation-result__boundary { margin-top: 11px !important; padding: 8px 9px; color: #5e559c; background: #eae8ff; border-left: 3px solid #7468dc; border-radius: 6px; }
+.copy-preflight { margin-top: 12px; padding: 12px; background: #fffdf8; border: 1px solid #eadfca; border-radius: 9px; }
+.copy-preflight__heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.copy-preflight__heading h5 { margin: 3px 0 0; color: #514636; font-size: 11px; }
+.copy-preflight__intro { color: #796f61; font-size: 8px; line-height: 1.55; }
+.copy-preflight__context { margin: 9px 0; }
+.copy-preflight__boundary { padding: 8px 9px; color: #6d5c43; background: #f7f0e4; border-left: 3px solid #c99a57; border-radius: 6px; font-size: 8px; line-height: 1.55; }
+.copy-preflight__result { margin-top: 10px; padding: 10px; background: #fff; border: 1px solid #eee3d1; border-radius: 7px; }
+.copy-preflight button:disabled { cursor: not-allowed; opacity: .58; }
 .product-detail-card__existing-workflow { padding-top: 16px; border-top: 1px solid #eceef3; }
 .product-detail-card__existing-workflow > .form-message { margin-top: 10px; }
 .strategy-result { margin-top: 16px; padding: 16px; background: linear-gradient(135deg, #f7f6ff, #f6f9fe); border: 1px solid #e4e2fa; border-radius: 12px; }

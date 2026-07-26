@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     qwen_model: str = "qwen-plus"
     qwen_timeout: float = Field(default=30, gt=0, le=300)
     enable_strategy_execution: bool = False
+    enable_copy_execution: bool = False
     wanx_api_key: SecretStr | None = None
     wanx_model: str = "wan2.7-t2v"
     wanx_region: str = "cn-beijing"
