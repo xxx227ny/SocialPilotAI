@@ -301,6 +301,23 @@ The first frontend build attempt ran from the backend directory and failed with 
 - Known limitation: CopyMatrix proves its exact Strategy through `marketing_strategy_id`, but cannot persist or recover a MarketingBrief association. No publishing, platform-account authorization, VideoProject, Wanx call, or real Copy Provider verification was added.
 - Single recommended next stage: V2-C3.1A VideoProject to RenderTask operation entry, beginning with a read-only contract and Fake-only verification; any real Qwen or Wanx call still requires separate explicit authorization.
 
+## 2026-07-27 — V2-C2.2C Real Copy Qwen Verification Evidence
+
+- Status: ✅ Completed.
+- Contract commit: `88429d781b37c3bfa28a213c4969fc82dcfab6e6`.
+- Controlled execution: one separately authorized task-bound, Brief-aware, exact-Strategy Copy POST made exactly one real `qwen-plus` Provider call, with zero SDK retries and zero outer retries.
+- Result: HTTP 200. Boolean checks passed for the Product, MarketingBrief, and MarketingStrategy Prompt field groups, the exact US target-market snapshot, and the exact TikTok platform snapshot. The complete Prompt, raw request, and raw Provider response were not recorded.
+- Platform and response contract: output contained TikTok only, with no Instagram, Facebook, duplicate, or additional platform. Source Task, Strategy, and Product IDs were correct; `source_kind=marketing_brief_and_strategy`; `strategy_association_persisted=true`; `brief_association_persisted=false`; and the association notice was present.
+- Copy quality: hook, caption, and CTA were non-empty and trimmed; hashtags were non-empty with no whitespace-only item; the saved CopyMatrix referenced the exact Product and Strategy.
+- Temporary database: before execution there were 1 Product, 1 MarketingBrief, 1 deterministic local MarketingStrategy, 0 CopyMatrix, and 0 VideoProject/VideoRenderTask/VideoRenderArtifact records. After execution only CopyMatrix increased, from 0 to 1.
+- Strategy source boundary: the Strategy was deterministic local preparation data in temporary SQLite. No Qwen Strategy generation occurred, and this verification assessed the Copy execution contract rather than Strategy quality.
+- Persistence boundary: CopyMatrix persists `product_id` and `marketing_strategy_id` but has no MarketingBrief foreign key. Reload can prove the exact Strategy association, not a persisted association with the selected Brief.
+- Unused generation paths: legacy Product-only Copy POST 0, Strategy generation 0, Wanx 0, and Video generation 0.
+- Cleanup and repository protection: the temporary SQLite and directory were deleted; ports 8000/5173 had no residual listeners; the repository database, `.env`, and Git working tree remained unchanged.
+- Security and cost: no Key value, authentication header value, complete Prompt, or raw Provider response was recorded. The call may have consumed Alibaba Cloud Bailian Credits; exact Token usage, Credits, and monetary cost were not queried or invented.
+- Authorization state: the single-call authorization is exhausted. Any later Qwen or Wanx call requires new explicit user authorization.
+- Single recommended next stage: V2-C3.1A VideoProject to RenderTask Operation Entry, beginning default-off and Fake-only with no real Wanx call.
+
 ## V2 stage update template
 
 ```markdown
