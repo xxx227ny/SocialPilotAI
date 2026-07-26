@@ -48,9 +48,8 @@ flowchart TB
     V2C2 --> V2C21A["✅ V2-C2.1A Strategy operation entry"]
     V2C2 --> V2C21B["✅ V2-C2.1B State failure and result UI"]
     V2C2 --> V2C21C["✅ V2-C2.1C MarketingBrief-aware contract"]
-    V2C21C --> V2C21D["⏳ Controlled real Qwen verification"]
-    V2C21D --> V2C21E["⏳ Real Strategy result acceptance"]
-    V2C21E --> V2C22A["⏳ V2-C2.2A Copy Matrix operation entry"]
+    V2C21C --> V2C21D["✅ Controlled real Qwen verification"]
+    V2C21D --> V2C22A["⏳ V2-C2.2A Copy Matrix operation entry"]
     V2C2 --> V2C22B["⏳ V2-C2.2B Save and history"]
     V2C3 --> V2C31A["⏳ V2-C3.1A VideoProject to RenderTask"]
     V2C3 --> V2C31B["⏳ V2-C3.1B Status and polling UI"]
@@ -150,6 +149,12 @@ The labels below reconstruct submission work from tracked evidence. Only S0, S2,
 
 | Status | Date | Input and API contract | Execution safety boundary | Verified result | Known limitation | Next |
 |---|---:|---|---|---|---|---|
-| ✅ Completed; checkpoint pending | 2026-07-25 | Added task-bound `POST /api/v1/marketing-tasks/{task_id}/strategy`; a single pure service-layer prompt builder now supplies Product name/category/description/selling points plus the requested MarketingBrief ID, immutable market snapshot, platforms, audience, language, tone, and objective. The old Product-only route remains compatible but is no longer used by the workspace | Backend `ENABLE_STRATEGY_EXECUTION` and frontend `VITE_ENABLE_STRATEGY_EXECUTION` both default false. Provider configuration and execution authorization are separate Preflight booleans; both public execution routes are blocked before Provider resolution when server execution is disabled | Focused MarketingBrief/Strategy/Product/Qwen tests: 80 passed; full pytest: 145 passed, 2 real-provider tests skipped, 0 failed, 1 warning; Ruff, TypeScript, and Vite production build passed (123 modules). Offline Fake Provider browser smoke verified task-bound success, one Strategy after rapid double click, recovery/source labels, Product/task isolation, safe network failure/retry, production-default disablement, and Presentation Mode with 0 console errors/warnings | MarketingStrategy still has no MarketingBrief foreign key. `source_task_id` and `association_persisted=false` are honest execution-response metadata only; reload can recover only the Product's latest Strategy and cannot prove Brief ownership | V2-C2.1C checkpoint, then controlled real Qwen verification, real Strategy result acceptance, and only then V2-C2.2A Copy Matrix |
+| ✅ Completed | 2026-07-25 | Added task-bound `POST /api/v1/marketing-tasks/{task_id}/strategy`; a single pure service-layer prompt builder now supplies Product name/category/description/selling points plus the requested MarketingBrief ID, immutable market snapshot, platforms, audience, language, tone, and objective. The old Product-only route remains compatible but is no longer used by the workspace | Backend `ENABLE_STRATEGY_EXECUTION` and frontend `VITE_ENABLE_STRATEGY_EXECUTION` both default false. Provider configuration and execution authorization are separate Preflight booleans; both public execution routes are blocked before Provider resolution when server execution is disabled | Focused MarketingBrief/Strategy/Product/Qwen tests: 80 passed; full pytest: 145 passed, 2 real-provider tests skipped, 0 failed, 1 warning; Ruff, TypeScript, and Vite production build passed (123 modules). Offline Fake Provider browser smoke verified task-bound success, one Strategy after rapid double click, recovery/source labels, Product/task isolation, safe network failure/retry, production-default disablement, and Presentation Mode with 0 console errors/warnings | MarketingStrategy still has no MarketingBrief foreign key. `source_task_id` and `association_persisted=false` are honest execution-response metadata only; reload can recover only the Product's latest Strategy and cannot prove Brief ownership | Controlled real Qwen verification |
+
+### V2-C2.1D controlled real Qwen verification record
+
+| Status | Date | Contract commit | Controlled execution | Verified result | Association boundary | Next |
+|---|---:|---|---|---|---|---|
+| ✅ Completed | 2026-07-26 | `dc0b04eb45dc02f6350eee45d983becd37ff90b2` | One separately authorized task-bound `qwen-plus` call against isolated temporary SQLite; one actual Provider call; zero automatic retries | HTTP 200; MarketingBrief-aware inputs reached the Prompt; execution response and MarketingStrategy schema passed; 1 Strategy and 0 CopyMatrix/VideoProject/VideoRenderTask/VideoRenderArtifact records; temporary environment cleanup passed | MarketingStrategy still persists only `product_id`. Brief association is execution-response metadata and reload can recover only the Product's latest Strategy, not prove ownership by a specific Brief | V2-C2.2A Copy Matrix operation entry |
 
 Substage gates are in [V2 Plan](v2-plan.md). Execution records belong in [Progress Log](progress-log.md).

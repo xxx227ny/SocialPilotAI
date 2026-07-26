@@ -237,6 +237,23 @@ The first frontend build attempt ran from the backend directory and failed with 
 - Commit/push/tag: none.
 - Single recommended next stage: establish the V2-C2.1C checkpoint; after acceptance, prepare a separately authorized controlled real Qwen verification plan.
 
+## 2026-07-26 — V2-C2.1D Controlled real Qwen verification evidence
+
+- Status: ✅ Completed.
+- Contract commit: `dc0b04eb45dc02f6350eee45d983becd37ff90b2`.
+- Authorization: one separately authorized real Provider call, with a strict maximum of one call and no automatic retry.
+- Execution: the task-bound `POST /api/v1/marketing-tasks/{task_id}/strategy` path made exactly one real `qwen-plus` Provider call against isolated temporary SQLite.
+- Result: HTTP 200; the execution response contract and `MarketingStrategySchema` validation passed.
+- Prompt evidence: boolean checks passed for Product name, category, description, and selling points, plus the exact Brief ID, Product ID, target-market snapshot, platforms, audience, language, tone, and objective. No Prompt text or raw Provider payload was recorded.
+- Response evidence: source Task and Product identities were correct, `source_kind=marketing_brief`, `association_persisted=false`, and the association notice was present.
+- Quality summary: positioning was non-empty; audience insights had 4 items, angles 3, risks 3, and evidence 5; trimming passed; US, TikTok, and portable-blender business context were present.
+- Database result: 1 Product, 1 MarketingBrief, and 1 MarketingStrategy in the temporary database; CopyMatrix, VideoProject, VideoRenderTask, and VideoRenderArtifact remained 0.
+- Cleanup: the temporary SQLite and directory were removed; no service or temporary file remained; the repository database, local environment file, and working tree were unchanged by execution.
+- Security and cost: no secret, authentication header, Prompt, or raw Provider response was recorded. Exact token usage, Credits, and monetary cost were not recorded; the call may have consumed Alibaba Cloud Bailian Credits.
+- Capability boundary: MarketingStrategy still persists only `product_id`. The Brief association exists only in the direct execution response; reload can recover only the Product's latest Strategy and cannot prove ownership by a specific MarketingBrief.
+- Authorization state: the one-call authorization is exhausted. Any later real AI call requires new explicit user authorization and must never start automatically.
+- Next stage: V2-C2.2A Copy Matrix operation entry remains pending and was not started.
+
 ## V2 stage update template
 
 ```markdown

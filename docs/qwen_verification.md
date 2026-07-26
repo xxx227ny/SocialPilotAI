@@ -34,3 +34,68 @@ Result: `SUCCESS`
 ## Conclusion
 
 The existing Qwen Provider successfully completed one real DashScope request and returned the structured result required by the current smoke test.
+
+## V2 Controlled MarketingBrief-aware Verification — 2026-07-26
+
+### Verification contract
+
+- Date: `2026-07-26`
+- Branch: `competition-product-v2`
+- Contract commit: `dc0b04eb45dc02f6350eee45d983becd37ff90b2`
+- Provider: Alibaba Cloud Bailian / DashScope Qwen
+- Model: `qwen-plus`
+- Endpoint host: `dashscope.aliyuncs.com`
+- API: `POST /api/v1/marketing-tasks/{task_id}/strategy`
+- Database: isolated temporary SQLite
+- Authorized maximum Provider calls: 1
+- Actual Provider calls: 1
+- Automatic retries: 0
+- HTTP result: 200
+- Result: success
+- Strategy schema validation: passed
+- Strategy records created: 1
+- CopyMatrix records: 0
+- VideoProject records: 0
+- VideoRenderTask records: 0
+- VideoRenderArtifact records: 0
+- Secret leakage: none
+- Temporary environment cleanup: passed
+- Repository database modified: no
+- Working tree modified by execution: no
+
+### Prompt input evidence
+
+Boolean checks confirmed that the real Prompt contained all contracted inputs. The
+Product fields were `name`, `category`, `description`, and `selling_points`. The
+MarketingBrief fields were the exact Brief ID, `product_id`, target-market
+snapshot, `platforms`, `audience`, `language`, `tone`, and `objective`.
+
+The Prompt text, Provider request and response, authentication headers,
+credentials, workspace identifiers, and local environment contents were not
+recorded.
+
+### Response and quality summary
+
+- `source_task_id` matched the requested Brief.
+- `source_product_id` matched the Brief's Product.
+- `source_kind` was `marketing_brief`.
+- `association_persisted` was `false`.
+- `association_notice` was present.
+- Positioning was non-empty.
+- `audience_insights` contained 4 items.
+- `angles` contained 3 items.
+- `risks` contained 3 items.
+- `evidence` contained 5 items.
+- Trimming validation passed for all Strategy fields.
+- The validated output contained US, TikTok, and portable-blender business context.
+
+### Capability and cost boundary
+
+- MarketingStrategy still persists only `product_id`.
+- The MarketingBrief association exists only in the execution response.
+- A page reload can recover only the Product's latest Strategy and cannot prove
+  that the recovered record belongs to a specific MarketingBrief.
+- Exact token usage, Credits, and monetary cost were not recorded.
+- This call may have consumed Alibaba Cloud Bailian Credits.
+- The single-call authorization is exhausted.
+- Any later real Provider call requires new explicit user authorization.
