@@ -11,6 +11,43 @@ export interface CopyMatrix {
   copies: PlatformCopy[];
 }
 
+export interface PersistedCopyMatrix extends CopyMatrix {
+  id: number;
+  marketing_strategy_id: number;
+  created_at: string;
+}
+
+export interface CopyExecutionResult {
+  source_task_id: number;
+  source_strategy_id: number;
+  source_product_id: number;
+  source_kind: "marketing_brief_and_strategy";
+  requested_platforms: PlatformCopy["platform"][];
+  copy_matrix: PersistedCopyMatrix;
+  strategy_association_persisted: true;
+  brief_association_persisted: false;
+  association_notice: string;
+}
+
+export type CopyExecutionIssueCategory =
+  | "execution-disabled"
+  | "configuration"
+  | "association"
+  | "authentication"
+  | "quota"
+  | "network"
+  | "invalid-output"
+  | "platform-mismatch"
+  | "backend"
+  | "not-found"
+  | "unknown";
+
+export interface CopyExecutionIssue {
+  category: CopyExecutionIssueCategory;
+  message: string;
+  retryable: boolean;
+}
+
 export interface CopyPreflightProductSummary {
   id: number;
   name: string;

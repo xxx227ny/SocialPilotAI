@@ -3,15 +3,20 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import StrategyExecutionGateDep, TextProviderDep
+from app.api.dependencies import (
+    CopyExecutionGateDep,
+    StrategyExecutionGateDep,
+    TextProviderDep,
+)
 from app.core.config import Settings, get_settings
 from app.db.session import get_db
-from app.schemas.copy import CopyPreflightRead
+from app.schemas.copy import CopyMatrixExecutionRead, CopyPreflightRead
 from app.schemas.marketing import MarketingTaskCreate, MarketingTaskRead
 from app.schemas.strategy import (
     MarketingStrategyExecutionRead,
     StrategyPreflightRead,
 )
+from app.services.copy_generation_service import CopyGenerationService
 from app.services.copy_preflight import CopyPreflightService
 from app.services.marketing import MarketingService
 from app.services.marketing_strategy_service import MarketingStrategyService
@@ -56,6 +61,24 @@ def get_copy_preflight(
     app_settings: SettingsDep,
 ) -> CopyPreflightRead:
     return CopyPreflightService(db, app_settings).run(task_id, strategy_id)
+
+
+@router.post(
+    "/{task_id}/strategies/{strategy_id}/copy",
+    response_model=CopyMatrixExecutionRead,
+)
+def generate_marketing_task_copy(
+    task_id: int,
+    strategy_id: int,
+    db: DbSession,
+    execution_gate: CopyExecutionGateDep,
+    provider: TextProviderDep,
+    app_settings: SettingsDep,
+) -> CopyMatrixExecutionRead:
+    del execution_gate
+    return CopyGenerationService(
+        db, provider, app_settings
+    ).generate_for_marketing_task(task_id, strategy_id)
 
 
 @router.post(

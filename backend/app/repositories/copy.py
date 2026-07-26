@@ -1,8 +1,8 @@
-from sqlalchemy import select
+from sqlalchemy import insert, select
 from sqlalchemy.orm import Session
 
 from app.models import CopyMatrix
-from app.schemas.copy import CopyMatrixSchema
+from app.schemas.copy import CopyMatrixSchema, TaskBoundCopyMatrixSchema
 
 
 class CopyMatrixRepository:
@@ -32,6 +32,40 @@ class CopyMatrixRepository:
         statement = (
             select(CopyMatrix)
             .where(CopyMatrix.product_id == product_id)
+            .order_by(CopyMatrix.created_at.desc(), CopyMatrix.id.desc())
+            .limit(1)
+        )
+        return self.session.scalar(statement)
+
+    def create_for_exact_strategy(
+        self,
+        product_id: int,
+        marketing_strategy_id: int,
+        data: TaskBoundCopyMatrixSchema,
+    ) -> CopyMatrix:
+        """Persist validated task-bound copies without changing the legacy ORM rule."""
+        result = self.session.execute(
+            insert(CopyMatrix).values(
+                product_id=product_id,
+                marketing_strategy_id=marketing_strategy_id,
+                copies=[copy.model_dump() for copy in data.copies],
+            )
+        )
+        self.session.commit()
+        inserted_id = result.inserted_primary_key[0]
+        copy_matrix = self.get(inserted_id)
+        if copy_matrix is None:
+            raise RuntimeError("Created CopyMatrix could not be reloaded")
+        return copy_matrix
+
+    def get_latest_by_strategy(
+        self, marketing_strategy_id: int
+    ) -> CopyMatrix | None:
+        statement = (
+            select(CopyMatrix)
+            .where(
+                CopyMatrix.marketing_strategy_id == marketing_strategy_id
+            )
             .order_by(CopyMatrix.created_at.desc(), CopyMatrix.id.desc())
             .limit(1)
         )

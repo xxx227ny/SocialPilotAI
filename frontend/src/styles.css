@@ -299,6 +299,17 @@ textarea { font: inherit; }
 .copy-preflight__boundary { padding: 8px 9px; color: #6d5c43; background: #f7f0e4; border-left: 3px solid #c99a57; border-radius: 6px; font-size: 8px; line-height: 1.55; }
 .copy-preflight__result { margin-top: 10px; padding: 10px; background: #fff; border: 1px solid #eee3d1; border-radius: 7px; }
 .copy-preflight button:disabled { cursor: not-allowed; opacity: .58; }
+.copy-operation-result { margin-top: 12px; padding: 12px; background: #fff; border: 1px solid #e6dfd3; border-radius: 9px; }
+.copy-operation-result > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.copy-operation-result > header h6 { margin: 4px 0 0; color: #4e463a; font-size: 11px; }
+.copy-operation-result > header > span { color: #766852; font-size: 8px; font-weight: 750; }
+.copy-operation-result__platforms { display: grid; gap: 9px; margin-top: 10px; }
+.copy-operation-result__platforms > section { padding: 10px; background: #faf8f4; border: 1px solid #eee7db; border-radius: 7px; }
+.copy-operation-result__platforms h6 { margin: 0 0 8px; color: #65513a; font-size: 10px; }
+.copy-operation-result__platforms dl { display: grid; gap: 7px; margin: 0; }
+.copy-operation-result__platforms dl > div { padding: 7px 8px; background: #fff; border-radius: 6px; }
+.copy-operation-result__platforms dt { color: #9a8a73; font-size: 7px; font-weight: 750; text-transform: uppercase; }
+.copy-operation-result__platforms dd { margin: 3px 0 0; color: #5f584d; font-size: 8px; line-height: 1.55; white-space: pre-wrap; }
 .product-detail-card__existing-workflow { padding-top: 16px; border-top: 1px solid #eceef3; }
 .product-detail-card__existing-workflow > .form-message { margin-top: 10px; }
 .strategy-result { margin-top: 16px; padding: 16px; background: linear-gradient(135deg, #f7f6ff, #f6f9fe); border: 1px solid #e4e2fa; border-radius: 12px; }

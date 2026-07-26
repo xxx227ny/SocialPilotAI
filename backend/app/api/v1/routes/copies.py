@@ -6,10 +6,14 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import CopyExecutionGateDep, TextProviderDep
 from app.core.config import Settings, get_settings
 from app.db.session import get_db
-from app.schemas.copy import CopyMatrixSchema
-from app.services.copy_generation_service import CopyGenerationService
+from app.schemas.copy import CopyMatrixRead, CopyMatrixSchema
+from app.services.copy_generation_service import (
+    CopyGenerationService,
+    CopyMatrixQueryService,
+)
 
 router = APIRouter(prefix="/products")
+strategy_copy_router = APIRouter(prefix="/strategies")
 DbSession = Annotated[Session, Depends(get_db)]
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 
@@ -26,3 +30,12 @@ def generate_product_copy(
     return CopyGenerationService(
         db, provider, app_settings
     ).generate_for_product(product_id)
+
+
+@strategy_copy_router.get(
+    "/{strategy_id}/copy/latest", response_model=CopyMatrixRead
+)
+def get_latest_strategy_copy(
+    strategy_id: int, db: DbSession
+) -> CopyMatrixRead:
+    return CopyMatrixQueryService(db).get_latest_for_strategy(strategy_id)

@@ -36,7 +36,7 @@ flowchart TB
     FREEZE --> SFINAL["✅ S-FINAL Repository freeze"]
     V2 --> V2C0["✅ V2-C0 Branch and roadmap baseline"]
     V2 --> V2C1["✅ V2-C1 Operable workspace"]
-    V2 --> V2C2["⏳ V2-C2 Operable Qwen content chain"]
+    V2 --> V2C2["✅ V2-C2 Operable Qwen content chain"]
     V2 --> V2C3["⏳ V2-C3 Wanx task hardening"]
     V2 --> V2C4["⏳ V2-C4 Performance-to-Prompt"]
     V2 --> V2C5["⏳ V2-C5 Project and history"]
@@ -50,7 +50,7 @@ flowchart TB
     V2C2 --> V2C21C["✅ V2-C2.1C MarketingBrief-aware contract"]
     V2C21C --> V2C21D["✅ Controlled real Qwen verification"]
     V2C21D --> V2C22A["✅ V2-C2.2A Copy Matrix operation entry"]
-    V2C2 --> V2C22B["⏳ V2-C2.2B Save and history"]
+    V2C22A --> V2C22B["✅ V2-C2.2B Exact-Strategy Copy save and recovery"]
     V2C3 --> V2C31A["⏳ V2-C3.1A VideoProject to RenderTask"]
     V2C3 --> V2C31B["⏳ V2-C3.1B Status and polling UI"]
     V2C3 --> V2C32A["⏳ V2-C3.2A Stable asset display and download"]
@@ -161,6 +161,12 @@ The labels below reconstruct submission work from tracked evidence. Only S0, S2,
 
 | Status | Date | Exact preflight contract | Execution safety boundary | Verified result | Known limitation | Next |
 |---|---:|---|---|---|---|---|
-| ✅ Completed; checkpoint pending | 2026-07-26 | Added read-only `GET /api/v1/marketing-tasks/{task_id}/strategies/{strategy_id}/copy-preflight`; it reads the exact URL Brief and Strategy, validates their shared Product, Product/Strategy content, the Brief market prefix and supported platform snapshot, and reports safe Provider/execution booleans | Backend `ENABLE_COPY_EXECUTION` and frontend `VITE_ENABLE_COPY_EXECUTION` independently default false. The compatible Product-only Copy POST now stops before Provider resolution when disabled, and the service repeats the gate. The workspace generation button is always disabled and has no handler | Copy/Strategy/Marketing/Product focused tests: 89 passed; full pytest: 153 passed, 2 real-provider tests skipped, 1 warning; Ruff, TypeScript, and Vite production build passed (124 modules). Isolated two-Product browser/API/SQLite smoke and Presentation Copy Matrix regression passed with 0 console errors/warnings, 0 Provider calls, 0 execution POSTs, and 0 CopyMatrix/downstream records | `contract_ready=false`: the old executor still selects the Product's latest Strategy, ignores the requested MarketingBrief platforms, and requires TikTok/Instagram/Facebook together. CopyMatrix persists `product_id` and `marketing_strategy_id`, but no MarketingBrief ID; there is no ordinary-workspace Copy read API | V2-C2.2B Brief-aware exact-Strategy Copy execution, save, and recovery contract |
+| ✅ Completed; checkpoint `5292f96` | 2026-07-26 | Added read-only `GET /api/v1/marketing-tasks/{task_id}/strategies/{strategy_id}/copy-preflight`; it reads the exact URL Brief and Strategy, validates their shared Product, Product/Strategy content, the Brief market prefix and supported platform snapshot, and reports safe Provider/execution booleans | Backend `ENABLE_COPY_EXECUTION` and frontend `VITE_ENABLE_COPY_EXECUTION` independently default false. The compatible Product-only Copy POST now stops before Provider resolution when disabled, and the service repeats the gate. The workspace generation button is always disabled and has no handler | Copy/Strategy/Marketing/Product focused tests: 89 passed; full pytest: 153 passed, 2 real-provider tests skipped, 1 warning; Ruff, TypeScript, and Vite production build passed (124 modules). Isolated two-Product browser/API/SQLite smoke and Presentation Copy Matrix regression passed with 0 console errors/warnings, 0 Provider calls, 0 execution POSTs, and 0 CopyMatrix/downstream records | `contract_ready=false`: the old executor still selects the Product's latest Strategy, ignores the requested MarketingBrief platforms, and requires TikTok/Instagram/Facebook together. CopyMatrix persists `product_id` and `marketing_strategy_id`, but no MarketingBrief ID; there is no ordinary-workspace Copy read API | V2-C2.2B Brief-aware exact-Strategy Copy execution, save, and recovery contract |
+
+### V2-C2.2B Brief-aware exact-Strategy Copy completion record
+
+| Status | Date | Task-bound execution and recovery | Platform and association contract | Verified result | Known limitation | Next |
+|---|---:|---|---|---|---|---|
+| ✅ Completed; checkpoint pending | 2026-07-27 | Added `POST /api/v1/marketing-tasks/{task_id}/strategies/{strategy_id}/copy` and read-only `GET /api/v1/strategies/{strategy_id}/copy/latest`. Execution uses only the exact URL Brief and Strategy, runs Preflight, builds one structured untrusted-data Prompt, validates Provider output, saves CopyMatrix, and returns source metadata | Platforms are normalized and must exactly equal the immutable Brief snapshot, with 1–3 supported unique platforms and strict trimmed content validation. `marketing_strategy_id` persists the exact Strategy; MarketingBrief remains response-only because no Brief foreign key was added. Backend and frontend Copy switches still default false | Copy contract tests: 34 passed; Copy/Strategy/Marketing/Product regression: 109 passed; full pytest: 173 passed, 2 real-provider tests skipped, 1 warning; Ruff, TypeScript, and Vite build passed (124 modules). Isolated Fake Provider browser smoke saved one TikTok matrix and one TikTok+Instagram matrix, rejected invalid/uncertain outputs without writes, restored by exact Strategy, and completed Presentation regression with 0 console errors/warnings | Reload can prove only the persisted Strategy association and therefore labels the result “该策略最新Copy Matrix”; it cannot prove ownership by the current MarketingBrief. No real Provider verification was authorized or performed | V2-C3.1A VideoProject to RenderTask |
 
 Substage gates are in [V2 Plan](v2-plan.md). Execution records belong in [Progress Log](progress-log.md).

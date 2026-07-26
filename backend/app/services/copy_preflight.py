@@ -7,19 +7,18 @@ from app.models import MarketingStrategy, Product
 from app.repositories.marketing import MarketingRepository
 from app.repositories.strategy import MarketingStrategyRepository
 from app.schemas.copy import (
-    REQUIRED_PLATFORMS,
     CopyPreflightProductSummary,
     CopyPreflightRead,
     CopyPreflightStrategySummary,
 )
+from app.schemas.marketing import SUPPORTED_MARKETING_PLATFORMS
 from app.schemas.strategy import MarketingStrategySchema
 from app.services.marketing import TARGET_MARKET_AUDIENCE_PATTERN
 
-COPY_CONTRACT_REQUIREMENT = "brief_aware_exact_strategy_copy_contract"
 COPY_ASSOCIATION_NOTICE = (
-    "CopyMatrix persists product_id and marketing_strategy_id, but no "
-    "MarketingBrief ID. This preflight does not prove that the Strategy "
-    "belongs to the requested MarketingBrief."
+    "Task-bound execution persists the exact Strategy through "
+    "marketing_strategy_id. MarketingBrief association remains response-only "
+    "because CopyMatrix has no MarketingBrief foreign key."
 )
 COPY_COST_NOTICE = (
     "真实Copy生成将调用阿里云百炼Qwen，并可能消耗比赛Credits；"
@@ -59,10 +58,11 @@ class CopyPreflightService:
                 status_code=409,
             )
 
+        normalized_platforms = self._normalize_platforms(task.platforms)
         missing, strategy_data = self._input_requirements(
             task_product,
             strategy,
-            task.platforms,
+            normalized_platforms,
             task.audience,
         )
         provider_configured = self._provider_configured()
@@ -71,11 +71,7 @@ class CopyPreflightService:
         if not self.settings.enable_copy_execution:
             missing.append("copy_execution")
 
-        # The existing executor still selects the latest Product Strategy and
-        # always requests all three platforms. V2-C2.2A must not misrepresent it
-        # as an exact-Brief/exact-Strategy execution contract.
-        contract_ready = False
-        missing.append(COPY_CONTRACT_REQUIREMENT)
+        contract_ready = True
 
         input_requirements = {
             "product_name",
@@ -104,7 +100,7 @@ class CopyPreflightService:
             contract_ready=contract_ready,
             ready_for_execution=ready_for_execution,
             missing_requirements=missing,
-            platforms=list(task.platforms or []),
+            platforms=normalized_platforms or [],
             product_summary=CopyPreflightProductSummary(
                 id=task_product.id,
                 name=task_product.name or "",
@@ -158,19 +154,7 @@ class CopyPreflightService:
         except ValidationError:
             missing.append("strategy_schema")
 
-        normalized_platforms = [
-            platform.strip() for platform in (platforms or []) if platform.strip()
-        ]
-        if (
-            not normalized_platforms
-            or len(normalized_platforms) != len(platforms or [])
-            or len({platform.casefold() for platform in normalized_platforms})
-            != len(normalized_platforms)
-            or any(
-                platform not in REQUIRED_PLATFORMS
-                for platform in normalized_platforms
-            )
-        ):
+        if not platforms:
             missing.append("supported_platforms")
 
         market_match = TARGET_MARKET_AUDIENCE_PATTERN.match(task_audience or "")
@@ -179,3 +163,20 @@ class CopyPreflightService:
         ):
             missing.append("target_market_snapshot")
         return missing, strategy_data
+
+    @staticmethod
+    def _normalize_platforms(
+        platforms: list[str] | None,
+    ) -> list[str] | None:
+        if not platforms or not 1 <= len(platforms) <= 3:
+            return None
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for value in platforms:
+            key = str(value).strip().casefold()
+            canonical = SUPPORTED_MARKETING_PLATFORMS.get(key)
+            if canonical is None or key in seen:
+                return None
+            normalized.append(canonical)
+            seen.add(key)
+        return normalized

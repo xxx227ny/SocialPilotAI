@@ -115,11 +115,11 @@ def test_copy_preflight_uses_exact_sources_without_provider_or_write(
         assert data["input_ready"] is True
         assert data["provider_configured"] is True
         assert data["execution_enabled"] is True
-        assert data["contract_ready"] is False
-        assert data["ready_for_execution"] is False
+        assert data["contract_ready"] is True
+        assert data["ready_for_execution"] is True
         assert data["association_persisted"] is False
         assert "marketing_strategy_id" in data["association_notice"]
-        assert "brief_aware_exact_strategy_copy_contract" in data[
+        assert "brief_aware_exact_strategy_copy_contract" not in data[
             "missing_requirements"
         ]
         assert provider_resolutions == 0
@@ -215,7 +215,7 @@ def test_copy_preflight_blocks_invalid_platform_and_strategy_data(
         assert response.status_code == 200
         data = response.json()
         assert data["input_ready"] is False
-        assert data["contract_ready"] is False
+        assert data["contract_ready"] is True
         assert "supported_platforms" in data["missing_requirements"]
         assert "strategy_schema" in data["missing_requirements"]
         assert db_session.scalar(select(func.count(CopyMatrix.id))) == 0
@@ -242,7 +242,7 @@ def test_copy_preflight_reports_config_and_execution_without_secrets(
         assert data["input_ready"] is True
         assert data["provider_configured"] is False
         assert data["execution_enabled"] is False
-        assert data["contract_ready"] is False
+        assert data["contract_ready"] is True
         assert data["ready_for_execution"] is False
         assert "provider_configuration" in data["missing_requirements"]
         assert "copy_execution" in data["missing_requirements"]

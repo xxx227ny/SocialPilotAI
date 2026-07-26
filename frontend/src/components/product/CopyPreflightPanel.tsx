@@ -1,19 +1,34 @@
 import { useEffect, useRef, useState } from "react";
 
-import { getCopyPreflight } from "../../api/copies";
+import {
+  classifyCopyExecutionError,
+  generateTaskBoundCopyMatrix,
+  getCopyPreflight,
+  getLatestCopyForStrategy,
+  isCopyNotFound,
+} from "../../api/copies";
 import { copyExecutionEnabled } from "../../config/features";
-import type { CopyPreflight } from "../../types/copy";
+import type {
+  CopyExecutionIssue,
+  CopyPreflight,
+  PersistedCopyMatrix,
+} from "../../types/copy";
 import type { MarketingTask } from "../../types/marketing";
 import type { Product } from "../../types/product";
 import type { MarketingStrategy } from "../../types/strategy";
 
-type CopyPreflightState =
+type CopyOperationState =
   | "idle"
   | "checking"
   | "ready"
   | "blocked"
-  | "failed";
+  | "submitting"
+  | "succeeded"
+  | "failed"
+  | "recovering"
+  | "recovered";
 type StrategySource = "direct" | "latest";
+type CopyResultSource = "direct" | "latest";
 
 const REQUIREMENT_LABELS: Record<string, string> = {
   product_name: "商品名称",
@@ -25,8 +40,6 @@ const REQUIREMENT_LABELS: Record<string, string> = {
   strategy_schema: "Strategy内容完整性",
   provider_configuration: "Qwen Provider配置",
   copy_execution: "Backend Copy执行授权",
-  brief_aware_exact_strategy_copy_contract:
-    "Brief-aware、精确Strategy Copy执行契约（V2-C2.2B）",
 };
 
 interface CopyPreflightPanelProps {
@@ -42,13 +55,23 @@ export function CopyPreflightPanel({
   strategy,
   strategySource,
 }: CopyPreflightPanelProps) {
-  const [state, setState] = useState<CopyPreflightState>("idle");
+  const [state, setState] = useState<CopyOperationState>("idle");
   const [preflight, setPreflight] = useState<CopyPreflight | null>(null);
-  const [error, setError] = useState("");
+  const [preflightError, setPreflightError] = useState("");
   const [acknowledged, setAcknowledged] = useState(false);
-  const controllerRef = useRef<AbortController | null>(null);
-  const requestIdRef = useRef(0);
-  const requestLockRef = useRef(false);
+  const [matrix, setMatrix] = useState<PersistedCopyMatrix | null>(null);
+  const [resultSource, setResultSource] =
+    useState<CopyResultSource | null>(null);
+  const [sourceTaskId, setSourceTaskId] = useState<number | null>(null);
+  const [associationNotice, setAssociationNotice] = useState("");
+  const [issue, setIssue] = useState<CopyExecutionIssue | null>(null);
+
+  const preflightControllerRef = useRef<AbortController | null>(null);
+  const executionControllerRef = useRef<AbortController | null>(null);
+  const contextRequestIdRef = useRef(0);
+  const preflightRequestIdRef = useRef(0);
+  const executionRequestIdRef = useRef(0);
+  const executionLockRef = useRef(false);
   const activeContextRef = useRef({
     productId: product.id,
     taskId: task.id,
@@ -61,28 +84,77 @@ export function CopyPreflightPanel({
   };
 
   useEffect(() => {
-    ++requestIdRef.current;
-    controllerRef.current?.abort();
-    controllerRef.current = null;
-    requestLockRef.current = false;
-    setState("idle");
+    const contextRequestId = ++contextRequestIdRef.current;
+    ++preflightRequestIdRef.current;
+    ++executionRequestIdRef.current;
+    const controller = new AbortController();
+    preflightControllerRef.current?.abort();
+    executionControllerRef.current?.abort();
+    executionControllerRef.current = controller;
+    executionLockRef.current = false;
+    setState("recovering");
     setPreflight(null);
-    setError("");
+    setPreflightError("");
     setAcknowledged(false);
-    return () => controllerRef.current?.abort();
+    setMatrix(null);
+    setResultSource(null);
+    setSourceTaskId(null);
+    setAssociationNotice("");
+    setIssue(null);
+
+    void getLatestCopyForStrategy(strategy.id, controller.signal)
+      .then((latest) => {
+        if (
+          !isCurrentContext(
+            contextRequestId,
+            product.id,
+            task.id,
+            strategy.id,
+            controller,
+          ) ||
+          latest.product_id !== product.id ||
+          latest.marketing_strategy_id !== strategy.id
+        ) {
+          return;
+        }
+        setMatrix(latest);
+        setResultSource("latest");
+        setState("recovered");
+      })
+      .catch((error: unknown) => {
+        if (
+          !isCurrentContext(
+            contextRequestId,
+            product.id,
+            task.id,
+            strategy.id,
+            controller,
+          )
+        ) {
+          return;
+        }
+        if (isCopyNotFound(error)) {
+          setState("idle");
+          return;
+        }
+        setIssue(classifyCopyExecutionError(error));
+        setState("failed");
+      });
+
+    return () => controller.abort();
   }, [product.id, task.id, strategy.id, strategySource]);
 
-  function isCurrent(
-    requestId: number,
-    controller: AbortController,
+  function isCurrentContext(
+    contextRequestId: number,
     productId: number,
     taskId: number,
     strategyId: number,
+    controller: AbortController,
   ) {
     const active = activeContextRef.current;
     return (
       !controller.signal.aborted &&
-      requestId === requestIdRef.current &&
+      contextRequestId === contextRequestIdRef.current &&
       active.productId === productId &&
       active.taskId === taskId &&
       active.strategyId === strategyId
@@ -90,30 +162,36 @@ export function CopyPreflightPanel({
   }
 
   async function runCopyPreflight() {
-    if (requestLockRef.current) return;
+    if (state === "checking" || executionLockRef.current) return;
     const productId = product.id;
     const taskId = task.id;
     const strategyId = strategy.id;
-    const requestId = ++requestIdRef.current;
+    const contextRequestId = contextRequestIdRef.current;
+    const requestId = ++preflightRequestIdRef.current;
     const controller = new AbortController();
-    controllerRef.current?.abort();
-    controllerRef.current = controller;
-    requestLockRef.current = true;
+    preflightControllerRef.current?.abort();
+    preflightControllerRef.current = controller;
     setState("checking");
     setPreflight(null);
-    setError("");
+    setPreflightError("");
     setAcknowledged(false);
+    setIssue(null);
 
     try {
-      const result = await getCopyPreflight(taskId, strategyId, controller.signal);
+      const result = await getCopyPreflight(
+        taskId,
+        strategyId,
+        controller.signal,
+      );
       if (
-        !isCurrent(
-          requestId,
-          controller,
+        !isCurrentContext(
+          contextRequestId,
           productId,
           taskId,
           strategyId,
+          controller,
         ) ||
+        requestId !== preflightRequestIdRef.current ||
         result.product_id !== productId ||
         result.task_id !== taskId ||
         result.strategy_id !== strategyId
@@ -124,21 +202,174 @@ export function CopyPreflightPanel({
       setState(result.ready_for_execution ? "ready" : "blocked");
     } catch {
       if (
-        !isCurrent(
-          requestId,
-          controller,
+        !isCurrentContext(
+          contextRequestId,
           productId,
           taskId,
           strategyId,
-        )
+          controller,
+        ) ||
+        requestId !== preflightRequestIdRef.current
       ) {
         return;
       }
-      setError("Copy生成前检查失败，请检查Backend连接后重试。");
+      setPreflightError("Copy生成前检查失败，请检查Backend连接后重试。");
       setState("failed");
+    }
+  }
+
+  const canExecute = Boolean(
+    copyExecutionEnabled &&
+      (state === "ready" || state === "failed") &&
+      preflight?.ready &&
+      preflight.input_ready &&
+      preflight.provider_configured &&
+      preflight.execution_enabled &&
+      preflight.contract_ready &&
+      preflight.ready_for_execution &&
+      preflight.product_id === product.id &&
+      preflight.task_id === task.id &&
+      preflight.strategy_id === strategy.id &&
+      acknowledged &&
+      !executionLockRef.current,
+  );
+
+  async function executeCopyGeneration() {
+    if (executionLockRef.current || !canExecute || !preflight) return;
+    if (
+      !copyExecutionEnabled ||
+      !acknowledged ||
+      !preflight.ready ||
+      !preflight.input_ready ||
+      !preflight.provider_configured ||
+      !preflight.execution_enabled ||
+      !preflight.contract_ready ||
+      !preflight.ready_for_execution ||
+      preflight.product_id !== product.id ||
+      preflight.task_id !== task.id ||
+      preflight.strategy_id !== strategy.id
+    ) {
+      return;
+    }
+
+    const productId = product.id;
+    const taskId = task.id;
+    const strategyId = strategy.id;
+    const previousMatrixId = matrix?.id ?? null;
+    const contextRequestId = contextRequestIdRef.current;
+    const requestId = ++executionRequestIdRef.current;
+    const controller = new AbortController();
+    executionControllerRef.current?.abort();
+    executionControllerRef.current = controller;
+    executionLockRef.current = true;
+    setState("submitting");
+    setIssue(null);
+    setPreflightError("");
+
+    try {
+      const created = await generateTaskBoundCopyMatrix(
+        taskId,
+        strategyId,
+        controller.signal,
+      );
+      if (
+        !isCurrentContext(
+          contextRequestId,
+          productId,
+          taskId,
+          strategyId,
+          controller,
+        ) ||
+        requestId !== executionRequestIdRef.current ||
+        created.source_task_id !== taskId ||
+        created.source_strategy_id !== strategyId ||
+        created.source_product_id !== productId ||
+        created.copy_matrix.marketing_strategy_id !== strategyId ||
+        created.copy_matrix.product_id !== productId
+      ) {
+        return;
+      }
+      setMatrix(created.copy_matrix);
+      setResultSource("direct");
+      setSourceTaskId(created.source_task_id);
+      setAssociationNotice(created.association_notice);
+      setAcknowledged(false);
+      setState("succeeded");
+    } catch (error) {
+      if (
+        !isCurrentContext(
+          contextRequestId,
+          productId,
+          taskId,
+          strategyId,
+          controller,
+        ) ||
+        requestId !== executionRequestIdRef.current
+      ) {
+        return;
+      }
+      const failure = classifyCopyExecutionError(error);
+      if (
+        failure.category !== "network" &&
+        failure.category !== "backend" &&
+        failure.category !== "unknown"
+      ) {
+        setIssue(failure);
+        setState("failed");
+        return;
+      }
+
+      setState("recovering");
+      try {
+        const latest = await getLatestCopyForStrategy(
+          strategyId,
+          controller.signal,
+        );
+        if (
+          !isCurrentContext(
+            contextRequestId,
+            productId,
+            taskId,
+            strategyId,
+            controller,
+          ) ||
+          requestId !== executionRequestIdRef.current
+        ) {
+          return;
+        }
+        if (
+          latest.product_id === productId &&
+          latest.marketing_strategy_id === strategyId &&
+          latest.id !== previousMatrixId
+        ) {
+          setMatrix(latest);
+          setResultSource("latest");
+          setSourceTaskId(null);
+          setAssociationNotice("");
+          setState("recovered");
+          return;
+        }
+        setIssue(failure);
+        setState("failed");
+      } catch {
+        if (
+          !isCurrentContext(
+            contextRequestId,
+            productId,
+            taskId,
+            strategyId,
+            controller,
+          ) ||
+          requestId !== executionRequestIdRef.current
+        ) {
+          return;
+        }
+        setIssue(failure);
+        setState("failed");
+      }
     } finally {
-      if (requestId === requestIdRef.current) {
-        requestLockRef.current = false;
+      if (requestId === executionRequestIdRef.current) {
+        executionLockRef.current = false;
       }
     }
   }
@@ -147,26 +378,18 @@ export function CopyPreflightPanel({
     <section className="copy-preflight" aria-labelledby="copy-operation-title">
       <div className="copy-preflight__heading">
         <div>
-          <p className="eyebrow">V2-C2.2A · COPY OPERATION ENTRY</p>
-          <h5 id="copy-operation-title">Copy Matrix生成前安全检查</h5>
+          <p className="eyebrow">V2-C2.2B · EXACT COPY CONTRACT</p>
+          <h5 id="copy-operation-title">Copy Matrix执行与恢复</h5>
         </div>
         <span
           className={`strategy-preflight__status strategy-preflight__status--${state}`}
         >
-          {state === "checking"
-            ? "检查中"
-            : state === "ready"
-              ? "已就绪"
-              : state === "blocked"
-                ? "契约未就绪"
-                : state === "failed"
-                  ? "检查失败"
-                  : "待检查"}
+          {copyStateLabel(state)}
         </span>
       </div>
 
       <p className="copy-preflight__intro">
-        本阶段只读取精确MarketingBrief与Strategy并运行Preflight，不调用AI、不创建CopyMatrix。
+        精确使用当前MarketingBrief、Strategy及Brief平台快照；生产构建默认关闭真实执行。
       </p>
 
       <dl className="product-detail__facts copy-preflight__context">
@@ -182,50 +405,35 @@ export function CopyPreflightPanel({
       </dl>
 
       <p className="copy-preflight__boundary">
-        {strategySource === "latest"
-          ? "这是商品最新Strategy，无法证明它属于当前MarketingBrief。"
-          : "本次响应显示该Strategy来自当前MarketingBrief，但该Brief关联没有持久化。"}
-        CopyMatrix真实模型可关联精确Strategy，但不保存MarketingBrief ID。
+        CopyMatrix会持久化精确Strategy关联；MarketingBrief关联仅存在于本次执行响应，因为数据表没有MarketingBrief外键。
       </p>
 
       <button
         className="button button--secondary"
         type="button"
         onClick={() => void runCopyPreflight()}
-        disabled={state === "checking"}
+        disabled={state === "checking" || executionLockRef.current}
       >
         {state === "checking"
           ? "正在检查…"
-          : state === "failed"
+          : preflightError
             ? "重试Copy生成前检查"
             : "运行Copy生成前检查"}
       </button>
 
-      {error ? (
+      {preflightError ? (
         <p className="form-feedback form-feedback--error" role="alert">
-          {error}
+          {preflightError}
         </p>
       ) : null}
 
       {preflight ? (
         <div className="copy-preflight__result">
           <dl className="product-detail__facts">
-            <div>
-              <dt>Provider配置</dt>
-              <dd>{preflight.provider_configured ? "已配置" : "未配置"}</dd>
-            </div>
-            <div>
-              <dt>Backend Copy开关</dt>
-              <dd>{preflight.execution_enabled ? "已开启" : "默认关闭"}</dd>
-            </div>
-            <div>
-              <dt>精确输入</dt>
-              <dd>{preflight.input_ready ? "完整" : "不完整"}</dd>
-            </div>
-            <div>
-              <dt>执行契约</dt>
-              <dd>{preflight.contract_ready ? "已就绪" : "尚未就绪"}</dd>
-            </div>
+            <div><dt>Provider配置</dt><dd>{preflight.provider_configured ? "已配置" : "未配置"}</dd></div>
+            <div><dt>Backend Copy开关</dt><dd>{preflight.execution_enabled ? "已开启" : "默认关闭"}</dd></div>
+            <div><dt>精确输入</dt><dd>{preflight.input_ready ? "完整" : "不完整"}</dd></div>
+            <div><dt>执行契约</dt><dd>{preflight.contract_ready ? "已实现" : "尚未实现"}</dd></div>
           </dl>
 
           {preflight.missing_requirements.length > 0 ? (
@@ -249,33 +457,170 @@ export function CopyPreflightPanel({
               type="checkbox"
               checked={acknowledged}
               onChange={(event) => setAcknowledged(event.target.checked)}
-              disabled={!preflight.input_ready}
+              disabled={
+                !preflight.input_ready ||
+                !preflight.provider_configured ||
+                !preflight.execution_enabled ||
+                !preflight.contract_ready ||
+                executionLockRef.current
+              }
             />
-            我理解真实Copy生成会调用阿里云百炼Qwen，并可能消耗比赛Credits。
+            我理解真实Copy生成会调用Provider，并可能消耗比赛Credits。
           </label>
 
           <button
             className="button"
             type="button"
-            disabled
-            title="V2-C2.2B完成Brief-aware精确Strategy执行契约后开放"
+            onClick={() => void executeCopyGeneration()}
+            disabled={!canExecute}
           >
-            调用Qwen生成Copy Matrix
+            {state === "submitting"
+              ? "正在调用Qwen…"
+              : state === "recovering"
+                ? "正在核对结果…"
+                : "调用Qwen生成Copy Matrix"}
           </button>
 
-          <p className="strategy-preflight__note">
-            V2-C2.2B完成契约后开放；本按钮没有执行handler，勾选费用确认也不会触发调用。
-          </p>
           {!copyExecutionEnabled ? (
             <p className="strategy-preflight__note">
-              当前Frontend构建未开放Copy执行。
+              当前Frontend构建未开放Copy执行；按钮保持禁用。
             </p>
           ) : null}
-          <p className="strategy-preflight__note">
-            Copy生成不代表自动发布，也不代表已获得TikTok、Instagram或Facebook账号授权。
-          </p>
+          {!preflight.execution_enabled ? (
+            <p className="strategy-preflight__note">
+              Backend尚未授权Copy执行。
+            </p>
+          ) : null}
         </div>
       ) : null}
+
+      {state === "submitting" ? (
+        <p className="strategy-operation-progress" role="status">
+          请求已提交，正在等待Provider返回，请勿重复操作。
+        </p>
+      ) : null}
+      {state === "recovering" ? (
+        <p className="strategy-operation-progress" role="status">
+          正在按精确Strategy读取最新Copy Matrix，以恢复页面或核对不确定响应。
+        </p>
+      ) : null}
+      {state === "failed" && issue ? (
+        <div
+          className={`strategy-operation-issue strategy-operation-issue--${issue.category}`}
+          role="alert"
+        >
+          <strong>Copy生成失败 · {issue.category}</strong>
+          <p>{issue.message}</p>
+          {issue.retryable ? (
+            <button
+              className="button button--secondary"
+              type="button"
+              onClick={() => void executeCopyGeneration()}
+              disabled={!canExecute}
+            >
+              重试Copy生成
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {matrix ? (
+        <CopyMatrixResult
+          matrix={matrix}
+          product={product}
+          source={resultSource ?? "latest"}
+          sourceTaskId={sourceTaskId}
+          associationNotice={associationNotice}
+        />
+      ) : state === "idle" ? (
+        <p className="strategy-preflight__note">
+          当前Strategy尚无已保存Copy Matrix。请先运行Preflight。
+        </p>
+      ) : null}
+
+      <p className="strategy-preflight__note">
+        Copy生成不代表自动发布，也不代表已获得TikTok、Instagram或Facebook账号授权。
+      </p>
     </section>
+  );
+}
+
+function copyStateLabel(state: CopyOperationState) {
+  const labels: Record<CopyOperationState, string> = {
+    idle: "待检查",
+    checking: "检查中",
+    ready: "已就绪",
+    blocked: "执行未开放",
+    submitting: "生成中",
+    succeeded: "本次生成成功",
+    failed: "操作失败",
+    recovering: "恢复中",
+    recovered: "已恢复",
+  };
+  return labels[state];
+}
+
+function CopyMatrixResult({
+  matrix,
+  product,
+  source,
+  sourceTaskId,
+  associationNotice,
+}: {
+  matrix: PersistedCopyMatrix;
+  product: Product;
+  source: CopyResultSource;
+  sourceTaskId: number | null;
+  associationNotice: string;
+}) {
+  return (
+    <article className="copy-operation-result" aria-live="polite">
+      <header>
+        <div>
+          <p className="eyebrow">
+            {source === "direct"
+              ? "本次生成Copy Matrix"
+              : "该策略最新Copy Matrix"}
+          </p>
+          <h6>平台文案结果</h6>
+        </div>
+        <span>CopyMatrix #{matrix.id}</span>
+      </header>
+
+      <dl className="product-detail__facts">
+        <div><dt>Product</dt><dd>#{matrix.product_id} · {product.name}</dd></div>
+        <div><dt>Strategy</dt><dd>#{matrix.marketing_strategy_id}</dd></div>
+        {source === "direct" && sourceTaskId !== null ? (
+          <div><dt>本次响应Brief</dt><dd>#{sourceTaskId}</dd></div>
+        ) : null}
+        <div><dt>生成平台</dt><dd>{matrix.copies.map((copy) => copy.platform).join("、")}</dd></div>
+        <div><dt>创建时间</dt><dd>{new Date(matrix.created_at).toLocaleString()}</dd></div>
+        <div><dt>数据来源</dt><dd>Backend已保存CopyMatrix</dd></div>
+      </dl>
+
+      <div className="copy-operation-result__platforms">
+        {matrix.copies.map((copy) => (
+          <section key={copy.platform}>
+            <h6>{copy.platform}</h6>
+            <dl>
+              <div><dt>Hook</dt><dd>{copy.hook}</dd></div>
+              <div><dt>Caption</dt><dd>{copy.caption}</dd></div>
+              <div><dt>Hashtags</dt><dd>{copy.hashtags.join(" ")}</dd></div>
+              <div><dt>CTA</dt><dd>{copy.cta}</dd></div>
+            </dl>
+          </section>
+        ))}
+      </div>
+
+      <p className="copy-preflight__boundary">
+        Strategy关联已通过marketing_strategy_id持久化。
+        {source === "direct"
+          ? "本次响应记录了所示MarketingBrief，但该Brief关联未持久化。"
+          : "这是该Strategy的最新Copy Matrix，不能证明它属于当前MarketingBrief。"}
+      </p>
+      {source === "direct" && associationNotice ? (
+        <p className="strategy-preflight__note">{associationNotice}</p>
+      ) : null}
+    </article>
   );
 }

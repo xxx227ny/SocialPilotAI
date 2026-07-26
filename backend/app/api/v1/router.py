@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1.routes.copies import router as copies_router
+from app.api.v1.routes.copies import strategy_copy_router
 from app.api.v1.routes.dashboard import router as dashboard_router
 from app.api.v1.routes.growth import router as growth_router
 from app.api.v1.routes.health import router as health_router
@@ -16,6 +17,7 @@ api_router.include_router(products_router, tags=["products"])
 api_router.include_router(marketing_tasks_router, tags=["marketing-tasks"])
 api_router.include_router(strategies_router, tags=["marketing-strategies"])
 api_router.include_router(copies_router, tags=["copy-matrix"])
+api_router.include_router(strategy_copy_router, tags=["copy-matrix"])
 api_router.include_router(growth_router, tags=["growth-copilot"])
 api_router.include_router(videos_router, tags=["content-studio"])
 api_router.include_router(video_renders_router, tags=["video-render-tasks"])
