@@ -214,6 +214,29 @@ The first frontend build attempt ran from the backend directory and failed with 
 - Result source labels now distinguish “本次生成策略” from “商品最新策略”, while retaining the explicit no-direct-MarketingBrief-version boundary.
 - Real AI calls and cost: 0. No Qwen, Wanx, or external AI request was made.
 
+## 2026-07-25 — V2-C2.1C MarketingBrief-aware Strategy Input and Execution Contract
+
+- Status: ✅ Completed; checkpoint not yet created.
+- Starting branch and HEAD: `competition-product-v2` at `e38c4903d6a9af06812d86ce08e2fc2b8601366b`; working tree and staged area were clean; protected `master` and `competition-freeze-v1` remained at `98772160208840eff2f00b97b78ae34809b1786f`.
+- Chain audit: `MarketingBrief` persists `product_id`, `platforms`, `audience`, `language`, `tone`, `objective`, and `created_at`; its immutable target-market snapshot is encoded in the existing `audience` geographic prefix and projected by the service. `MarketingStrategy` still persists only `product_id`, with no Brief foreign key.
+- Architecture correction: the workspace no longer executes the Product-only strategy route. It now uses `POST /api/v1/marketing-tasks/{task_id}/strategy`, which resolves the exact requested Brief, runs Preflight, builds one structured Prompt in the service layer, validates Provider output with the existing `MarketingStrategySchema`, saves through the existing repository, and returns source metadata.
+- Prompt inputs: Product name, category, description, and selling points plus exact Brief ID, immutable market snapshot, platforms, audience, language, tone, and objective are present in the Fake Provider's received Prompt. Tests prove the requested older Brief is used rather than silently substituting the latest Brief.
+- Execution response: `source_task_id`, `source_product_id`, `source_kind=marketing_brief`, persisted Strategy, `association_persisted=false`, and an explicit association notice describe only this response. No database Brief→Strategy relationship is claimed.
+- Backend safety gate: `ENABLE_STRATEGY_EXECUTION` defaults false independently of `provider_configured`. Both the new task-bound route and compatible `POST /api/v1/products/{product_id}/strategy` stop before Provider resolution and before writes when disabled. No enabling `.env` was created.
+- Preflight contract: separately reports `input_ready`, `provider_configured`, `execution_enabled`, and `ready_for_execution`; it returns booleans only and never returns configuration sources or secret values.
+- Frontend contract: execution requires matching Product/task identity, input readiness, Provider configuration, Backend authorization, frontend feature flag, explicit cost consent, and the synchronous submission lock. Direct results show “本次生成策略” and the source MarketingBrief; reload recovery shows “商品最新策略” and states that current Brief ownership cannot be proven.
+- Browser-discovered correction: Preflight and initial latest-result recovery previously shared one request sequence. Running Preflight before recovery completed could strand the UI in “正在核对结果”. Separate Preflight/context request sequences now preserve recovery completion while retaining stale-response protection.
+- Backend verification: Strategy/MarketingBrief/Product/Qwen focused suite 80 passed, 0 failed; full default pytest 145 passed, 2 real-provider smoke tests skipped, 0 failed, 1 known Starlette warning; Ruff passed.
+- Frontend verification: no-output TypeScript check passed; Vite production build passed with 123 modules transformed, and build output was removed.
+- Offline browser/Fake Provider smoke: temporary SQLite plus FastAPI dependency override and safe placeholder configuration verified exact task-bound success, one Strategy after rapid double click, direct source metadata, reload recovery label/boundary, Product/task switching, deterministic network failure with retry UI, both default-off notices and disabled button, and Presentation redirect with four-stage navigation.
+- Browser console and Presentation: 0 page errors and 0 warnings; `/products?mode=presentation` redirected to `/?mode=presentation`; Demo Snapshot and `0 AI Calls` were visible; Product/Strategy workspace content was absent.
+- Temporary database result: 1 MarketingStrategy from the intended success scenario; CopyMatrix, VideoProject, VideoRenderTask, and VideoRenderArtifact all remained 0. The deterministic failed scenario wrote no additional Strategy.
+- Provider/AI calls and cost: real Qwen 0, Wanx 0, external AI network requests 0, AI cost 0. Only local deterministic Fake Provider calls occurred.
+- Cleanup and security: Backend/Frontend stopped; temporary SQLite, logs, build output, and process-only flags were removed. Repository `.env`, database, Demo Snapshot, frozen evidence, ORM, and migrations were not modified.
+- Roadmap correction: Copy Matrix cannot start directly after Product-only prompting. Required order is V2-C2.1C checkpoint → separately authorized controlled real Qwen verification → real Strategy result acceptance → V2-C2.2A Copy Matrix operation entry.
+- Commit/push/tag: none.
+- Single recommended next stage: establish the V2-C2.1C checkpoint; after acceptance, prepare a separately authorized controlled real Qwen verification plan.
+
 ## V2 stage update template
 
 ```markdown

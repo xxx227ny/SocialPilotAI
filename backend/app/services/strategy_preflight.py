@@ -50,26 +50,36 @@ class StrategyPreflightService:
         audience_value = task.audience or ""
         market_match = TARGET_MARKET_AUDIENCE_PATTERN.match(audience_value)
         target_market_snapshot = (
-            market_match.group(1).split(",")
-            if market_match is not None
-            else list(product.target_markets or [])
+            market_match.group(1).split(",") if market_match is not None else []
         )
         product_input = MarketingStrategyService.prepare_product_input(product)
         provider_type_available = isinstance(self.provider_type, type)
         provider_configured = self._provider_configured()
-        missing = self._missing_requirements(
+        input_missing = self._missing_requirements(
             task,
             product_input,
             target_market_snapshot=target_market_snapshot,
             provider_type_available=provider_type_available,
-            provider_configured=provider_configured,
+        )
+        missing = list(input_missing)
+        if not provider_configured:
+            missing.append("provider_configuration")
+        if not self.settings.enable_strategy_execution:
+            missing.append("strategy_execution")
+        input_ready = not input_missing
+        ready_for_execution = (
+            input_ready
+            and provider_configured
+            and self.settings.enable_strategy_execution
         )
         audience = TARGET_MARKET_AUDIENCE_PATTERN.sub("", audience_value).strip()
 
         return StrategyPreflightRead(
             task_id=task.id,
             product_id=product.id,
-            ready=not missing,
+            ready=ready_for_execution,
+            input_ready=input_ready,
+            ready_for_execution=ready_for_execution,
             missing_requirements=missing,
             product_summary=StrategyPreflightProductSummary(
                 id=product.id,
@@ -87,6 +97,7 @@ class StrategyPreflightService:
             provider_label=PROVIDER_LABEL,
             model_label=self.settings.qwen_model,
             provider_configured=provider_configured,
+            execution_enabled=self.settings.enable_strategy_execution,
             cost_notice=COST_NOTICE,
         )
 
@@ -101,7 +112,6 @@ class StrategyPreflightService:
         *,
         target_market_snapshot: list[str],
         provider_type_available: bool,
-        provider_configured: bool,
     ) -> list[str]:
         missing: list[str] = []
         if not str(product_input["name"] or "").strip():
@@ -142,6 +152,4 @@ class StrategyPreflightService:
                 missing.append(field_name)
         if not provider_type_available:
             missing.append("qwen_provider_type")
-        if not provider_configured:
-            missing.append("provider_configuration")
         return missing

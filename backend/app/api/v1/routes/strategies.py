@@ -3,7 +3,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import TextProviderDep
+from app.api.dependencies import StrategyExecutionGateDep, TextProviderDep
+from app.core.config import Settings, get_settings
 from app.db.session import get_db
 from app.schemas.strategy import MarketingStrategyRead
 from app.services.marketing_strategy_service import (
@@ -13,13 +14,21 @@ from app.services.marketing_strategy_service import (
 
 router = APIRouter(prefix="/products")
 DbSession = Annotated[Session, Depends(get_db)]
+SettingsDep = Annotated[Settings, Depends(get_settings)]
 
 
 @router.post("/{product_id}/strategy", response_model=MarketingStrategyRead)
 def generate_product_strategy(
-    product_id: int, db: DbSession, provider: TextProviderDep
+    product_id: int,
+    db: DbSession,
+    execution_gate: StrategyExecutionGateDep,
+    provider: TextProviderDep,
+    app_settings: SettingsDep,
 ) -> MarketingStrategyRead:
-    return MarketingStrategyService(db, provider).generate_for_product(product_id)
+    del execution_gate
+    return MarketingStrategyService(
+        db, provider, app_settings
+    ).generate_for_product(product_id)
 
 
 @router.get(

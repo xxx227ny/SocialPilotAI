@@ -2,17 +2,18 @@ import axios from "axios";
 
 import type {
   MarketingStrategy,
+  MarketingStrategyExecutionResult,
   StrategyExecutionIssue,
   StrategyPreflight,
 } from "../types/strategy";
 import { apiClient } from "./client";
 
 export async function generateMarketingStrategy(
-  productId: number,
+  taskId: number,
   signal?: AbortSignal,
-): Promise<MarketingStrategy> {
-  const response = await apiClient.post<MarketingStrategy>(
-    `/products/${productId}/strategy`,
+): Promise<MarketingStrategyExecutionResult> {
+  const response = await apiClient.post<MarketingStrategyExecutionResult>(
+    `/marketing-tasks/${taskId}/strategy`,
     undefined,
     { signal },
   );
@@ -46,6 +47,17 @@ export function classifyStrategyExecutionError(
       : "";
   const normalized = rawMessage.toLowerCase();
 
+  if (
+    status === 503 &&
+    normalized.includes("execution") &&
+    normalized.includes("disabled")
+  ) {
+    return {
+      category: "execution-disabled",
+      message: "服务端尚未授权真实执行。",
+      retryable: false,
+    };
+  }
   if (status === 401 || status === 403 || normalized.includes("authentication")) {
     return { category: "authentication", message: "Provider 身份验证失败，请检查服务端凭据配置。", retryable: false };
   }

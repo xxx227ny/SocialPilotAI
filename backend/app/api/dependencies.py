@@ -2,6 +2,7 @@ from typing import Annotated
 
 from fastapi import Depends
 
+from app.core.config import Settings, get_settings
 from app.core.exceptions import AppError
 from app.providers import (
     ProviderAuthenticationError,
@@ -24,6 +25,21 @@ def get_text_generation_provider() -> TextGenerationProvider:
 
 TextProviderDep = Annotated[
     TextGenerationProvider, Depends(get_text_generation_provider)
+]
+
+
+def require_strategy_execution_enabled(
+    app_settings: Annotated[Settings, Depends(get_settings)],
+) -> None:
+    if not app_settings.enable_strategy_execution:
+        raise AppError(
+            "Strategy execution is disabled by the server",
+            status_code=503,
+        )
+
+
+StrategyExecutionGateDep = Annotated[
+    None, Depends(require_strategy_execution_enabled)
 ]
 
 

@@ -6,9 +6,11 @@ from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.config import Settings
 from app.core.exceptions import AppError
 from app.models import (
     CopyMatrix,
+    MarketingBrief,
     MarketingStrategy,
     Product,
     VideoProject,
@@ -78,6 +80,14 @@ def valid_strategy_json() -> str:
     )
 
 
+def execution_settings(*, enabled: bool = True) -> Settings:
+    return Settings(
+        _env_file=None,
+        dashscope_api_key="safe-test-placeholder",
+        enable_strategy_execution=enabled,
+    )
+
+
 def strategy_schema_payload(
     schema_type: type[MarketingStrategySchema],
 ) -> dict[str, object]:
@@ -133,9 +143,9 @@ def test_provider_is_called_and_strategy_is_saved(db_session: Session) -> None:
     product = add_product(db_session)
     provider = RecordingProvider(valid_strategy_json())
 
-    result = MarketingStrategyService(db_session, provider).generate_for_product(
-        product.id
-    )
+    result = MarketingStrategyService(
+        db_session, provider, execution_settings()
+    ).generate_for_product(product.id)
 
     assert len(provider.prompts) == 1
     assert "Portable Blender" in provider.prompts[0]
@@ -156,9 +166,9 @@ def test_valid_json_is_parsed_into_schema(db_session: Session) -> None:
     product = add_product(db_session)
     provider = RecordingProvider(valid_strategy_json())
 
-    result = MarketingStrategyService(db_session, provider).generate_for_product(
-        product.id
-    )
+    result = MarketingStrategyService(
+        db_session, provider, execution_settings()
+    ).generate_for_product(product.id)
 
     assert result.angles == ["Fresh drinks anywhere"]
     assert result.evidence == [
@@ -188,9 +198,9 @@ def test_invalid_json_or_schema_is_rejected(
     provider = RecordingProvider(provider_result)
 
     with pytest.raises(AppError, match="invalid strategy data") as exc_info:
-        MarketingStrategyService(db_session, provider).generate_for_product(
-            product.id
-        )
+        MarketingStrategyService(
+            db_session, provider, execution_settings()
+        ).generate_for_product(product.id)
 
     assert exc_info.value.status_code == 502
     saved_count = db_session.scalar(select(func.count(MarketingStrategy.id)))
@@ -214,9 +224,9 @@ def test_provider_blank_list_item_is_rejected_without_writes(
     provider = RecordingProvider(json.dumps(payload))
 
     with pytest.raises(AppError, match="invalid strategy data") as exc_info:
-        MarketingStrategyService(db_session, provider).generate_for_product(
-            product.id
-        )
+        MarketingStrategyService(
+            db_session, provider, execution_settings()
+        ).generate_for_product(product.id)
 
     assert exc_info.value.status_code == 502
     for model in (
@@ -248,7 +258,9 @@ def test_provider_errors_are_safe_and_create_nothing(
 
     with pytest.raises(AppError) as exc_info:
         MarketingStrategyService(
-            db_session, RaisingProvider(provider_error)
+            db_session,
+            RaisingProvider(provider_error),
+            execution_settings(),
         ).generate_for_product(product.id)
 
     assert exc_info.value.status_code == expected_status
@@ -262,3 +274,107 @@ def test_provider_errors_are_safe_and_create_nothing(
         VideoRenderArtifact,
     ):
         assert db_session.scalar(select(func.count(model.id))) == 0
+
+
+def add_marketing_brief(
+    db_session: Session,
+    product: Product,
+    *,
+    audience: str = "Remote professionals",
+    language: str = "English",
+    tone: str = "Clear and practical",
+    objective: str = "Build awareness",
+    markets: str = "US,CA",
+) -> MarketingBrief:
+    task = MarketingBrief(
+        product_id=product.id,
+        audience=f"Target markets [{markets}]. {audience}",
+        language=language,
+        platforms=["TikTok", "Instagram"],
+        tone=tone,
+        objective=objective,
+    )
+    db_session.add(task)
+    db_session.commit()
+    db_session.refresh(task)
+    return task
+
+
+def test_marketing_brief_prompt_uses_every_requested_field(
+    db_session: Session,
+) -> None:
+    product = add_product(db_session)
+    task = add_marketing_brief(db_session, product)
+
+    prompt = MarketingStrategyService.build_marketing_brief_prompt(product, task)
+    payload = json.loads(prompt.split("Execution input:\n", maxsplit=1)[1])
+
+    assert payload == {
+        "product": {
+            "name": product.name,
+            "category": product.category,
+            "description": product.description,
+            "selling_points": product.selling_points,
+        },
+        "marketing_brief": {
+            "id": task.id,
+            "product_id": product.id,
+            "target_market_snapshot": ["US", "CA"],
+            "platforms": ["TikTok", "Instagram"],
+            "audience": "Remote professionals",
+            "language": "English",
+            "tone": "Clear and practical",
+            "objective": "Build awareness",
+        },
+    }
+
+
+def test_task_bound_generation_uses_requested_brief_not_latest(
+    db_session: Session,
+) -> None:
+    product = add_product(db_session)
+    requested = add_marketing_brief(
+        db_session,
+        product,
+        audience="Requested audience",
+        markets="US",
+    )
+    latest = add_marketing_brief(
+        db_session,
+        product,
+        audience="Latest audience must not be used",
+        markets="JP",
+    )
+    provider = RecordingProvider(valid_strategy_json())
+
+    result = MarketingStrategyService(
+        db_session, provider, execution_settings()
+    ).generate_for_marketing_task(requested.id)
+
+    assert latest.id > requested.id
+    assert len(provider.prompts) == 1
+    assert "Requested audience" in provider.prompts[0]
+    assert "Latest audience must not be used" not in provider.prompts[0]
+    assert '"target_market_snapshot": ["US"]' in provider.prompts[0]
+    assert result.source_task_id == requested.id
+    assert result.source_product_id == product.id
+    assert result.source_kind == "marketing_brief"
+    assert result.association_persisted is False
+    assert result.strategy.product_id == product.id
+
+
+def test_execution_disabled_stops_before_provider_and_write(
+    db_session: Session,
+) -> None:
+    product = add_product(db_session)
+    task = add_marketing_brief(db_session, product)
+    provider = RecordingProvider(valid_strategy_json())
+
+    with pytest.raises(AppError, match="disabled by the server") as exc_info:
+        MarketingStrategyService(
+            db_session, provider, execution_settings(enabled=False)
+        ).generate_for_marketing_task(task.id)
+
+    assert exc_info.value.status_code == 503
+    assert provider.prompts == []
+    assert db_session.scalar(select(func.count(MarketingStrategy.id))) == 0

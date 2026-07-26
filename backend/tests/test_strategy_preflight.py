@@ -22,6 +22,7 @@ def configured_settings() -> Settings:
         _env_file=None,
         dashscope_api_key="safe-test-placeholder",
         qwen_model="qwen-plus",
+        enable_strategy_execution=True,
     )
 
 
@@ -64,6 +65,8 @@ def test_valid_preflight_is_read_only(
     assert response.status_code == 200
     data = response.json()
     assert data["ready"] is True
+    assert data["input_ready"] is True
+    assert data["ready_for_execution"] is True
     assert data["missing_requirements"] == []
     assert data["task_id"] == task["id"]
     assert data["product_id"] == task["product_id"]
@@ -73,6 +76,7 @@ def test_valid_preflight_is_read_only(
     assert data["provider_label"] == "Alibaba Cloud Bailian Qwen"
     assert data["model_label"] == "qwen-plus"
     assert data["provider_configured"] is True
+    assert data["execution_enabled"] is True
     assert data["preflight_only"] is True
     assert data["execution_will_call_ai"] is True
     assert data["execution_will_create_strategy"] is True
@@ -166,6 +170,7 @@ def test_provider_configuration_is_boolean_and_secret_safe(
         _env_file=None,
         dashscope_api_key=None,
         qwen_model="qwen-plus",
+        enable_strategy_execution=True,
     )
 
     response = client.get(
@@ -176,6 +181,7 @@ def test_provider_configuration_is_boolean_and_secret_safe(
     data = response.json()
     assert data["ready"] is False
     assert data["provider_configured"] is False
+    assert data["execution_enabled"] is True
     assert "provider_configuration" in data["missing_requirements"]
     serialized = response.text.casefold()
     for forbidden in (
@@ -212,3 +218,28 @@ def test_provider_type_unavailable_is_not_ready(
 
     assert result.ready is False
     assert "qwen_provider_type" in result.missing_requirements
+
+
+def test_execution_enabled_defaults_false_and_is_reported_separately(
+    client: TestClient,
+    product_payload: dict[str, object],
+) -> None:
+    task = create_task(client, product_payload)
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        _env_file=None,
+        dashscope_api_key="safe-test-placeholder",
+    )
+
+    response = client.get(
+        f"/api/v1/marketing-tasks/{task['id']}/strategy-preflight"
+    )
+
+    assert Settings(_env_file=None).enable_strategy_execution is False
+    assert response.status_code == 200
+    data = response.json()
+    assert data["input_ready"] is True
+    assert data["provider_configured"] is True
+    assert data["execution_enabled"] is False
+    assert data["ready_for_execution"] is False
+    assert data["ready"] is False
+    assert "strategy_execution" in data["missing_requirements"]

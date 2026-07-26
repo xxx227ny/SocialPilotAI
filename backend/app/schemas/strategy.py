@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -35,6 +36,15 @@ class MarketingStrategyRead(MarketingStrategySchema):
     created_at: datetime
 
 
+class MarketingStrategyExecutionRead(BaseModel):
+    source_task_id: int
+    source_product_id: int
+    source_kind: Literal["marketing_brief"] = "marketing_brief"
+    strategy: MarketingStrategyRead
+    association_persisted: bool = False
+    association_notice: str
+
+
 class StrategyPreflightProductSummary(BaseModel):
     id: int
     name: str
@@ -47,6 +57,8 @@ class StrategyPreflightRead(BaseModel):
     task_id: int
     product_id: int
     ready: bool
+    input_ready: bool
+    ready_for_execution: bool
     missing_requirements: list[str]
     product_summary: StrategyPreflightProductSummary
     target_market_snapshot: list[str]
@@ -58,6 +70,7 @@ class StrategyPreflightRead(BaseModel):
     provider_label: str
     model_label: str
     provider_configured: bool
+    execution_enabled: bool
     preflight_only: bool = True
     execution_will_call_ai: bool = True
     execution_will_create_strategy: bool = True

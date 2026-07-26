@@ -38,6 +38,7 @@ const REQUIREMENT_LABELS: Record<string, string> = {
   objective: "目标（任务默认配置）",
   qwen_provider_type: "Qwen Provider 可用性",
   provider_configuration: "Provider 配置",
+  strategy_execution: "服务端执行授权",
 };
 
 interface StrategyPreflightPanelProps {
@@ -58,16 +59,20 @@ export function StrategyPreflightPanel({
     useState<StrategyExecutionIssue | null>(null);
   const [strategy, setStrategy] = useState<MarketingStrategy | null>(null);
   const [resultSource, setResultSource] = useState<ResultSource | null>(null);
+  const [sourceTaskId, setSourceTaskId] = useState<number | null>(null);
+  const [associationNotice, setAssociationNotice] = useState("");
 
   const preflightControllerRef = useRef<AbortController | null>(null);
   const executionControllerRef = useRef<AbortController | null>(null);
   const contextRequestIdRef = useRef(0);
+  const preflightRequestIdRef = useRef(0);
   const executionLockRef = useRef(false);
   const activeContextRef = useRef({ taskId: task.id, productId: product.id });
   activeContextRef.current = { taskId: task.id, productId: product.id };
 
   useEffect(() => {
     const requestId = ++contextRequestIdRef.current;
+    ++preflightRequestIdRef.current;
     const controller = new AbortController();
     preflightControllerRef.current?.abort();
     executionControllerRef.current?.abort();
@@ -81,12 +86,16 @@ export function StrategyPreflightPanel({
     setExecutionIssue(null);
     setStrategy(null);
     setResultSource(null);
+    setSourceTaskId(null);
+    setAssociationNotice("");
 
     void getLatestMarketingStrategy(product.id, controller.signal)
       .then((latest) => {
         if (!isCurrent(requestId, task.id, product.id, controller)) return;
         setStrategy(latest);
         setResultSource("latest");
+        setSourceTaskId(null);
+        setAssociationNotice("");
         setExecutionState("recovered");
       })
       .catch(() => {
@@ -116,7 +125,8 @@ export function StrategyPreflightPanel({
     if (preflightState === "checking" || executionLockRef.current) return;
     const taskId = task.id;
     const productId = product.id;
-    const requestId = ++contextRequestIdRef.current;
+    const contextRequestId = contextRequestIdRef.current;
+    const preflightRequestId = ++preflightRequestIdRef.current;
     const controller = new AbortController();
     preflightControllerRef.current?.abort();
     preflightControllerRef.current = controller;
@@ -129,16 +139,20 @@ export function StrategyPreflightPanel({
     try {
       const result = await getStrategyPreflight(taskId, controller.signal);
       if (
-        !isCurrent(requestId, taskId, productId, controller) ||
+        !isCurrent(contextRequestId, taskId, productId, controller) ||
+        preflightRequestId !== preflightRequestIdRef.current ||
         result.task_id !== taskId ||
         result.product_id !== productId
       ) {
         return;
       }
       setPreflight(result);
-      setPreflightState(result.ready ? "ready" : "blocked");
+      setPreflightState(result.ready_for_execution ? "ready" : "blocked");
     } catch {
-      if (!isCurrent(requestId, taskId, productId, controller)) return;
+      if (
+        !isCurrent(contextRequestId, taskId, productId, controller) ||
+        preflightRequestId !== preflightRequestIdRef.current
+      ) return;
       setPreflightError("生成前检查失败，请重试。");
       setPreflightState("failed");
     }
@@ -148,7 +162,10 @@ export function StrategyPreflightPanel({
     strategyExecutionEnabled &&
       preflightState === "ready" &&
       preflight?.ready &&
+      preflight.input_ready &&
+      preflight.ready_for_execution &&
       preflight.provider_configured &&
+      preflight.execution_enabled &&
       preflight.task_id === task.id &&
       preflight.product_id === product.id &&
       acknowledged &&
@@ -162,7 +179,10 @@ export function StrategyPreflightPanel({
       !strategyExecutionEnabled ||
       !acknowledged ||
       !preflight.ready ||
+      !preflight.input_ready ||
+      !preflight.ready_for_execution ||
       !preflight.provider_configured ||
+      !preflight.execution_enabled ||
       preflight.task_id !== task.id ||
       preflight.product_id !== product.id
     ) {
@@ -180,20 +200,40 @@ export function StrategyPreflightPanel({
     setExecutionIssue(null);
 
     try {
-      const created = await generateMarketingStrategy(productId, controller.signal);
-      if (!isCurrent(requestId, taskId, productId, controller)) return;
-      setStrategy(created);
+      const created = await generateMarketingStrategy(taskId, controller.signal);
+      if (
+        !isCurrent(requestId, taskId, productId, controller) ||
+        created.source_task_id !== taskId ||
+        created.source_product_id !== productId
+      ) return;
+      setStrategy(created.strategy);
       setResultSource("direct");
+      setSourceTaskId(created.source_task_id);
+      setAssociationNotice(created.association_notice);
       setExecutionState("succeeded");
     } catch (error) {
       if (!isCurrent(requestId, taskId, productId, controller)) return;
       const issue = classifyStrategyExecutionError(error);
+      if (
+        issue.category === "execution-disabled" ||
+        issue.category === "configuration" ||
+        issue.category === "authentication" ||
+        issue.category === "quota" ||
+        issue.category === "invalid-output" ||
+        issue.category === "not-found"
+      ) {
+        setExecutionIssue(issue);
+        setExecutionState("failed");
+        return;
+      }
       setExecutionState("recovering");
       try {
         const latest = await getLatestMarketingStrategy(productId, controller.signal);
         if (!isCurrent(requestId, taskId, productId, controller)) return;
         setStrategy(latest);
         setResultSource("latest");
+        setSourceTaskId(null);
+        setAssociationNotice("");
         setExecutionState("recovered");
       } catch {
         if (!isCurrent(requestId, taskId, productId, controller)) return;
@@ -235,19 +275,22 @@ export function StrategyPreflightPanel({
             <div><dt>任务</dt><dd>#{preflight.task_id}</dd></div>
             <div><dt>Provider</dt><dd>{preflight.provider_label} / {preflight.model_label}</dd></div>
             <div><dt>安全配置</dt><dd>{preflight.provider_configured ? "已配置" : "未配置"}</dd></div>
+            <div><dt>输入状态</dt><dd>{preflight.input_ready ? "完整" : "不完整"}</dd></div>
+            <div><dt>服务端执行</dt><dd>{preflight.execution_enabled ? "已授权" : "未授权"}</dd></div>
           </dl>
           {preflight.missing_requirements.length > 0 ? (
             <div className="strategy-preflight__missing"><strong>仍缺少：</strong><ul>{preflight.missing_requirements.map((item) => <li key={item}>{REQUIREMENT_LABELS[item] ?? item}</li>)}</ul></div>
           ) : null}
           <p className="strategy-execution-gate">{preflight.cost_notice}</p>
           <label className="strategy-preflight__acknowledgement">
-            <input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} disabled={!preflight.ready || !preflight.provider_configured || executionLockRef.current} />
+            <input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} disabled={!preflight.input_ready || !preflight.provider_configured || !preflight.execution_enabled || executionLockRef.current} />
             我理解真实执行可能调用 Provider 并产生费用。
           </label>
           <button className="button" type="button" onClick={() => void executeStrategyGeneration()} disabled={!canExecute}>
             {executionState === "submitting" ? "正在调用 Qwen…" : executionState === "recovering" ? "正在核对结果…" : "调用 Qwen 生成策略"}
           </button>
           {!strategyExecutionEnabled ? <p className="strategy-preflight__note">当前构建未开放真实策略执行；按钮保持禁用。</p> : null}
+          {!preflight.execution_enabled ? <p className="strategy-preflight__note">服务端尚未授权真实执行。</p> : null}
         </div>
       ) : null}
 
@@ -261,12 +304,12 @@ export function StrategyPreflightPanel({
         </div>
       ) : null}
 
-      {strategy ? <StrategyResult strategy={strategy} product={product} source={resultSource ?? "latest"} /> : executionState === "idle" ? <p className="strategy-preflight__note">当前商品尚无可展示的已保存策略。</p> : null}
+      {strategy ? <StrategyResult strategy={strategy} product={product} source={resultSource ?? "latest"} sourceTaskId={sourceTaskId} associationNotice={associationNotice} /> : executionState === "idle" ? <p className="strategy-preflight__note">当前商品尚无可展示的已保存策略。</p> : null}
     </section>
   );
 }
 
-function StrategyResult({ strategy, product, source }: { strategy: MarketingStrategy; product: Product; source: ResultSource }) {
+function StrategyResult({ strategy, product, source, sourceTaskId, associationNotice }: { strategy: MarketingStrategy; product: Product; source: ResultSource; sourceTaskId: number | null; associationNotice: string }) {
   return (
     <article className="strategy-operation-result" aria-live="polite">
       <div className="strategy-operation-result__header">
@@ -275,6 +318,7 @@ function StrategyResult({ strategy, product, source }: { strategy: MarketingStra
       </div>
       <dl className="product-detail__facts">
         <div><dt>商品</dt><dd>#{strategy.product_id} · {product.name}</dd></div>
+        {source === "direct" && sourceTaskId !== null ? <div><dt>来源任务</dt><dd>MarketingBrief #{sourceTaskId}</dd></div> : null}
         <div><dt>创建时间</dt><dd>{new Date(strategy.created_at).toLocaleString()}</dd></div>
       </dl>
       <section><h6>定位</h6><p>{strategy.positioning}</p></section>
@@ -282,7 +326,12 @@ function StrategyResult({ strategy, product, source }: { strategy: MarketingStra
       <StrategyList title="营销角度" items={strategy.angles} />
       <StrategyList title="内容支柱 / 证据" items={strategy.evidence} />
       <StrategyList title="风险与边界" items={strategy.risks} warning />
-      <p className="strategy-operation-result__boundary">当前策略按商品关联，尚未与本次MarketingBrief建立直接版本关系。</p>
+      <p className="strategy-operation-result__boundary">
+        {source === "direct"
+          ? "本次响应来自所示MarketingBrief；该关联尚未持久化到Strategy记录。"
+          : "这是商品最新策略；无法证明它属于当前MarketingBrief。当前策略仍只按商品关联。"}
+      </p>
+      {source === "direct" && associationNotice ? <p className="strategy-preflight__note">{associationNotice}</p> : null}
     </article>
   );
 }
