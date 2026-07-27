@@ -1,18 +1,31 @@
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_visual_generation_provider
+from app.api.dependencies import (
+    get_provider_output_fetcher,
+    get_video_artifact_storage,
+    get_visual_generation_provider,
+)
 from app.core.config import Settings, get_settings
 from app.main import app
 from app.providers.visual_base import VisualTaskSnapshot
-from tests.test_video_render_execution_service import MockVisualProvider
+from app.services.video_artifact_storage import LocalVideoArtifactStorage
+from tests.test_video_render_execution_service import (
+    FakeOutputFetcher,
+    MockVisualProvider,
+)
 from tests.test_video_render_service import create_video_project
 
 
-def enabled_render_settings() -> Settings:
+def enabled_render_settings(artifact_root: Path | None = None) -> Settings:
     return Settings(
         _env_file=None,
         enable_video_render_execution=True,
+        video_artifact_storage_root=(
+            str(artifact_root) if artifact_root is not None else None
+        ),
     )
 
 
@@ -33,7 +46,7 @@ def create_task_through_api(
 
 
 def test_execution_api_submits_and_refreshes_with_injected_provider(
-    client: TestClient, db_session: Session
+    client: TestClient, db_session: Session, tmp_path: Path
 ) -> None:
     provider = MockVisualProvider(
         snapshots=[
@@ -45,8 +58,14 @@ def test_execution_api_submits_and_refreshes_with_injected_provider(
             )
         ]
     )
-    app.dependency_overrides[get_settings] = enabled_render_settings
+    fetcher = FakeOutputFetcher()
+    storage = LocalVideoArtifactStorage(tmp_path, 1_000_000)
+    app.dependency_overrides[get_settings] = lambda: enabled_render_settings(
+        tmp_path
+    )
     app.dependency_overrides[get_visual_generation_provider] = lambda: provider
+    app.dependency_overrides[get_provider_output_fetcher] = lambda: fetcher
+    app.dependency_overrides[get_video_artifact_storage] = lambda: storage
     task = create_task_through_api(client, db_session)
 
     submitted = client.post(
@@ -64,13 +83,13 @@ def test_execution_api_submits_and_refreshes_with_injected_provider(
     assert submitted.json()["task"]["status"] == "PENDING"
     assert refreshed.status_code == 200
     assert refreshed.json()["task"]["status"] == "SUCCEEDED"
-    assert refreshed.json()["artifact"]["provider_output_url"] == (
-        "https://provider.example/video.mp4"
-    )
+    assert refreshed.json()["artifact"]["provider_output_url"] is None
+    assert refreshed.json()["artifact"]["storage_path"] is not None
     assert repeated.status_code == 200
     assert repeated.json()["external_call"] is False
     assert provider.submit_calls == 1
     assert provider.fetch_calls == 1
+    assert fetcher.calls == 1
 
 
 def test_execution_api_rejects_duplicate_submit(

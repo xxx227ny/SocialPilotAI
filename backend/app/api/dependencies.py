@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import Depends
@@ -12,6 +13,13 @@ from app.providers import (
 )
 from app.providers.base import TextGenerationProvider
 from app.providers.visual_base import VisualGenerationProvider
+from app.services.video_artifact_storage import (
+    HttpProviderOutputFetcher,
+    LocalVideoArtifactStorage,
+    ProviderOutputFetcher,
+    VideoArtifactError,
+    VideoArtifactStorage,
+)
 
 
 def get_text_generation_provider() -> TextGenerationProvider:
@@ -84,4 +92,38 @@ def get_visual_generation_provider() -> VisualGenerationProvider:
 
 VisualProviderDep = Annotated[
     VisualGenerationProvider, Depends(get_visual_generation_provider)
+]
+
+
+def get_provider_output_fetcher(
+    app_settings: Annotated[Settings, Depends(get_settings)],
+) -> ProviderOutputFetcher:
+    return HttpProviderOutputFetcher(
+        app_settings.video_artifact_max_bytes,
+        app_settings.wanx_timeout,
+    )
+
+
+ProviderOutputFetcherDep = Annotated[
+    ProviderOutputFetcher, Depends(get_provider_output_fetcher)
+]
+
+
+def get_video_artifact_storage(
+    app_settings: Annotated[Settings, Depends(get_settings)],
+) -> VideoArtifactStorage:
+    configured = (app_settings.video_artifact_storage_root or "").strip()
+    if not configured:
+        raise AppError("Artifact storage is not configured", status_code=503)
+    try:
+        return LocalVideoArtifactStorage(
+            Path(configured),
+            app_settings.video_artifact_max_bytes,
+        )
+    except VideoArtifactError as exc:
+        raise AppError(exc.safe_message, status_code=503) from exc
+
+
+VideoArtifactStorageDep = Annotated[
+    VideoArtifactStorage, Depends(get_video_artifact_storage)
 ]

@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     wanx_endpoint: str | None = None
     wanx_timeout: float = Field(default=30, gt=0, le=300)
     enable_live_wanx_demo: bool = False
+    video_artifact_storage_root: str | None = None
+    video_artifact_max_bytes: int = Field(
+        default=50_000_000, gt=0, le=500_000_000
+    )
     cors_origins: list[str] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",

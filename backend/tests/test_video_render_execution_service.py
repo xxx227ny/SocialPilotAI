@@ -1,4 +1,5 @@
 import asyncio
+from pathlib import Path
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -12,6 +13,11 @@ from app.providers.visual_base import (
     VisualGenerationRequest,
     VisualTaskSnapshot,
     VisualTaskSubmission,
+)
+from app.services.video_artifact_storage import (
+    FetchedVideo,
+    LocalVideoArtifactStorage,
+    ProviderOutputFetcher,
 )
 from app.services.video_render_execution_service import (
     VideoRenderExecutionService,
@@ -61,21 +67,52 @@ class MockVisualProvider(VisualGenerationProvider):
         return snapshot
 
 
-def enabled_render_settings() -> Settings:
+class FakeOutputFetcher(ProviderOutputFetcher):
+    def __init__(
+        self,
+        *,
+        content: bytes = b"safe-fake-mp4",
+        content_type: str = "video/mp4",
+    ) -> None:
+        self.content = content
+        self.content_type = content_type
+        self.calls = 0
+
+    async def fetch(self, source_url: str) -> FetchedVideo:
+        self.calls += 1
+        assert source_url == "https://provider.example/video.mp4"
+        return FetchedVideo(self.content, self.content_type)
+
+
+def enabled_render_settings(
+    artifact_root: Path | None = None,
+) -> Settings:
     return Settings(
         _env_file=None,
         enable_video_render_execution=True,
+        video_artifact_storage_root=(
+            str(artifact_root) if artifact_root is not None else None
+        ),
     )
 
 
 def execution_service(
     db_session: Session,
     provider: MockVisualProvider,
+    *,
+    artifact_root: Path | None = None,
+    output_fetcher: ProviderOutputFetcher | None = None,
 ) -> VideoRenderExecutionService:
     return VideoRenderExecutionService(
         db_session,
         provider,
-        enabled_render_settings(),
+        enabled_render_settings(artifact_root),
+        output_fetcher=output_fetcher,
+        artifact_storage=(
+            LocalVideoArtifactStorage(artifact_root, 1_000_000)
+            if artifact_root is not None
+            else None
+        ),
     )
 
 
@@ -181,14 +218,17 @@ def test_submit_provider_error_is_safe_and_persisted(
         )
     except AppError as exc:
         assert exc.status_code == 502
-        assert exc.message == "Visual generation provider request failed"
+        assert exc.message == (
+            "Provider submission acknowledgement is unknown; "
+            "automatic retry is blocked"
+        )
         assert "sensitive" not in exc.message
     else:
         raise AssertionError("provider failures must be converted to AppError")
 
     db_session.refresh(task)
-    assert task.status == "FAILED"
-    assert task.error_code == "PROVIDER_SUBMIT_ERROR"
+    assert task.status == "SUBMIT_UNKNOWN"
+    assert task.error_code == "submit_unknown_network"
     assert "sensitive" not in (task.error_message or "")
 
 
@@ -211,7 +251,10 @@ def test_refresh_running_status(db_session: Session) -> None:
     assert provider.fetch_calls == 1
 
 
-def test_refresh_succeeded_creates_artifact(db_session: Session) -> None:
+def test_refresh_succeeded_creates_artifact(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
     provider = MockVisualProvider(
         snapshots=[
             VisualTaskSnapshot(
@@ -225,17 +268,24 @@ def test_refresh_succeeded_creates_artifact(db_session: Session) -> None:
     )
     task, _ = submit_task(db_session, provider)
 
+    fetcher = FakeOutputFetcher()
     result = asyncio.run(
-        execution_service(db_session, provider).refresh(task.id)
+        execution_service(
+            db_session,
+            provider,
+            artifact_root=tmp_path,
+            output_fetcher=fetcher,
+        ).refresh(task.id)
     )
 
     assert result.task.status == "SUCCEEDED"
     assert result.artifact is not None
-    assert result.artifact.provider_output_url == (
-        "https://provider.example/video.mp4"
-    )
-    assert result.artifact.artifact_metadata["provider_request_id"] == (
-        "fetch-request-001"
+    assert result.artifact.provider_output_url is None
+    assert result.artifact.storage_path is not None
+    assert result.artifact.artifact_metadata["content_type"] == "video/mp4"
+    assert fetcher.calls == 1
+    assert (tmp_path / result.artifact.storage_path).read_bytes() == (
+        b"safe-fake-mp4"
     )
 
 
@@ -257,12 +307,17 @@ def test_refresh_failed_saves_provider_error(db_session: Session) -> None:
     )
 
     assert result.task.status == "FAILED"
-    assert result.task.error_code == "CONTENT_REJECTED"
-    assert result.task.error_message == "The content policy rejected the task"
+    assert result.task.error_code == "provider_failed"
+    assert result.task.error_message == (
+        "Provider reported video generation failed"
+    )
     assert result.artifact is None
 
 
-def test_refresh_succeeded_is_idempotent(db_session: Session) -> None:
+def test_refresh_succeeded_is_idempotent(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
     provider = MockVisualProvider(
         snapshots=[
             VisualTaskSnapshot(
@@ -273,7 +328,13 @@ def test_refresh_succeeded_is_idempotent(db_session: Session) -> None:
         ]
     )
     task, _ = submit_task(db_session, provider)
-    service = execution_service(db_session, provider)
+    fetcher = FakeOutputFetcher()
+    service = execution_service(
+        db_session,
+        provider,
+        artifact_root=tmp_path,
+        output_fetcher=fetcher,
+    )
 
     first = asyncio.run(service.refresh(task.id))
     second = asyncio.run(service.refresh(task.id))
@@ -283,6 +344,7 @@ def test_refresh_succeeded_is_idempotent(db_session: Session) -> None:
     assert first.artifact.id == second.artifact.id
     assert second.external_call is False
     assert provider.fetch_calls == 1
+    assert fetcher.calls == 1
     assert (
         db_session.scalar(
             select(func.count()).select_from(VideoRenderArtifact)

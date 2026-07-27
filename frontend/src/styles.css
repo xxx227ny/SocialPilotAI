@@ -1062,7 +1062,9 @@ textarea { font: inherit; }
 }
 
 .video-render-preflight__status.is-failed,
-.video-render-preflight__status.is-project_failed {
+.video-render-preflight__status.is-project_failed,
+.video-render-preflight__status.is-submit_unknown,
+.video-render-preflight__status.is-artifact_persist_failed {
   background: #fee2e2;
   color: #991b1b;
 }
@@ -1151,9 +1153,188 @@ textarea { font: inherit; }
   opacity: 0.58;
 }
 
+.video-render-preflight__safe-error {
+  margin: 0;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid rgba(185, 28, 28, 0.24);
+  border-radius: 12px;
+  background: #fff7f7;
+  color: #991b1b;
+}
+
+.video-render-preflight__execution {
+  display: grid;
+  gap: 0.8rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid rgba(43, 53, 69, 0.12);
+}
+
+.video-render-preflight__execution > label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  color: #4b5565;
+  font-size: 0.86rem;
+}
+
+.video-render-preflight__execution > label input {
+  flex: none;
+  margin-top: 0.15rem;
+}
+
+.video-render-preflight__execution > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.video-render-preflight__execution p {
+  margin: 0;
+  color: #697386;
+  font-size: 0.82rem;
+}
+
+.video-render-preflight__execution button,
+.video-render-task-result__refresh {
+  min-height: 2.6rem;
+  padding: 0.65rem 0.9rem;
+  border: 0;
+  border-radius: 11px;
+  background: #5746af;
+  color: #fff;
+  font-weight: 750;
+}
+
+.video-render-preflight__execution button:disabled,
+.video-render-task-result__refresh:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.video-render-task-result {
+  display: grid;
+  gap: 0.8rem;
+  padding: 0.95rem;
+  border: 1px solid rgba(77, 61, 147, 0.2);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.video-render-task-result > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.video-render-task-result > header span {
+  color: #697386;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.video-render-task-result > header h5 {
+  margin: 0.2rem 0 0;
+  font-size: 1rem;
+}
+
+.video-render-task-result > header > strong {
+  padding: 0.4rem 0.6rem;
+  border-radius: 999px;
+  background: #e8eefc;
+  color: #344b78;
+  font-size: 0.76rem;
+}
+
+.video-render-task-result__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+  gap: 0.55rem;
+}
+
+.video-render-task-result__facts > div {
+  padding: 0.65rem;
+  border-radius: 11px;
+  background: #f6f7fb;
+}
+
+.video-render-task-result__facts span,
+.video-render-task-result__facts strong {
+  display: block;
+}
+
+.video-render-task-result__facts span {
+  color: #697386;
+  font-size: 0.7rem;
+}
+
+.video-render-task-result__facts strong {
+  margin-top: 0.15rem;
+  overflow-wrap: anywhere;
+}
+
+.video-render-task-result__error,
+.video-render-task-result__warning {
+  margin: 0;
+  padding: 0.75rem;
+  border-radius: 11px;
+}
+
+.video-render-task-result__error {
+  background: #fff1f2;
+  color: #9f1239;
+}
+
+.video-render-task-result__error p {
+  margin: 0.25rem 0 0;
+}
+
+.video-render-task-result__warning {
+  background: #fff7ed;
+  color: #9a3412;
+  font-size: 0.86rem;
+}
+
+.video-render-task-result__artifact-empty {
+  margin: 0;
+  color: #697386;
+}
+
+.video-render-artifact {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.video-render-artifact > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.video-render-artifact span {
+  color: #697386;
+  font-size: 0.78rem;
+}
+
+.video-render-artifact video {
+  width: min(100%, 420px);
+  max-height: 520px;
+  border-radius: 14px;
+  background: #111827;
+}
+
+.video-render-task-result__refresh {
+  justify-self: start;
+}
+
 @media (max-width: 720px) {
   .video-render-preflight__header,
-  .video-render-preflight__future-action {
+  .video-render-preflight__future-action,
+  .video-render-preflight__execution > div,
+  .video-render-task-result > header,
+  .video-render-artifact > div {
     align-items: stretch;
     flex-direction: column;
   }

@@ -25,6 +25,20 @@ class VideoRenderTaskRepository:
             )
         )
 
+    def get_latest_by_video_project(
+        self, video_project_id: int
+    ) -> VideoRenderTask | None:
+        statement = (
+            select(VideoRenderTask)
+            .where(VideoRenderTask.video_project_id == video_project_id)
+            .order_by(
+                VideoRenderTask.created_at.desc(),
+                VideoRenderTask.id.desc(),
+            )
+            .limit(1)
+        )
+        return self.session.scalar(statement)
+
     def create(
         self,
         *,
@@ -64,7 +78,32 @@ class VideoRenderTaskRepository:
                 VideoRenderTask.provider_task_id.is_(None),
             )
             .values(
-                status="SUBMITTED",
+                status="SUBMITTING",
+                error_code=None,
+                error_message=None,
+            )
+            .execution_options(synchronize_session="fetch")
+        )
+        if result.rowcount != 1:
+            self.session.rollback()
+            return None
+        self.session.commit()
+        return self.get(task_id)
+
+    def claim_for_refresh(
+        self,
+        task_id: int,
+        expected_status: str,
+    ) -> VideoRenderTask | None:
+        result = self.session.execute(
+            update(VideoRenderTask)
+            .where(
+                VideoRenderTask.id == task_id,
+                VideoRenderTask.status == expected_status,
+                VideoRenderTask.provider_task_id.is_not(None),
+            )
+            .values(
+                status="REFRESHING",
                 error_code=None,
                 error_message=None,
             )

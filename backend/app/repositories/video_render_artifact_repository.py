@@ -33,6 +33,37 @@ class VideoRenderArtifactRepository:
             )
         )
 
+    def get(self, artifact_id: int) -> VideoRenderArtifact | None:
+        return self.session.get(VideoRenderArtifact, artifact_id)
+
+    def finalize_succeeded(
+        self,
+        task: VideoRenderTask,
+        data: VideoRenderArtifactCreate,
+    ) -> VideoRenderArtifact:
+        artifact = self.get_by_task_id(task.id)
+        if artifact is None:
+            artifact = VideoRenderArtifact(
+                video_render_task_id=task.id,
+                provider_output_url=data.provider_output_url,
+                storage_path=data.storage_path,
+                artifact_metadata=data.metadata,
+                expires_at=data.expires_at,
+            )
+            self.session.add(artifact)
+        else:
+            artifact.provider_output_url = data.provider_output_url
+            artifact.storage_path = data.storage_path
+            artifact.artifact_metadata = data.metadata
+            artifact.expires_at = data.expires_at
+        task.status = "SUCCEEDED"
+        task.error_code = None
+        task.error_message = None
+        self.session.commit()
+        self.session.refresh(task)
+        self.session.refresh(artifact)
+        return artifact
+
     def update(
         self,
         artifact: VideoRenderArtifact,

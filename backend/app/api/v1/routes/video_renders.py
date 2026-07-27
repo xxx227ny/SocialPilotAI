@@ -2,9 +2,12 @@ from collections.abc import Callable
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import (
+    ProviderOutputFetcherDep,
+    VideoArtifactStorageDep,
     VideoRenderExecutionGateDep,
     VisualProviderDep,
     get_visual_generation_provider,
@@ -16,7 +19,9 @@ from app.providers.visual_base import VisualGenerationProvider
 from app.schemas.video import VideoProjectSchema
 from app.schemas.video_render import (
     LiveVideoRenderRequest,
+    VideoRenderArtifactSafeRead,
     VideoRenderExecutionSchema,
+    VideoRenderOperationRead,
     VideoRenderPreflightRead,
     VideoRenderTaskCreate,
     VideoRenderTaskSchema,
@@ -25,6 +30,11 @@ from app.schemas.video_render_artifact import VideoRenderArtifactSchema
 from app.services.live_video_render_service import LiveVideoRenderService
 from app.services.video_render_execution_service import (
     VideoRenderExecutionService,
+)
+from app.services.video_render_operation_service import (
+    VideoArtifactAccessService,
+    VideoProjectRenderExecutionService,
+    VideoRenderRecoveryService,
 )
 from app.services.video_render_preflight import (
     VideoProjectQueryService,
@@ -96,6 +106,40 @@ def get_video_render_preflight(
 
 
 @router.post(
+    "/video-projects/{video_project_id}/render-execution",
+    response_model=VideoRenderOperationRead,
+)
+async def execute_video_project_render(
+    video_project_id: int,
+    db: DbSession,
+    execution_gate: VideoRenderExecutionGateDep,
+    provider: VisualProviderDep,
+    app_settings: SettingsDep,
+    output_fetcher: ProviderOutputFetcherDep,
+    artifact_storage: VideoArtifactStorageDep,
+) -> VideoRenderOperationRead:
+    del execution_gate
+    return await VideoProjectRenderExecutionService(
+        db,
+        provider,
+        app_settings,
+        output_fetcher,
+        artifact_storage,
+    ).execute(video_project_id)
+
+
+@router.get(
+    "/video-projects/{video_project_id}/render-tasks/latest",
+    response_model=VideoRenderOperationRead,
+)
+def get_latest_video_render_task(
+    video_project_id: int,
+    db: DbSession,
+) -> VideoRenderOperationRead:
+    return VideoRenderRecoveryService(db).get_latest(video_project_id)
+
+
+@router.post(
     "/video-projects/{video_project_id}/live-render",
     response_model=VideoRenderExecutionSchema,
 )
@@ -122,6 +166,17 @@ def get_video_render_task(
     task_id: int, db: DbSession
 ) -> VideoRenderTaskSchema:
     return VideoRenderService(db).get_render_task(task_id)
+
+
+@router.get(
+    "/video-render-tasks/{task_id}/recovery",
+    response_model=VideoRenderOperationRead,
+)
+def recover_video_render_task(
+    task_id: int,
+    db: DbSession,
+) -> VideoRenderOperationRead:
+    return VideoRenderRecoveryService(db).get_task(task_id)
 
 
 @router.post(
@@ -152,9 +207,41 @@ async def refresh_video_render_task(
     execution_gate: VideoRenderExecutionGateDep,
     provider: VisualProviderDep,
     app_settings: SettingsDep,
+    output_fetcher: ProviderOutputFetcherDep,
+    artifact_storage: VideoArtifactStorageDep,
 ) -> VideoRenderExecutionSchema:
     del execution_gate
     result = await VideoRenderExecutionService(
-        db, provider, app_settings
+        db,
+        provider,
+        app_settings,
+        output_fetcher=output_fetcher,
+        artifact_storage=artifact_storage,
     ).refresh(task_id)
     return VideoRenderExecutionSchema.model_validate(result)
+
+
+@router.get(
+    "/video-render-artifacts/{artifact_id}",
+    response_model=VideoRenderArtifactSafeRead,
+)
+def get_video_render_artifact(
+    artifact_id: int,
+    db: DbSession,
+    artifact_storage: VideoArtifactStorageDep,
+) -> VideoRenderArtifactSafeRead:
+    return VideoArtifactAccessService(
+        db, artifact_storage
+    ).get_metadata(artifact_id)
+
+
+@router.get("/video-render-artifacts/{artifact_id}/content")
+def get_video_render_artifact_content(
+    artifact_id: int,
+    db: DbSession,
+    artifact_storage: VideoArtifactStorageDep,
+) -> FileResponse:
+    path, content_type = VideoArtifactAccessService(
+        db, artifact_storage
+    ).resolve_content(artifact_id)
+    return FileResponse(path, media_type=content_type)

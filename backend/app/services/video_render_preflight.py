@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
@@ -17,11 +19,11 @@ VIDEO_PROJECT_ASSOCIATION_NOTICE = (
     "当前VideoProject持久化关联Product、MarketingStrategy和CopyMatrix；"
     "没有MarketingBrief外键，不能声明与MarketingBrief存在持久化关联。"
 )
-VIDEO_RENDER_CONTRACT_REQUIREMENTS = [
+VIDEO_RENDER_CONTRACT_CAPABILITIES = {
     "exact_video_project_render_task_execution_contract",
     "uncertain_submit_recovery_contract",
     "durable_video_artifact_storage_contract",
-]
+}
 
 
 class VideoProjectQueryService:
@@ -83,10 +85,22 @@ class VideoRenderPreflightService:
             missing.append("provider_configuration")
         if not self.settings.enable_video_render_execution:
             missing.append("video_render_execution")
+        artifact_storage_configured = self._artifact_storage_configured()
+        if not artifact_storage_configured:
+            missing.append("artifact_storage_configuration")
 
-        missing.extend(VIDEO_RENDER_CONTRACT_REQUIREMENTS)
-        contract_ready = False
-        ready_for_execution = False
+        missing_contracts = self._missing_contract_requirements()
+        missing.extend(missing_contracts)
+        contract_ready = not missing_contracts
+        ready_for_execution = all(
+            (
+                input_ready,
+                provider_configured,
+                self.settings.enable_video_render_execution,
+                artifact_storage_configured,
+                contract_ready,
+            )
+        )
         return VideoRenderPreflightRead(
             video_project_id=project.id,
             product_id=product.id,
@@ -95,6 +109,7 @@ class VideoRenderPreflightService:
             input_ready=input_ready,
             provider_configured=provider_configured,
             execution_enabled=self.settings.enable_video_render_execution,
+            artifact_storage_configured=artifact_storage_configured,
             contract_ready=contract_ready,
             ready_for_execution=ready_for_execution,
             missing_requirements=missing,
@@ -175,3 +190,16 @@ class VideoRenderPreflightService:
             (self.settings.wanx_workspace_id or "").strip()
             and self.settings.wanx_region in WANX_REGION_HOSTS
         )
+
+    def _artifact_storage_configured(self) -> bool:
+        configured = (self.settings.video_artifact_storage_root or "").strip()
+        return bool(configured and Path(configured).is_absolute())
+
+    @staticmethod
+    def _missing_contract_requirements() -> list[str]:
+        implemented = {
+            "exact_video_project_render_task_execution_contract",
+            "uncertain_submit_recovery_contract",
+            "durable_video_artifact_storage_contract",
+        }
+        return sorted(VIDEO_RENDER_CONTRACT_CAPABILITIES - implemented)

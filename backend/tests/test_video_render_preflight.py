@@ -1,4 +1,5 @@
 from datetime import timedelta
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
@@ -21,13 +22,20 @@ def preflight_path(project_id: int) -> str:
     return f"/api/v1/video-projects/{project_id}/render-preflight"
 
 
-def configured_settings(*, execution_enabled: bool = False) -> Settings:
+def configured_settings(
+    *,
+    execution_enabled: bool = False,
+    storage_root: Path | None = None,
+) -> Settings:
     return Settings(
         _env_file=None,
         wanx_api_key="safe-test-placeholder",
         wanx_workspace_id="safe-test-workspace",
         wanx_region="cn-beijing",
         enable_video_render_execution=execution_enabled,
+        video_artifact_storage_root=(
+            str(storage_root) if storage_root is not None else None
+        ),
     )
 
 
@@ -75,16 +83,25 @@ def test_exact_project_and_preflight_are_read_only(
     assert body["provider"] == "Wanx"
     assert body["provider_configured"] is True
     assert body["execution_enabled"] is False
-    assert body["contract_ready"] is False
+    assert body["artifact_storage_configured"] is False
+    assert body["contract_ready"] is True
     assert body["ready_for_execution"] is False
     assert body["preflight_only"] is True
     assert body["scene_count"] == 2
+    assert "video_render_execution" in body["missing_requirements"]
+    assert "artifact_storage_configuration" in body["missing_requirements"]
     assert (
         "exact_video_project_render_task_execution_contract"
-        in body["missing_requirements"]
+        not in body["missing_requirements"]
     )
-    assert "uncertain_submit_recovery_contract" in body["missing_requirements"]
-    assert "durable_video_artifact_storage_contract" in body["missing_requirements"]
+    assert (
+        "uncertain_submit_recovery_contract"
+        not in body["missing_requirements"]
+    )
+    assert (
+        "durable_video_artifact_storage_contract"
+        not in body["missing_requirements"]
+    )
     assert "MarketingBrief" in body["association_notice"]
     assert provider_resolutions == 0
     assert before == after == (0, 0)
@@ -195,13 +212,38 @@ def test_preflight_reports_safe_provider_and_execution_booleans(
     body = response.json()
     assert body["provider_configured"] is False
     assert body["execution_enabled"] is True
-    assert body["contract_ready"] is False
+    assert body["artifact_storage_configured"] is False
+    assert body["contract_ready"] is True
     assert body["ready_for_execution"] is False
     serialized = response.text.casefold()
     assert "safe-test-placeholder" not in serialized
     assert "safe-test-workspace" not in serialized
     assert "authorization" not in serialized
     assert "render_prompt" not in serialized
+
+
+def test_preflight_is_ready_only_with_all_runtime_gates(
+    client: TestClient,
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    project = create_video_project(db_session)
+    app.dependency_overrides[get_settings] = lambda: configured_settings(
+        execution_enabled=True,
+        storage_root=tmp_path,
+    )
+
+    response = client.get(preflight_path(project.id))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["input_ready"] is True
+    assert body["provider_configured"] is True
+    assert body["execution_enabled"] is True
+    assert body["artifact_storage_configured"] is True
+    assert body["contract_ready"] is True
+    assert body["ready_for_execution"] is True
+    assert body["missing_requirements"] == []
 
 
 def test_latest_video_project_is_deterministic_and_read_only(

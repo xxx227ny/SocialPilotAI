@@ -4,6 +4,8 @@ import type {
   VideoProject,
   VideoProjectRequest,
   VideoRenderArtifact,
+  VideoRenderArtifactSafe,
+  VideoRenderOperation,
   VideoRenderPreflight,
 } from "../types/video";
 import axios from "axios";
@@ -54,6 +56,72 @@ export async function getVideoRenderPreflight(
 
 export function isVideoProjectNotFound(error: unknown): boolean {
   return axios.isAxiosError(error) && error.response?.status === 404;
+}
+
+export function isVideoRenderTaskNotFound(error: unknown): boolean {
+  return axios.isAxiosError(error) && error.response?.status === 404;
+}
+
+export async function executeVideoProjectRender(
+  videoProjectId: number,
+  signal?: AbortSignal,
+): Promise<VideoRenderOperation> {
+  const response = await apiClient.post<VideoRenderOperation>(
+    `/video-projects/${videoProjectId}/render-execution`,
+    undefined,
+    { signal },
+  );
+  return response.data;
+}
+
+export async function getLatestVideoRenderTask(
+  videoProjectId: number,
+  signal?: AbortSignal,
+): Promise<VideoRenderOperation> {
+  const response = await apiClient.get<VideoRenderOperation>(
+    `/video-projects/${videoProjectId}/render-tasks/latest`,
+    { signal },
+  );
+  return response.data;
+}
+
+export async function recoverVideoRenderTask(
+  taskId: number,
+  signal?: AbortSignal,
+): Promise<VideoRenderOperation> {
+  const response = await apiClient.get<VideoRenderOperation>(
+    `/video-render-tasks/${taskId}/recovery`,
+    { signal },
+  );
+  return response.data;
+}
+
+export async function refreshWorkspaceVideoRenderTask(
+  taskId: number,
+  signal?: AbortSignal,
+): Promise<VideoRenderOperation> {
+  await apiClient.post(
+    `/video-render-tasks/${taskId}/refresh`,
+    undefined,
+    { signal },
+  );
+  return recoverVideoRenderTask(taskId, signal);
+}
+
+export async function getVideoRenderArtifactMetadata(
+  artifactId: number,
+  signal?: AbortSignal,
+): Promise<VideoRenderArtifactSafe> {
+  const response = await apiClient.get<VideoRenderArtifactSafe>(
+    `/video-render-artifacts/${artifactId}`,
+    { signal },
+  );
+  return response.data;
+}
+
+export function getVideoRenderArtifactContentUrl(artifactId: number): string {
+  const baseUrl = apiClient.defaults.baseURL?.replace(/\/$/, "") ?? "";
+  return `${baseUrl}/video-render-artifacts/${artifactId}/content`;
 }
 
 export async function getVideoRenderArtifacts(

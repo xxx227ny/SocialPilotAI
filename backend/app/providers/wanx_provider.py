@@ -11,6 +11,8 @@ from app.providers.base import (
     ProviderConfigurationError,
     ProviderConnectionError,
     ProviderModelError,
+    ProviderQuotaError,
+    ProviderTimeoutError,
 )
 from app.providers.visual_base import (
     VisualGenerationProvider,
@@ -141,14 +143,16 @@ class WanxProvider(VisualGenerationProvider):
                     json=json,
                 )
         except httpx.TimeoutException as exc:
-            raise ProviderConnectionError("Wanx request timed out") from exc
+            raise ProviderTimeoutError("Wanx request timed out") from exc
         except httpx.RequestError as exc:
             raise ProviderConnectionError("Wanx service is unavailable") from exc
 
         if response.status_code in {401, 403}:
             raise ProviderAuthenticationError("Wanx authentication failed")
         if response.status_code == 429:
-            raise ProviderModelError("Wanx request was rate limited")
+            raise ProviderQuotaError("Wanx request was rate limited")
+        if response.status_code >= 500:
+            raise ProviderConnectionError("Wanx service is unavailable")
         if response.is_error:
             raise ProviderModelError(
                 f"Wanx request failed with status {response.status_code}"

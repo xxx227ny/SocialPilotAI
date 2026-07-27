@@ -1,4 +1,5 @@
 from pydantic import ValidationError
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppError
@@ -13,12 +14,58 @@ from app.schemas.video_render import VideoRenderTaskCreate
 from app.schemas.video_render_artifact import VideoRenderArtifactCreate
 
 RENDER_TASK_TRANSITIONS: dict[str, frozenset[str]] = {
-    "CREATED": frozenset({"SUBMITTED", "CANCELED"}),
-    "SUBMITTED": frozenset(
-        {"PENDING", "RUNNING", "SUCCEEDED", "FAILED", "CANCELED"}
+    "CREATED": frozenset({"SUBMITTING", "SUBMITTED", "CANCELED"}),
+    "SUBMITTING": frozenset(
+        {
+            "SUBMITTED",
+            "PENDING",
+            "RUNNING",
+            "FAILED",
+            "SUBMIT_UNKNOWN",
+        }
     ),
-    "PENDING": frozenset({"RUNNING", "SUCCEEDED", "FAILED", "CANCELED"}),
-    "RUNNING": frozenset({"SUCCEEDED", "FAILED", "CANCELED"}),
+    "SUBMITTED": frozenset(
+        {
+            "REFRESHING",
+            "PENDING",
+            "RUNNING",
+            "SUCCEEDED",
+            "FAILED",
+            "CANCELED",
+            "ARTIFACT_PERSIST_FAILED",
+        }
+    ),
+    "PENDING": frozenset(
+        {
+            "REFRESHING",
+            "RUNNING",
+            "SUCCEEDED",
+            "FAILED",
+            "CANCELED",
+            "ARTIFACT_PERSIST_FAILED",
+        }
+    ),
+    "RUNNING": frozenset(
+        {
+            "REFRESHING",
+            "SUCCEEDED",
+            "FAILED",
+            "CANCELED",
+            "ARTIFACT_PERSIST_FAILED",
+        }
+    ),
+    "REFRESHING": frozenset(
+        {
+            "SUBMITTED",
+            "PENDING",
+            "RUNNING",
+            "SUCCEEDED",
+            "FAILED",
+            "ARTIFACT_PERSIST_FAILED",
+        }
+    ),
+    "SUBMIT_UNKNOWN": frozenset(),
+    "ARTIFACT_PERSIST_FAILED": frozenset(),
     "SUCCEEDED": frozenset(),
     "FAILED": frozenset(),
     "CANCELED": frozenset(),
@@ -29,6 +76,7 @@ class VideoRenderService:
     """Create and read local render tasks without any provider interaction."""
 
     def __init__(self, session: Session) -> None:
+        self.session = session
         self.video_repository = VideoProjectRepository(session)
         self.render_repository = VideoRenderTaskRepository(session)
         self.artifact_repository = VideoRenderArtifactRepository(session)
@@ -36,6 +84,12 @@ class VideoRenderService:
     def create_render_task(
         self, video_project_id: int, data: VideoRenderTaskCreate
     ) -> VideoRenderTask:
+        task, _ = self.create_render_task_with_reuse(video_project_id, data)
+        return task
+
+    def create_render_task_with_reuse(
+        self, video_project_id: int, data: VideoRenderTaskCreate
+    ) -> tuple[VideoRenderTask, bool]:
         project = self.video_repository.get(video_project_id)
         if project is None:
             raise AppError("Video project not found", status_code=404)
@@ -70,20 +124,41 @@ class VideoRenderService:
                     "Idempotency key is already used for another render request",
                     status_code=409,
                 )
-            return existing
+            return existing, True
 
-        return self.render_repository.create(
-            video_project_id=project.id,
-            scene_sequence=scene.sequence,
-            render_prompt=self._build_render_prompt(
-                scene=scene,
-                aspect_ratio=project.aspect_ratio,
-            ),
-            duration_seconds=scene.duration_seconds,
-            aspect_ratio=project.aspect_ratio,
-            resolution=data.resolution,
-            idempotency_key=data.idempotency_key,
-        )
+        try:
+            return (
+                self.render_repository.create(
+                    video_project_id=project.id,
+                    scene_sequence=scene.sequence,
+                    render_prompt=self._build_render_prompt(
+                        scene=scene,
+                        aspect_ratio=project.aspect_ratio,
+                    ),
+                    duration_seconds=scene.duration_seconds,
+                    aspect_ratio=project.aspect_ratio,
+                    resolution=data.resolution,
+                    idempotency_key=data.idempotency_key,
+                ),
+                False,
+            )
+        except IntegrityError as exc:
+            self.session.rollback()
+            concurrent = self.render_repository.get_by_idempotency_key(
+                data.idempotency_key
+            )
+            if concurrent is None:
+                raise
+            if (
+                concurrent.video_project_id != video_project_id
+                or concurrent.scene_sequence != data.scene_sequence
+                or concurrent.resolution != data.resolution
+            ):
+                raise AppError(
+                    "Idempotency key is already used for another render request",
+                    status_code=409,
+                ) from exc
+            return concurrent, True
 
     def get_render_task(self, task_id: int) -> VideoRenderTask:
         task = self.render_repository.get(task_id)
