@@ -365,6 +365,22 @@ The first frontend build attempt ran from the backend directory and failed with 
 - Commit/stage/push/tag: none.
 - Single recommended next stage: Controlled Real Wanx Render Verification Readiness. Readiness itself is read-only; any real Wanx call requires a later, separate, explicit user authorization.
 
+## 2026-07-27 — V2-C3.1C Controlled Real Wanx Render Verification Evidence
+
+- Contract Commit: `7257c189f0ebdec6a53b800e988a3012d129afd6`.
+- Provider and model: Alibaba Cloud Bailian / Wanx, `wan2.7-t2v`, Region `cn-beijing`, Text-to-Video.
+- Authorization and calls: maximum Submit 1 / actual 1; maximum Refresh 19 / actual 3 with a minimum 15-second interval; maximum output download 1 / actual 1; automatic and outer retries 0; Qwen 0; Live Demo 0.
+- HTTP and state result: one `render-execution` POST returned HTTP 200; all three Refresh requests returned HTTP 200; state changed `PENDING → RUNNING → RUNNING → SUCCEEDED`; total elapsed time was 49.3 seconds. There was no second Submit, `SUBMIT_UNKNOWN`, or Artifact storage failure.
+- Redacted input: exact Scene 1, requested 2 seconds, `9:16`, and `720P`, with a short non-sensitive portable-blender product scene. The complete Prompt was not recorded.
+- Isolated object counts: Product 1, MarketingStrategy 1, CopyMatrix 1, VideoProject 1, VideoRenderTask 1, and VideoRenderArtifact 1. Preparation data was deterministic and local; Qwen was not used. Task/VideoProject and Product/Strategy/CopyMatrix associations were correct; VideoProject still has no MarketingBrief foreign key.
+- Artifact evidence: `video/mp4`, 825,844 bytes, SHA-256 `e30bbdb2904b28b73b227f652593c4da4517e293d1680fc9aec3c97a5bfc33ce`; a controlled relative `storage_path`; no persisted Provider playback URL; size/hash metadata matched; stable content API reading passed; second download 0.
+- Media and visual boundary: no `ffprobe`, media player, or decoder independently parsed the generated MP4. Requested `720P`, `9:16`, and 2 seconds are not asserted as decoded output properties. Codec, actual resolution/duration, frame rate, audio track, and visual quality were not independently accepted.
+- Product boundary: Scene 1 only, not a multi-scene composite; explicit Refresh rather than automatic polling; `SUBMIT_UNKNOWN` requires manual reconciliation; local filesystem Artifact storage only; no object storage or dedicated Range-support claim.
+- Security and cleanup: no Key, Workspace ID, Authorization Header, Provider Task ID value, complete Prompt, raw Provider request/response, signed URL, or private path was recorded. Temporary SQLite, Artifact/video, script, logs, progress, and result files were deleted; ports 8000/5173 were released; repository `.env`, database, frozen MP4, and Git working tree remained unchanged.
+- Retention and cost: the generated video was deleted and is not a permanent evidence asset. The real Submit may have consumed Alibaba Cloud Bailian Credits; exact Credits, amount, and remaining balance were not queried or invented.
+- Authorization state: Submit, Refresh, and download authorization is exhausted. No further Wanx call or Provider-output access is permitted without new independent user authorization.
+- Next pending roadmap node: V2-C3.2A Stable asset display and download; it was not started in this stage.
+
 ## V2 stage update template
 
 ```markdown
