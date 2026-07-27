@@ -3,6 +3,7 @@ import asyncio
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.config import Settings
 from app.core.exceptions import AppError
 from app.models import VideoRenderArtifact
 from app.providers.base import ProviderConnectionError
@@ -60,6 +61,24 @@ class MockVisualProvider(VisualGenerationProvider):
         return snapshot
 
 
+def enabled_render_settings() -> Settings:
+    return Settings(
+        _env_file=None,
+        enable_video_render_execution=True,
+    )
+
+
+def execution_service(
+    db_session: Session,
+    provider: MockVisualProvider,
+) -> VideoRenderExecutionService:
+    return VideoRenderExecutionService(
+        db_session,
+        provider,
+        enabled_render_settings(),
+    )
+
+
 def create_render_task(db_session: Session):
     project = create_video_project(db_session)
     return VideoRenderService(db_session).create_render_task(
@@ -67,12 +86,37 @@ def create_render_task(db_session: Session):
     )
 
 
+def test_service_gate_blocks_submit_and_refresh_before_provider(
+    db_session: Session,
+) -> None:
+    task = create_render_task(db_session)
+    provider = MockVisualProvider()
+    service = VideoRenderExecutionService(
+        db_session,
+        provider,
+        Settings(_env_file=None),
+    )
+
+    for operation in (service.submit, service.refresh):
+        try:
+            asyncio.run(operation(task.id))
+        except AppError as exc:
+            assert exc.status_code == 503
+        else:
+            raise AssertionError("disabled service execution must fail closed")
+
+    db_session.refresh(task)
+    assert task.status == "CREATED"
+    assert provider.submit_calls == 0
+    assert provider.fetch_calls == 0
+
+
 def submit_task(
     db_session: Session, provider: MockVisualProvider
 ):
     task = create_render_task(db_session)
     result = asyncio.run(
-        VideoRenderExecutionService(db_session, provider).submit(task.id)
+        execution_service(db_session, provider).submit(task.id)
     )
     return task, result
 
@@ -96,7 +140,7 @@ def test_duplicate_submit_is_rejected(db_session: Session) -> None:
 
     try:
         asyncio.run(
-            VideoRenderExecutionService(db_session, provider).submit(task.id)
+            execution_service(db_session, provider).submit(task.id)
         )
     except AppError as exc:
         assert exc.status_code == 409
@@ -113,7 +157,7 @@ def test_non_created_task_is_rejected(db_session: Session) -> None:
 
     try:
         asyncio.run(
-            VideoRenderExecutionService(db_session, provider).submit(task.id)
+            execution_service(db_session, provider).submit(task.id)
         )
     except AppError as exc:
         assert exc.status_code == 409
@@ -133,7 +177,7 @@ def test_submit_provider_error_is_safe_and_persisted(
 
     try:
         asyncio.run(
-            VideoRenderExecutionService(db_session, provider).submit(task.id)
+            execution_service(db_session, provider).submit(task.id)
         )
     except AppError as exc:
         assert exc.status_code == 502
@@ -159,7 +203,7 @@ def test_refresh_running_status(db_session: Session) -> None:
     task, _ = submit_task(db_session, provider)
 
     result = asyncio.run(
-        VideoRenderExecutionService(db_session, provider).refresh(task.id)
+        execution_service(db_session, provider).refresh(task.id)
     )
 
     assert result.task.status == "RUNNING"
@@ -182,7 +226,7 @@ def test_refresh_succeeded_creates_artifact(db_session: Session) -> None:
     task, _ = submit_task(db_session, provider)
 
     result = asyncio.run(
-        VideoRenderExecutionService(db_session, provider).refresh(task.id)
+        execution_service(db_session, provider).refresh(task.id)
     )
 
     assert result.task.status == "SUCCEEDED"
@@ -209,7 +253,7 @@ def test_refresh_failed_saves_provider_error(db_session: Session) -> None:
     task, _ = submit_task(db_session, provider)
 
     result = asyncio.run(
-        VideoRenderExecutionService(db_session, provider).refresh(task.id)
+        execution_service(db_session, provider).refresh(task.id)
     )
 
     assert result.task.status == "FAILED"
@@ -229,7 +273,7 @@ def test_refresh_succeeded_is_idempotent(db_session: Session) -> None:
         ]
     )
     task, _ = submit_task(db_session, provider)
-    service = VideoRenderExecutionService(db_session, provider)
+    service = execution_service(db_session, provider)
 
     first = asyncio.run(service.refresh(task.id))
     second = asyncio.run(service.refresh(task.id))

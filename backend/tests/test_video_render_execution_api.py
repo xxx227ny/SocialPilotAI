@@ -2,10 +2,18 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_visual_generation_provider
+from app.core.config import Settings, get_settings
 from app.main import app
 from app.providers.visual_base import VisualTaskSnapshot
 from tests.test_video_render_execution_service import MockVisualProvider
 from tests.test_video_render_service import create_video_project
+
+
+def enabled_render_settings() -> Settings:
+    return Settings(
+        _env_file=None,
+        enable_video_render_execution=True,
+    )
 
 
 def create_task_through_api(
@@ -37,6 +45,7 @@ def test_execution_api_submits_and_refreshes_with_injected_provider(
             )
         ]
     )
+    app.dependency_overrides[get_settings] = enabled_render_settings
     app.dependency_overrides[get_visual_generation_provider] = lambda: provider
     task = create_task_through_api(client, db_session)
 
@@ -68,6 +77,7 @@ def test_execution_api_rejects_duplicate_submit(
     client: TestClient, db_session: Session
 ) -> None:
     provider = MockVisualProvider()
+    app.dependency_overrides[get_settings] = enabled_render_settings
     app.dependency_overrides[get_visual_generation_provider] = lambda: provider
     task = create_task_through_api(client, db_session)
 
@@ -79,3 +89,27 @@ def test_execution_api_rejects_duplicate_submit(
     assert first.status_code == 200
     assert duplicate.status_code == 409
     assert provider.submit_calls == 1
+
+
+def test_execution_api_gate_stops_before_provider_resolution(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    task = create_task_through_api(client, db_session)
+    provider_resolutions = 0
+
+    def forbidden_provider():
+        nonlocal provider_resolutions
+        provider_resolutions += 1
+        raise AssertionError("disabled execution resolved a Provider")
+
+    app.dependency_overrides[get_settings] = lambda: Settings(_env_file=None)
+    app.dependency_overrides[get_visual_generation_provider] = forbidden_provider
+
+    response = client.post(
+        f"/api/v1/video-render-tasks/{task['id']}/submit"
+    )
+
+    assert response.status_code == 503
+    assert provider_resolutions == 0
+    assert task["status"] == "CREATED"

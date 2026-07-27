@@ -27,6 +27,28 @@ export interface VideoProject extends VideoProjectRequest {
   updated_at: string;
 }
 
+export interface VideoRenderPreflight {
+  video_project_id: number;
+  product_id: number;
+  marketing_strategy_id: number;
+  copy_matrix_id: number;
+  input_ready: boolean;
+  provider: "Wanx";
+  provider_configured: boolean;
+  execution_enabled: boolean;
+  contract_ready: boolean;
+  ready_for_execution: boolean;
+  missing_requirements: string[];
+  platform: string;
+  duration_seconds: number;
+  aspect_ratio: string;
+  scene_count: number;
+  project_status: string;
+  preflight_only: true;
+  estimated_cost_notice: string;
+  association_notice: string;
+}
+
 export interface VideoRenderArtifact {
   id: number;
   video_render_task_id: number;

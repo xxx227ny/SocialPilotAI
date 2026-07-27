@@ -53,7 +53,8 @@ flowchart TB
     V2C22A --> V2C22B["✅ V2-C2.2B Exact-Strategy Copy save and recovery"]
     V2C22B --> V2C22C["✅ V2-C2.2C Real Copy Qwen Verification Evidence"]
     V2C22C --> V2C31A
-    V2C3 --> V2C31A["⏳ V2-C3.1A VideoProject to RenderTask"]
+    V2C3 --> V2C31A["✅ V2-C3.1A VideoProject to RenderTask operation entry"]
+    V2C31A --> V2C31B
     V2C3 --> V2C31B["⏳ V2-C3.1B Status and polling UI"]
     V2C3 --> V2C32A["⏳ V2-C3.2A Stable asset display and download"]
     V2C3 --> V2C32B["⏳ V2-C3.2B Recovery and fallback"]
@@ -176,5 +177,11 @@ The labels below reconstruct submission work from tracked evidence. Only S0, S2,
 | Status | Date | Contract commit | Controlled execution | Verified result | Association boundary | Next |
 |---|---:|---|---|---|---|---|
 | ✅ Completed | 2026-07-27 | `88429d7` | One separately authorized task-bound `qwen-plus` Copy call; one Provider call, one execution POST, zero SDK retries, and zero outer retries | HTTP 200; exact US/TikTok Brief snapshot and exact Strategy inputs passed boolean Prompt checks; one TikTok-only CopyMatrix was written to isolated temporary SQLite; Wanx, VideoProject, VideoRenderTask, and VideoRenderArtifact remained 0; cleanup passed | CopyMatrix persists Product and Strategy IDs but has no MarketingBrief foreign key. The authorization is exhausted, and no further real AI call is permitted without new explicit authorization | V2-C3.1A VideoProject to RenderTask Operation Entry |
+
+### V2-C3.1A VideoProject to RenderTask operation entry
+
+| Status | Date | Read and Preflight contract | Execution safety boundary | Verified result | Known limitation | Next |
+|---|---:|---|---|---|---|---|
+| ✅ Completed; checkpoint pending | 2026-07-27 | Added exact `GET /api/v1/video-projects/{video_project_id}`, deterministic Product-scoped `GET /api/v1/products/{product_id}/video-projects/latest`, and read-only `GET /api/v1/video-projects/{video_project_id}/render-preflight`. Preflight validates the exact persisted Product, MarketingStrategy, CopyMatrix, VideoProject fields, scene schema, and timeline without building or returning a Provider Prompt | Added independent Backend `ENABLE_VIDEO_RENDER_EXECUTION` and frontend `VITE_ENABLE_VIDEO_RENDER_EXECUTION`, both default false. Ordinary submit/refresh routes now gate before Provider resolution and the execution service repeats the gate. The workspace button is natively disabled with no submit handler. Existing fixed live-demo behavior remains isolated behind its separate flag | Video/Render/Wanx tests: 51 passed; Product/Marketing/Strategy/Copy/Video regression: 160 passed; full pytest: 184 passed, 2 real-provider smoke tests skipped, 1 warning; Ruff, TypeScript, and Vite production build passed (125 modules). Isolated two-Product browser smoke verified A/B project isolation, Backend-down recovery, double-click protection, console 0/0, submit/refresh 0, and 0 RenderTask/Artifact writes. Presentation redirect, Demo Snapshot/0 AI Calls labels, four-stage navigation, and workspace isolation passed | `contract_ready=false`: the exact one-action RenderTask/submit contract, uncertain-submit recovery, and durable artifact storage are not implemented. VideoProject persists Product, MarketingStrategy, and CopyMatrix IDs but no MarketingBrief ID. The legacy local task-create API remains separate and is not called by the new workspace | V2-C3.1B Exact VideoProject RenderTask Execution, State and Recovery Contract |
 
 Substage gates are in [V2 Plan](v2-plan.md). Execution records belong in [Progress Log](progress-log.md).

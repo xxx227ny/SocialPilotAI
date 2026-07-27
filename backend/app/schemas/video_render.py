@@ -52,6 +52,28 @@ class VideoRenderExecutionSchema(BaseModel):
     external_call: bool
 
 
+class VideoRenderPreflightRead(BaseModel):
+    video_project_id: int
+    product_id: int
+    marketing_strategy_id: int
+    copy_matrix_id: int
+    input_ready: bool
+    provider: Literal["Wanx"] = "Wanx"
+    provider_configured: bool
+    execution_enabled: bool
+    contract_ready: bool
+    ready_for_execution: bool
+    missing_requirements: list[str]
+    platform: str
+    duration_seconds: int
+    aspect_ratio: str
+    scene_count: int
+    project_status: str
+    preflight_only: Literal[True] = True
+    estimated_cost_notice: str
+    association_notice: str
+
+
 class LiveVideoRenderRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

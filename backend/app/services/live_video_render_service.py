@@ -64,7 +64,7 @@ class LiveVideoRenderService:
 
         provider = self.provider_factory()
         return await VideoRenderExecutionService(
-            self.session, provider
+            self.session, provider, allow_live_demo=True
         ).submit(task.id)
 
     @staticmethod

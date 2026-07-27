@@ -58,6 +58,21 @@ CopyExecutionGateDep = Annotated[
 ]
 
 
+def require_video_render_execution_enabled(
+    app_settings: Annotated[Settings, Depends(get_settings)],
+) -> None:
+    if not app_settings.enable_video_render_execution:
+        raise AppError(
+            "Video render execution is disabled by the server",
+            status_code=503,
+        )
+
+
+VideoRenderExecutionGateDep = Annotated[
+    None, Depends(require_video_render_execution_enabled)
+]
+
+
 def get_visual_generation_provider() -> VisualGenerationProvider:
     try:
         return WanxProvider()

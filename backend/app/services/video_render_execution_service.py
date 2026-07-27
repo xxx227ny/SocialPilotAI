@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
+from app.core.config import Settings, settings
 from app.core.exceptions import AppError
 from app.models import VideoRenderArtifact, VideoRenderTask
 from app.providers.base import ProviderError
@@ -30,14 +31,22 @@ class VideoRenderExecutionService:
     """Orchestrate provider calls and synchronize local render state."""
 
     def __init__(
-        self, session: Session, provider: VisualGenerationProvider
+        self,
+        session: Session,
+        provider: VisualGenerationProvider,
+        app_settings: Settings = settings,
+        *,
+        allow_live_demo: bool = False,
     ) -> None:
         self.provider = provider
         self.render_service = VideoRenderService(session)
         self.render_repository = VideoRenderTaskRepository(session)
         self.artifact_repository = VideoRenderArtifactRepository(session)
+        self.settings = app_settings
+        self.allow_live_demo = allow_live_demo
 
     async def submit(self, task_id: int) -> VideoRenderExecutionResult:
+        self._require_execution_enabled()
         task = self.render_service.get_render_task(task_id)
         if task.status != "CREATED" or task.provider_task_id is not None:
             raise AppError("Video render task has already been submitted", 409)
@@ -73,6 +82,7 @@ class VideoRenderExecutionService:
         )
 
     async def refresh(self, task_id: int) -> VideoRenderExecutionResult:
+        self._require_execution_enabled()
         task = self.render_service.get_render_task(task_id)
         if task.provider_task_id is None:
             raise AppError("Video render task has not been submitted", 409)
@@ -157,3 +167,14 @@ class VideoRenderExecutionService:
     def _provider_name(self) -> str:
         name = type(self.provider).__name__
         return name.removesuffix("Provider").lower()
+
+    def _require_execution_enabled(self) -> None:
+        enabled = self.settings.enable_video_render_execution
+        live_enabled = (
+            self.allow_live_demo and self.settings.enable_live_wanx_demo
+        )
+        if not enabled and not live_enabled:
+            raise AppError(
+                "Video render execution is disabled by the server",
+                status_code=503,
+            )

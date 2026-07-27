@@ -7,6 +7,7 @@ from app.api.dependencies import TextProviderDep
 from app.db.session import get_db
 from app.schemas.video import VideoProjectRequest, VideoProjectSchema
 from app.services.content_studio_service import ContentStudioService
+from app.services.video_render_preflight import VideoProjectQueryService
 
 router = APIRouter(prefix="/products")
 DbSession = Annotated[Session, Depends(get_db)]
@@ -24,3 +25,14 @@ def generate_video_project(
     return ContentStudioService(db, provider).generate_for_product(
         product_id, request
     )
+
+
+@router.get(
+    "/{product_id}/video-projects/latest",
+    response_model=VideoProjectSchema,
+)
+def get_latest_video_project(
+    product_id: int,
+    db: DbSession,
+) -> VideoProjectSchema:
+    return VideoProjectQueryService(db).get_latest_for_product(product_id)

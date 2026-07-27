@@ -1,10 +1,12 @@
 import { apiClient } from "./client";
 import type {
+  LiveRenderTaskResponse,
   VideoProject,
   VideoProjectRequest,
-  LiveRenderTaskResponse,
   VideoRenderArtifact,
+  VideoRenderPreflight,
 } from "../types/video";
+import axios from "axios";
 
 export async function generateVideoProject(
   productId: number,
@@ -15,6 +17,43 @@ export async function generateVideoProject(
     payload,
   );
   return response.data;
+}
+
+export async function getLatestVideoProjectForProduct(
+  productId: number,
+  signal?: AbortSignal,
+): Promise<VideoProject> {
+  const response = await apiClient.get<VideoProject>(
+    `/products/${productId}/video-projects/latest`,
+    { signal },
+  );
+  return response.data;
+}
+
+export async function getVideoProject(
+  videoProjectId: number,
+  signal?: AbortSignal,
+): Promise<VideoProject> {
+  const response = await apiClient.get<VideoProject>(
+    `/video-projects/${videoProjectId}`,
+    { signal },
+  );
+  return response.data;
+}
+
+export async function getVideoRenderPreflight(
+  videoProjectId: number,
+  signal?: AbortSignal,
+): Promise<VideoRenderPreflight> {
+  const response = await apiClient.get<VideoRenderPreflight>(
+    `/video-projects/${videoProjectId}/render-preflight`,
+    { signal },
+  );
+  return response.data;
+}
+
+export function isVideoProjectNotFound(error: unknown): boolean {
+  return axios.isAxiosError(error) && error.response?.status === 404;
 }
 
 export async function getVideoRenderArtifacts(

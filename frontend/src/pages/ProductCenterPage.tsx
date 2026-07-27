@@ -5,6 +5,7 @@ import { getProduct, listProducts } from "../api/products";
 import { GrowthCopilotPanel } from "../components/GrowthCopilotPanel";
 import { MarketingTaskConfig } from "../components/product/MarketingTaskConfig";
 import { ProductCreateForm } from "../components/product/ProductCreateForm";
+import { VideoRenderPreflightPanel } from "../components/video/VideoRenderPreflightPanel";
 import type { PlatformCopy } from "../types/copy";
 import type { Product } from "../types/product";
 
@@ -356,6 +357,8 @@ function ProductDetail({
         onPlatformsChange={onPlatformsChange}
         onProductUpdated={onProductUpdated}
       />
+
+      <VideoRenderPreflightPanel product={product} />
 
       <section className="product-detail-card__existing-workflow">
         <p className="strategy-preflight__note">
