@@ -293,8 +293,8 @@ def test_refresh_progress_success_storage_and_recovery(
     body = recovered.json()
     assert body["recovered"] is True
     assert body["task"]["status"] == "SUCCEEDED"
-    assert body["artifact"]["available"] is True
-    assert body["artifact"]["content_type"] == "video/mp4"
+    assert body["artifact"]["video_render_task_id"] == body["task"]["id"]
+    assert "content_url" not in body["artifact"]
     assert "storage_path" not in recovered.text
     assert "provider_output_url" not in recovered.text
     assert provider.submit_calls == 1
@@ -309,6 +309,8 @@ def test_refresh_progress_success_storage_and_recovery(
         f"/api/v1/video-render-artifacts/{artifact_id}/content"
     )
     assert metadata.status_code == 200
+    assert metadata.json()["content_available"] is True
+    assert metadata.json()["content_type"] == "video/mp4"
     assert content.status_code == 200
     assert content.headers["content-type"].startswith("video/mp4")
     assert content.content == b"safe-fake-mp4"

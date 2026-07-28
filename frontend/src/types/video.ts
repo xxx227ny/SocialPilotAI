@@ -104,7 +104,6 @@ export interface VideoRenderTaskSafe {
   scene_sequence: number;
   status: VideoRenderTaskStatus;
   provider_name: string | null;
-  provider_task_id: string | null;
   duration_seconds: number;
   aspect_ratio: string;
   resolution: string;
@@ -114,15 +113,23 @@ export interface VideoRenderTaskSafe {
   updated_at: string;
 }
 
-export interface VideoRenderArtifactSafe {
+export interface VideoRenderArtifactReference {
   id: number;
   video_render_task_id: number;
-  available: true;
-  content_url: string;
-  content_type: string;
-  size_bytes: number;
   created_at: string;
   updated_at: string;
+}
+
+export interface VideoRenderArtifactSafe
+  extends VideoRenderArtifactReference {
+  provider: string;
+  content_available: true;
+  content_url: string;
+  download_url: string;
+  content_type: string;
+  size_bytes: number;
+  sha256: string;
+  storage_kind: "local_filesystem";
 }
 
 export interface VideoRenderOperation {
@@ -131,7 +138,7 @@ export interface VideoRenderOperation {
   marketing_strategy_id: number;
   copy_matrix_id: number;
   task: VideoRenderTaskSafe;
-  artifact: VideoRenderArtifactSafe | null;
+  artifact: VideoRenderArtifactReference | null;
   reused: boolean;
   external_call: boolean;
   recovered: boolean;

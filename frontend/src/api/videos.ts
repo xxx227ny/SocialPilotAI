@@ -124,6 +124,17 @@ export function getVideoRenderArtifactContentUrl(artifactId: number): string {
   return `${baseUrl}/video-render-artifacts/${artifactId}/content`;
 }
 
+export async function downloadVideoRenderArtifact(
+  artifactId: number,
+  signal?: AbortSignal,
+): Promise<Blob> {
+  const response = await apiClient.get<Blob>(
+    `/video-render-artifacts/${artifactId}/download`,
+    { responseType: "blob", signal },
+  );
+  return response.data;
+}
+
 export async function getVideoRenderArtifacts(
   videoProjectId: number,
 ): Promise<VideoRenderArtifact[]> {

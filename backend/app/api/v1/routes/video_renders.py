@@ -1,8 +1,8 @@
 from collections.abc import Callable
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import (
@@ -28,6 +28,12 @@ from app.schemas.video_render import (
 )
 from app.schemas.video_render_artifact import VideoRenderArtifactSchema
 from app.services.live_video_render_service import LiveVideoRenderService
+from app.services.video_artifact_http import (
+    RangeNotSatisfiable,
+    parse_byte_range,
+    safe_artifact_filename,
+    stream_file,
+)
 from app.services.video_render_execution_service import (
     VideoRenderExecutionService,
 )
@@ -235,13 +241,130 @@ def get_video_render_artifact(
     ).get_metadata(artifact_id)
 
 
+def _artifact_headers(
+    *,
+    filename: str,
+    content_type: str,
+    content_length: int,
+    disposition: str,
+) -> dict[str, str]:
+    return {
+        "Accept-Ranges": "bytes",
+        "Content-Disposition": f'{disposition}; filename="{filename}"',
+        "Content-Length": str(content_length),
+        "Content-Type": content_type,
+        "X-Content-Type-Options": "nosniff",
+    }
+
+
 @router.get("/video-render-artifacts/{artifact_id}/content")
 def get_video_render_artifact_content(
     artifact_id: int,
+    request: Request,
     db: DbSession,
     artifact_storage: VideoArtifactStorageDep,
-) -> FileResponse:
-    path, content_type = VideoArtifactAccessService(
+) -> StreamingResponse:
+    verified = VideoArtifactAccessService(
         db, artifact_storage
-    ).resolve_content(artifact_id)
-    return FileResponse(path, media_type=content_type)
+    ).resolve_verified(artifact_id)
+    filename = safe_artifact_filename(
+        artifact_id,
+        verified.artifact.video_render_task_id,
+        verified.path.suffix,
+    )
+    range_header = request.headers.get("range")
+    if range_header is None:
+        headers = _artifact_headers(
+            filename=filename,
+            content_type=verified.content_type,
+            content_length=verified.size_bytes,
+            disposition="inline",
+        )
+        return StreamingResponse(
+            stream_file(verified.path),
+            status_code=200,
+            headers=headers,
+            media_type=verified.content_type,
+        )
+    try:
+        requested = parse_byte_range(range_header, verified.size_bytes)
+    except RangeNotSatisfiable:
+        return Response(
+            status_code=416,
+            headers={
+                "Accept-Ranges": "bytes",
+                "Content-Range": f"bytes */{verified.size_bytes}",
+                "Content-Length": "0",
+            },
+        )
+    headers = _artifact_headers(
+        filename=filename,
+        content_type=verified.content_type,
+        content_length=requested.length,
+        disposition="inline",
+    )
+    headers["Content-Range"] = (
+        f"bytes {requested.start}-{requested.end}/{verified.size_bytes}"
+    )
+    return StreamingResponse(
+        stream_file(
+            verified.path,
+            start=requested.start,
+            length=requested.length,
+        ),
+        status_code=206,
+        headers=headers,
+        media_type=verified.content_type,
+    )
+
+
+@router.head("/video-render-artifacts/{artifact_id}/content")
+def head_video_render_artifact_content(
+    artifact_id: int,
+    db: DbSession,
+    artifact_storage: VideoArtifactStorageDep,
+) -> Response:
+    verified = VideoArtifactAccessService(
+        db, artifact_storage
+    ).resolve_verified(artifact_id)
+    filename = safe_artifact_filename(
+        artifact_id,
+        verified.artifact.video_render_task_id,
+        verified.path.suffix,
+    )
+    return Response(
+        status_code=200,
+        headers=_artifact_headers(
+            filename=filename,
+            content_type=verified.content_type,
+            content_length=verified.size_bytes,
+            disposition="inline",
+        ),
+    )
+
+
+@router.get("/video-render-artifacts/{artifact_id}/download")
+def download_video_render_artifact(
+    artifact_id: int,
+    db: DbSession,
+    artifact_storage: VideoArtifactStorageDep,
+) -> StreamingResponse:
+    verified = VideoArtifactAccessService(
+        db, artifact_storage
+    ).resolve_verified(artifact_id)
+    filename = safe_artifact_filename(
+        artifact_id,
+        verified.artifact.video_render_task_id,
+        verified.path.suffix,
+    )
+    return StreamingResponse(
+        stream_file(verified.path),
+        status_code=200,
+        headers=_artifact_headers(
+            filename=filename,
+            content_type=verified.content_type,
+            content_length=verified.size_bytes,
+            disposition="attachment",
+        ),
+        media_type=verified.content_type,
+    )

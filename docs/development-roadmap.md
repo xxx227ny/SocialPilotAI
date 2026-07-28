@@ -58,7 +58,7 @@ flowchart TB
     V2C3 --> V2C31B["✅ V2-C3.1B Exact RenderTask execution, state and recovery"]
     V2C31B --> V2C31C["✅ V2-C3.1C Real Wanx Render Verification Evidence"]
     V2C31C --> V2C32A
-    V2C3 --> V2C32A["⏳ V2-C3.2A Stable asset display and download"]
+    V2C3 --> V2C32A["✅ V2-C3.2A Stable asset display and download"]
     V2C3 --> V2C32B["⏳ V2-C3.2B Recovery and fallback"]
     V2C4 --> V2C41A["⏳ V2-C4.1A FeedbackContext"]
     V2C4 --> V2C41B["⏳ V2-C4.1B Recommendation constraints"]
@@ -197,5 +197,11 @@ The labels below reconstruct submission work from tracked evidence. Only S0, S2,
 | Status | Date | Contract Commit | Controlled real execution | Verified evidence | Media and retention boundary | Next |
 |---|---:|---|---|---|---|---|
 | ✅ Completed; evidence checkpoint pending | 2026-07-27 | `7257c18` | One authorized `wan2.7-t2v` Submit in `cn-beijing`, 3 explicit Refresh requests at the authorized interval, 1 Provider-output download, 0 retries, and 0 Qwen calls | `PENDING → RUNNING → RUNNING → SUCCEEDED`; one exact Scene 1 RenderTask and one Artifact; `video/mp4`, 825,844 bytes, SHA-256 `e30bbdb2904b28b73b227f652593c4da4517e293d1680fc9aec3c97a5bfc33ce`; relative `storage_path`, matching metadata, and stable content API read passed | Requested `720P`, `9:16`, and 2 seconds were not independently decoded as final media properties. Codec, actual resolution/duration, frame rate, audio, and visual quality were not accepted. The generated file and temporary environment were deleted and are not retained as permanent evidence. Authorization is exhausted | V2-C3.2A Stable asset display and download |
+
+### V2-C3.2A Stable asset display and download
+
+| Status | Date | Stable delivery contract | Workspace and safety boundary | Verified result | Known limitation | Next |
+|---|---:|---|---|---|---|---|
+| ✅ Completed; checkpoint pending | 2026-07-27 | Existing Artifact metadata/content routes now share one verified local-file resolver. Safe metadata includes provider name, content type, byte size, persisted SHA-256, stable content/download URLs, timestamps, and local-storage kind without paths or Provider identities. Content supports full streaming GET, single `bytes=start-end`, `bytes=start-`, and `bytes=-suffix` ranges, 206/416, and bodyless HEAD; download streams an attachment with a server-generated filename | Playback/download require an existing Artifact, an existing `SUCCEEDED` RenderTask, a controlled relative path beneath the configured root, a regular supported video file, matching persisted size/content type, and a valid persisted SHA-256. Absolute/traversal/symlink escape, directories, missing/unsupported files, orphan tasks, and integrity mismatches fail closed. No hash is recomputed per request: the API relies on the digest verified and persisted during Artifact creation plus read-time size/type/path checks | Artifact/Range/Download suite: 26 passed, 1 Windows symlink-capability skip; Video/Render regression: 64 passed, 1 skip; Product/Strategy/Copy regression: 88 passed; full default pytest: 226 passed, 3 real-provider skips, 1 known warning. Ruff and TypeScript passed; Vite production build passed with 126 modules. Isolated browser smoke used the frozen valid MP4 copy: media readyState 4, decoded 720×1280, 9:16 contain layout, browser Range 206, download size/SHA match, reload/context/missing-file/Backend-down recovery, Presentation isolation, and console 0/0 all passed. Submit/Refresh/Provider calls and database writes were 0 | Local filesystem only; no object/distributed storage, authentication/authorization, multi-scene composition, transcoding, or per-request full-file SHA recomputation. The player represents one persisted Scene 1 Artifact | V2-C3.2B Recovery and fallback |
 
 Substage gates are in [V2 Plan](v2-plan.md). Execution records belong in [Progress Log](progress-log.md).

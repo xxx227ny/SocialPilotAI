@@ -4,7 +4,6 @@ import {
   executeVideoProjectRender,
   getLatestVideoProjectForProduct,
   getLatestVideoRenderTask,
-  getVideoRenderArtifactContentUrl,
   getVideoRenderPreflight,
   isVideoProjectNotFound,
   isVideoRenderTaskNotFound,
@@ -18,6 +17,7 @@ import type {
   VideoRenderPreflight,
   VideoRenderTaskStatus,
 } from "../../types/video";
+import { StableVideoArtifactPanel } from "./StableVideoArtifactPanel";
 
 type PanelState =
   | "idle"
@@ -520,6 +520,8 @@ export function VideoRenderPreflightPanel({ product }: { product: Product }) {
 
           {operation ? (
             <TaskResult
+              productId={product.id}
+              videoProjectId={project.id}
               operation={operation}
               refreshAllowed={refreshAllowed}
               onRefresh={refresh}
@@ -653,10 +655,14 @@ function PreflightResult({
 }
 
 function TaskResult({
+  productId,
+  videoProjectId,
   operation,
   refreshAllowed,
   onRefresh,
 }: {
+  productId: number;
+  videoProjectId: number;
   operation: VideoRenderOperation;
   refreshAllowed: boolean;
   onRefresh: () => Promise<void>;
@@ -698,21 +704,12 @@ function TaskResult({
         </p>
       ) : null}
       {artifact ? (
-        <div className="video-render-artifact">
-          <div>
-            <strong>稳定Artifact #{artifact.id}</strong>
-            <span>
-              {artifact.content_type} · {formatBytes(artifact.size_bytes)}
-            </span>
-          </div>
-          <video
-            controls
-            preload="metadata"
-            src={getVideoRenderArtifactContentUrl(artifact.id)}
-          >
-            当前浏览器不支持视频播放。
-          </video>
-        </div>
+        <StableVideoArtifactPanel
+          productId={productId}
+          videoProjectId={videoProjectId}
+          renderTaskId={task.id}
+          artifact={artifact}
+        />
       ) : (
         <p className="video-render-task-result__artifact-empty">
           Artifact：尚未持久化
@@ -875,9 +872,4 @@ function formatDateTime(value: string) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(date);
-}
-
-function formatBytes(value: number) {
-  if (value < 1024) return `${value} B`;
-  return `${(value / 1024).toFixed(1)} KB`;
 }

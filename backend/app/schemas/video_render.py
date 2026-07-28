@@ -60,7 +60,6 @@ class VideoRenderTaskSafeRead(BaseModel):
     scene_sequence: int
     status: str
     provider_name: str | None
-    provider_task_id: str | None
     duration_seconds: int
     aspect_ratio: str
     resolution: str
@@ -70,15 +69,24 @@ class VideoRenderTaskSafeRead(BaseModel):
     updated_at: datetime
 
 
-class VideoRenderArtifactSafeRead(BaseModel):
+class VideoRenderArtifactReferenceRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     video_render_task_id: int
-    available: Literal[True] = True
-    content_url: str
-    content_type: str
-    size_bytes: int
     created_at: datetime
     updated_at: datetime
+
+
+class VideoRenderArtifactSafeRead(VideoRenderArtifactReferenceRead):
+    provider: str
+    content_available: Literal[True] = True
+    content_url: str
+    download_url: str
+    content_type: str
+    size_bytes: int
+    sha256: str
+    storage_kind: Literal["local_filesystem"] = "local_filesystem"
 
 
 class VideoRenderOperationRead(BaseModel):
@@ -87,7 +95,7 @@ class VideoRenderOperationRead(BaseModel):
     marketing_strategy_id: int
     copy_matrix_id: int
     task: VideoRenderTaskSafeRead
-    artifact: VideoRenderArtifactSafeRead | None = None
+    artifact: VideoRenderArtifactReferenceRead | None = None
     reused: bool
     external_call: bool
     recovered: bool = False

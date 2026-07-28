@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
+from dataclasses import dataclass
 from pathlib import Path
 
 from sqlalchemy.orm import Session
@@ -15,6 +17,7 @@ from app.repositories.video_render_artifact_repository import (
     VideoRenderArtifactRepository,
 )
 from app.schemas.video_render import (
+    VideoRenderArtifactReferenceRead,
     VideoRenderArtifactSafeRead,
     VideoRenderOperationRead,
     VideoRenderTaskCreate,
@@ -39,6 +42,16 @@ WORKSPACE_RENDER_SCENE_SEQUENCE = 1
 WORKSPACE_RENDER_RESOLUTION = "720P"
 WORKSPACE_RENDER_CONTRACT_VERSION = "v1"
 WORKSPACE_RENDER_PROVIDER = "wanx"
+SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+
+
+@dataclass(frozen=True, slots=True)
+class VerifiedVideoArtifact:
+    artifact: VideoRenderArtifact
+    path: Path
+    content_type: str
+    size_bytes: int
+    sha256: str
 
 
 class VideoProjectRenderExecutionService:
@@ -234,10 +247,9 @@ class VideoArtifactAccessService:
         self.storage = storage
 
     def get_metadata(self, artifact_id: int) -> VideoRenderArtifactSafeRead:
-        artifact = self._get(artifact_id)
-        return build_safe_artifact(artifact)
+        return build_safe_artifact(self.resolve_verified(artifact_id))
 
-    def resolve_content(self, artifact_id: int) -> tuple[Path, str]:
+    def resolve_verified(self, artifact_id: int) -> VerifiedVideoArtifact:
         artifact = self._get(artifact_id)
         if artifact.storage_path is None:
             raise AppError(
@@ -245,15 +257,41 @@ class VideoArtifactAccessService:
                 status_code=409,
             )
         try:
-            return self.storage.resolve(artifact.storage_path)
+            path, resolved_type = self.storage.resolve(artifact.storage_path)
         except VideoArtifactError as exc:
             raise AppError(exc.safe_message, 404) from exc
+
+        metadata = artifact.artifact_metadata
+        content_type = metadata.get("content_type")
+        size_bytes = metadata.get("size_bytes")
+        sha256 = metadata.get("sha256")
+        if (
+            not isinstance(content_type, str)
+            or content_type != resolved_type
+            or not isinstance(size_bytes, int)
+            or size_bytes < 1
+            or path.stat().st_size != size_bytes
+            or not isinstance(sha256, str)
+            or SHA256_PATTERN.fullmatch(sha256.lower()) is None
+        ):
+            raise AppError(
+                "Stable video artifact integrity metadata is invalid",
+                status_code=409,
+            )
+        return VerifiedVideoArtifact(
+            artifact=artifact,
+            path=path,
+            content_type=content_type,
+            size_bytes=size_bytes,
+            sha256=sha256.lower(),
+        )
 
     def _get(self, artifact_id: int) -> VideoRenderArtifact:
         artifact = self.artifact_repository.get(artifact_id)
         if artifact is None:
             raise AppError("Video render artifact not found", status_code=404)
-        if artifact.video_render_task.status != "SUCCEEDED":
+        task = artifact.video_render_task
+        if task is None or task.status != "SUCCEEDED":
             raise AppError(
                 "Video render artifact is not available",
                 status_code=409,
@@ -276,7 +314,11 @@ def build_video_render_operation(
         marketing_strategy_id=project.marketing_strategy_id,
         copy_matrix_id=project.copy_matrix_id,
         task=VideoRenderTaskSafeRead.model_validate(task),
-        artifact=build_safe_artifact(artifact) if artifact is not None else None,
+        artifact=(
+            VideoRenderArtifactReferenceRead.model_validate(artifact)
+            if artifact is not None
+            else None
+        ),
         reused=reused,
         external_call=external_call,
         recovered=recovered,
@@ -285,28 +327,22 @@ def build_video_render_operation(
 
 
 def build_safe_artifact(
-    artifact: VideoRenderArtifact,
+    resolved: VerifiedVideoArtifact,
 ) -> VideoRenderArtifactSafeRead:
-    metadata = artifact.artifact_metadata
-    content_type = metadata.get("content_type")
-    size_bytes = metadata.get("size_bytes")
-    if (
-        artifact.storage_path is None
-        or not isinstance(content_type, str)
-        or not isinstance(size_bytes, int)
-    ):
-        raise AppError(
-            "Stable video artifact metadata is unavailable",
-            status_code=409,
-        )
+    artifact = resolved.artifact
     return VideoRenderArtifactSafeRead(
         id=artifact.id,
         video_render_task_id=artifact.video_render_task_id,
+        provider=artifact.video_render_task.provider_name or "unknown",
         content_url=(
             f"/api/v1/video-render-artifacts/{artifact.id}/content"
         ),
-        content_type=content_type,
-        size_bytes=size_bytes,
+        download_url=(
+            f"/api/v1/video-render-artifacts/{artifact.id}/download"
+        ),
+        content_type=resolved.content_type,
+        size_bytes=resolved.size_bytes,
+        sha256=resolved.sha256,
         created_at=artifact.created_at,
         updated_at=artifact.updated_at,
     )
