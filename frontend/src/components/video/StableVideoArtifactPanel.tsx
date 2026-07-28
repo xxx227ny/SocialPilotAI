@@ -28,6 +28,7 @@ interface Props {
   videoProjectId: number;
   renderTaskId: number;
   artifact: VideoRenderArtifactReference;
+  presentationFallbackProvided?: boolean;
 }
 
 export function StableVideoArtifactPanel({
@@ -35,6 +36,7 @@ export function StableVideoArtifactPanel({
   videoProjectId,
   renderTaskId,
   artifact,
+  presentationFallbackProvided = false,
 }: Props) {
   const [artifactState, setArtifactState] =
     useState<ArtifactState>("artifact_idle");
@@ -48,6 +50,18 @@ export function StableVideoArtifactPanel({
   const [retryKey, setRetryKey] = useState(0);
   const [playerKey, setPlayerKey] = useState(0);
   const requestIdRef = useRef(0);
+  const activeIdentityRef = useRef({
+    productId,
+    videoProjectId,
+    renderTaskId,
+    artifactId: artifact.id,
+  });
+  activeIdentityRef.current = {
+    productId,
+    videoProjectId,
+    renderTaskId,
+    artifactId: artifact.id,
+  };
   const downloadLockRef = useRef(false);
   const downloadControllerRef = useRef<AbortController | null>(null);
 
@@ -111,6 +125,11 @@ export function StableVideoArtifactPanel({
 
   async function download() {
     if (!metadata || downloadLockRef.current) return;
+    const identity = {
+      ...activeIdentityRef.current,
+      requestId: requestIdRef.current,
+      metadataId: metadata.id,
+    };
     downloadLockRef.current = true;
     const controller = new AbortController();
     downloadControllerRef.current = controller;
@@ -120,7 +139,18 @@ export function StableVideoArtifactPanel({
         metadata.id,
         controller.signal,
       );
-      if (controller.signal.aborted || metadata.id !== artifact.id) return;
+      const active = activeIdentityRef.current;
+      if (
+        controller.signal.aborted ||
+        requestIdRef.current !== identity.requestId ||
+        active.productId !== identity.productId ||
+        active.videoProjectId !== identity.videoProjectId ||
+        active.renderTaskId !== identity.renderTaskId ||
+        active.artifactId !== identity.artifactId ||
+        metadata.id !== identity.metadataId
+      ) {
+        return;
+      }
       const extension =
         metadata.content_type === "video/webm" ? "webm" : "mp4";
       const objectUrl = URL.createObjectURL(blob);
@@ -168,6 +198,7 @@ export function StableVideoArtifactPanel({
         <button type="button" onClick={() => setRetryKey((value) => value + 1)}>
           重试读取本地 Artifact
         </button>
+        {!presentationFallbackProvided ? <PresentationFallbackLink /> : null}
       </div>
     );
   }
@@ -224,6 +255,7 @@ export function StableVideoArtifactPanel({
           >
             重试播放
           </button>
+          {!presentationFallbackProvided ? <PresentationFallbackLink /> : null}
         </div>
       ) : null}
       <div className="stable-video-artifact__actions">
@@ -235,6 +267,17 @@ export function StableVideoArtifactPanel({
         ) : null}
       </div>
     </section>
+  );
+}
+
+function PresentationFallbackLink() {
+  return (
+    <a
+      className="video-render-presentation-fallback"
+      href="/?mode=presentation"
+    >
+      查看 Presentation Demo Snapshot
+    </a>
   );
 }
 

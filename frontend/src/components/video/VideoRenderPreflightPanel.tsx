@@ -7,6 +7,7 @@ import {
   getVideoRenderPreflight,
   isVideoProjectNotFound,
   isVideoRenderTaskNotFound,
+  recoverVideoRenderTask,
   refreshWorkspaceVideoRenderTask,
 } from "../../api/videos";
 import { videoRenderExecutionEnabled } from "../../config/features";
@@ -27,6 +28,7 @@ type PanelState =
   | "checking"
   | "ready"
   | "blocked"
+  | "created"
   | "creating_task"
   | "submitting"
   | "submitted"
@@ -36,6 +38,7 @@ type PanelState =
   | "failed"
   | "submit_unknown"
   | "artifact_persist_failed"
+  | "refresh_uncertain"
   | "recovering"
   | "recovered"
   | "retry";
@@ -46,12 +49,6 @@ interface ActiveContext {
   videoProjectId: number | null;
   renderTaskId: number | null;
 }
-
-const REFRESHABLE_STATUSES: VideoRenderTaskStatus[] = [
-  "SUBMITTED",
-  "PENDING",
-  "RUNNING",
-];
 
 export function VideoRenderPreflightPanel({ product }: { product: Product }) {
   const [state, setState] = useState<PanelState>("idle");
@@ -67,6 +64,7 @@ export function VideoRenderPreflightPanel({ product }: { product: Product }) {
   const retryLockRef = useRef(false);
   const submitLockRef = useRef(false);
   const refreshLockRef = useRef(false);
+  const recoveryReadLockRef = useRef(false);
   const activeContextRef = useRef<ActiveContext>({
     requestId: 0,
     productId: product.id,
@@ -83,6 +81,7 @@ export function VideoRenderPreflightPanel({ product }: { product: Product }) {
     retryLockRef.current = false;
     submitLockRef.current = false;
     refreshLockRef.current = false;
+    recoveryReadLockRef.current = false;
     activeContextRef.current = {
       requestId,
       productId: product.id,
@@ -254,7 +253,8 @@ export function VideoRenderPreflightPanel({ product }: { product: Product }) {
   const executeAllowed =
     project !== null &&
     preflight !== null &&
-    operation === null &&
+    (operation === null ||
+      operation.recovery.continue_original_submit_allowed) &&
     preflight.input_ready &&
     preflight.provider_configured &&
     preflight.execution_enabled &&
@@ -265,6 +265,8 @@ export function VideoRenderPreflightPanel({ product }: { product: Product }) {
     costConfirmed &&
     activeContextRef.current.productId === product.id &&
     activeContextRef.current.videoProjectId === project.id &&
+    activeContextRef.current.renderTaskId ===
+      (operation?.task.id ?? null) &&
     !submitLockRef.current &&
     !isBusyState(state);
 
@@ -274,10 +276,11 @@ export function VideoRenderPreflightPanel({ product }: { product: Product }) {
       return;
     }
     const context = activeContextRef.current;
+    const expectedTaskId = operation?.task.id ?? null;
     if (
       context.productId !== product.id ||
       context.videoProjectId !== project.id ||
-      context.renderTaskId !== null
+      context.renderTaskId !== expectedTaskId
     ) {
       setError("Product或VideoProject上下文已变化，请重新检查。");
       return;
@@ -301,12 +304,17 @@ export function VideoRenderPreflightPanel({ product }: { product: Product }) {
         controller.signal,
       );
       if (
-        !operationMatches(result, product.id, project.id, null) ||
+        !operationMatches(
+          result,
+          product.id,
+          project.id,
+          expectedTaskId,
+        ) ||
         !isActive(
           context.requestId,
           product.id,
           project.id,
-          null,
+          expectedTaskId,
           controller,
         )
       ) {
@@ -320,7 +328,7 @@ export function VideoRenderPreflightPanel({ product }: { product: Product }) {
           context.requestId,
           product.id,
           project.id,
-          null,
+          expectedTaskId,
           controller,
         )
       ) {
@@ -330,7 +338,7 @@ export function VideoRenderPreflightPanel({ product }: { product: Product }) {
       await recoverAfterUncertainAction(
         context.requestId,
         project.id,
-        null,
+        expectedTaskId,
         controller,
         "执行响应不确定；已仅执行GET恢复，没有自动重新提交。",
       );
@@ -342,7 +350,7 @@ export function VideoRenderPreflightPanel({ product }: { product: Product }) {
   const refreshAllowed =
     project !== null &&
     operation !== null &&
-    REFRESHABLE_STATUSES.includes(operation.task.status) &&
+    operation.recovery.explicit_refresh_allowed &&
     preflight?.execution_enabled === true &&
     preflight.artifact_storage_configured &&
     videoRenderExecutionEnabled &&
@@ -351,6 +359,72 @@ export function VideoRenderPreflightPanel({ product }: { product: Product }) {
     activeContextRef.current.renderTaskId === operation.task.id &&
     !refreshLockRef.current &&
     !isBusyState(state);
+
+  const readCurrentTaskAllowed =
+    project !== null &&
+    operation !== null &&
+    operation.recovery.read_only_retry_allowed &&
+    activeContextRef.current.productId === product.id &&
+    activeContextRef.current.videoProjectId === project.id &&
+    activeContextRef.current.renderTaskId === operation.task.id &&
+    !recoveryReadLockRef.current &&
+    !isBusyState(state);
+
+  async function readCurrentTask() {
+    if (
+      !readCurrentTaskAllowed ||
+      recoveryReadLockRef.current ||
+      !project ||
+      !operation
+    ) {
+      return;
+    }
+    const taskId = operation.task.id;
+    const context = activeContextRef.current;
+    recoveryReadLockRef.current = true;
+    const controller = new AbortController();
+    actionControllerRef.current?.abort();
+    actionControllerRef.current = controller;
+    setError("");
+    setState("recovering");
+    try {
+      const recovered = await recoverVideoRenderTask(
+        taskId,
+        controller.signal,
+      );
+      if (
+        !operationMatches(recovered, product.id, project.id, taskId) ||
+        !isActive(
+          context.requestId,
+          product.id,
+          project.id,
+          taskId,
+          controller,
+        )
+      ) {
+        return;
+      }
+      acceptOperation(recovered, context.requestId);
+    } catch {
+      if (
+        !controller.signal.aborted &&
+        isActive(
+          context.requestId,
+          product.id,
+          project.id,
+          taskId,
+          controller,
+        )
+      ) {
+        setError(
+          "当前RenderTask读取失败；没有submit、refresh或Provider调用。",
+        );
+        setState("failed");
+      }
+    } finally {
+      recoveryReadLockRef.current = false;
+    }
+  }
 
   async function refresh() {
     if (
@@ -422,10 +496,16 @@ export function VideoRenderPreflightPanel({ product }: { product: Product }) {
     fallback: string,
   ) {
     try {
-      const recovered = await getLatestVideoRenderTask(
-        videoProjectId,
-        controller.signal,
-      );
+      const recovered =
+        expectedTaskId === null
+          ? await getLatestVideoRenderTask(
+              videoProjectId,
+              controller.signal,
+            )
+          : await recoverVideoRenderTask(
+              expectedTaskId,
+              controller.signal,
+            );
       if (
         !operationMatches(
           recovered,
@@ -491,16 +571,18 @@ export function VideoRenderPreflightPanel({ product }: { product: Product }) {
         <PanelMessage
           title="尚无VideoProject"
           detail="该商品没有可执行或恢复的VideoProject。"
-          actionLabel="重新读取"
+          actionLabel="重新读取VideoProject"
           onAction={retryRead}
+          showPresentationFallback
         />
       ) : state === "project_failed" ? (
         <PanelMessage
           title="VideoProject读取失败"
           detail={error}
-          actionLabel="安全重试"
+          actionLabel="重新读取VideoProject"
           onAction={retryRead}
           error
+          showPresentationFallback
         />
       ) : project ? (
         <>
@@ -524,13 +606,26 @@ export function VideoRenderPreflightPanel({ product }: { product: Product }) {
               videoProjectId={project.id}
               operation={operation}
               refreshAllowed={refreshAllowed}
+              readAllowed={readCurrentTaskAllowed}
+              continuationAllowed={executeAllowed}
               onRefresh={refresh}
+              onRead={readCurrentTask}
+              onContinue={execute}
             />
           ) : null}
         </>
       ) : null}
 
-      {error && state !== "project_failed" ? (
+      {error && state === "failed" && operation === null ? (
+        <PanelMessage
+          title="当前上下文读取失败"
+          detail={error}
+          actionLabel="重新读取当前Product上下文"
+          onAction={retryRead}
+          error
+          showPresentationFallback
+        />
+      ) : error && state !== "project_failed" ? (
         <p className="video-render-preflight__safe-error">{error}</p>
       ) : null}
 
@@ -539,7 +634,11 @@ export function VideoRenderPreflightPanel({ product }: { product: Product }) {
           <input
             type="checkbox"
             checked={costConfirmed}
-            disabled={operation !== null || isBusyState(state)}
+            disabled={
+              (operation !== null &&
+                !operation.recovery.continue_original_submit_allowed) ||
+              isBusyState(state)
+            }
             onChange={(event) => setCostConfirmed(event.target.checked)}
           />
           <span>
@@ -553,14 +652,16 @@ export function VideoRenderPreflightPanel({ product }: { product: Product }) {
           </p>
           <button
             type="button"
-            disabled={!executeAllowed}
+            disabled={!executeAllowed || operation !== null}
             onClick={() => void execute()}
           >
             {state === "creating_task"
               ? "正在创建RenderTask…"
               : state === "submitting"
                 ? "正在提交Wanx任务…"
-                : operation
+                : operation?.recovery.continue_original_submit_allowed
+                  ? "请使用任务卡片继续原始任务提交"
+                  : operation
                   ? "该精确项目已有RenderTask"
                   : "创建并提交RenderTask"}
           </button>
@@ -659,15 +760,23 @@ function TaskResult({
   videoProjectId,
   operation,
   refreshAllowed,
+  readAllowed,
+  continuationAllowed,
   onRefresh,
+  onRead,
+  onContinue,
 }: {
   productId: number;
   videoProjectId: number;
   operation: VideoRenderOperation;
   refreshAllowed: boolean;
+  readAllowed: boolean;
+  continuationAllowed: boolean;
   onRefresh: () => Promise<void>;
+  onRead: () => Promise<void>;
+  onContinue: () => Promise<void>;
 }) {
-  const { task, artifact } = operation;
+  const { task, artifact, recovery } = operation;
   return (
     <div className="video-render-task-result">
       <header>
@@ -692,13 +801,27 @@ function TaskResult({
       <p className="video-render-preflight__association">
         {operation.association_notice}
       </p>
+      <section
+        className="video-render-task-result__recovery"
+        aria-label="服务端恢复决策"
+      >
+        <div>
+          <span>服务端权威恢复决策</span>
+          <strong>{recoveryCategoryLabel(recovery.category)}</strong>
+        </div>
+        <p>{recovery.user_message}</p>
+        <p>
+          Artifact 状态：{artifactStateLabel(recovery.artifact_state)} ·
+          自动操作：禁止
+        </p>
+      </section>
       {task.error_code ? (
         <div className="video-render-task-result__error">
           <strong>{safeErrorLabel(task.error_code)}</strong>
           <p>{task.error_message ?? "任务未完成；未显示Provider原始响应。"}</p>
         </div>
       ) : null}
-      {task.status === "SUBMIT_UNKNOWN" ? (
+      {recovery.category === "submit_uncertain" ? (
         <p className="video-render-task-result__warning">
           Provider可能已接收请求，但本地没有可靠确认。当前Provider不支持按客户端幂等键自动核对，因此禁止自动重新submit。
         </p>
@@ -709,20 +832,45 @@ function TaskResult({
           videoProjectId={videoProjectId}
           renderTaskId={task.id}
           artifact={artifact}
+          presentationFallbackProvided={
+            recovery.category !== "succeeded"
+          }
         />
       ) : (
         <p className="video-render-task-result__artifact-empty">
           Artifact：尚未持久化
         </p>
       )}
-      <button
-        className="video-render-task-result__refresh"
-        type="button"
-        disabled={!refreshAllowed}
-        onClick={() => void onRefresh()}
-      >
-        显式刷新Provider状态
-      </button>
+      <div className="video-render-task-result__recovery-actions">
+        <button
+          type="button"
+          disabled={!readAllowed}
+          onClick={() => void onRead()}
+        >
+          重新读取当前Task状态
+        </button>
+        {recovery.continue_original_submit_allowed ? (
+          <button
+            type="button"
+            disabled={!continuationAllowed}
+            onClick={() => void onContinue()}
+          >
+            继续原始任务提交
+          </button>
+        ) : null}
+        <button
+          className="video-render-task-result__refresh"
+          type="button"
+          disabled={!refreshAllowed}
+          onClick={() => void onRefresh()}
+        >
+          显式刷新Provider状态
+        </button>
+      </div>
+      {recovery.presentation_fallback_available &&
+      recovery.category !== "succeeded" ? (
+        <PresentationFallbackLink />
+      ) : null}
     </div>
   );
 }
@@ -745,6 +893,7 @@ function stateForTask(
   status: VideoRenderTaskStatus,
   recovered: boolean,
 ): PanelState {
+  if (status === "CREATED") return "created";
   if (status === "SUBMIT_UNKNOWN") return "submit_unknown";
   if (status === "ARTIFACT_PERSIST_FAILED") {
     return "artifact_persist_failed";
@@ -753,7 +902,8 @@ function stateForTask(
   if (status === "SUCCEEDED") return "succeeded";
   if (recovered) return "recovered";
   if (status === "SUBMITTED" || status === "PENDING") return "submitted";
-  if (status === "RUNNING" || status === "REFRESHING") return "processing";
+  if (status === "REFRESHING") return "refresh_uncertain";
+  if (status === "RUNNING") return "processing";
   if (status === "SUBMITTING") return "submitting";
   return "creating_task";
 }
@@ -819,6 +969,7 @@ function StatusBadge({ state }: { state: PanelState }) {
     checking: "Preflight",
     ready: "可以执行",
     blocked: "执行锁定",
+    created: "待继续提交",
     creating_task: "创建任务",
     submitting: "提交中",
     submitted: "已提交",
@@ -828,6 +979,7 @@ function StatusBadge({ state }: { state: PanelState }) {
     failed: "失败",
     submit_unknown: "提交不确定",
     artifact_persist_failed: "存储失败",
+    refresh_uncertain: "刷新不确定",
     recovering: "恢复中",
     recovered: "已恢复",
     retry: "准备重试",
@@ -845,12 +997,14 @@ function PanelMessage({
   actionLabel,
   onAction,
   error = false,
+  showPresentationFallback = false,
 }: {
   title: string;
   detail: string;
   actionLabel?: string;
   onAction?: () => void;
   error?: boolean;
+  showPresentationFallback?: boolean;
 }) {
   return (
     <div className={`video-render-preflight__message${error ? " is-error" : ""}`}>
@@ -861,8 +1015,54 @@ function PanelMessage({
           {actionLabel}
         </button>
       ) : null}
+      {showPresentationFallback ? <PresentationFallbackLink /> : null}
     </div>
   );
+}
+
+function PresentationFallbackLink() {
+  return (
+    <a
+      className="video-render-presentation-fallback"
+      href="/?mode=presentation"
+    >
+      查看 Presentation Demo Snapshot
+    </a>
+  );
+}
+
+function recoveryCategoryLabel(
+  category: VideoRenderOperation["recovery"]["category"],
+) {
+  const labels: Record<
+    VideoRenderOperation["recovery"]["category"],
+    string
+  > = {
+    created: "原始任务已创建，尚未提交",
+    submit_uncertain: "提交状态不确定",
+    active: "Provider任务处理中",
+    refresh_uncertain: "刷新状态不确定",
+    terminal_failure: "任务已终止",
+    artifact_persist_failed: "本地Artifact持久化失败",
+    succeeded: "任务与稳定Artifact均可用",
+    succeeded_artifact_unavailable: "任务成功但稳定Artifact不可用",
+  };
+  return labels[category];
+}
+
+function artifactStateLabel(
+  state: VideoRenderOperation["recovery"]["artifact_state"],
+) {
+  const labels: Record<
+    VideoRenderOperation["recovery"]["artifact_state"],
+    string
+  > = {
+    not_applicable: "当前不适用",
+    available: "稳定文件可用",
+    missing: "稳定文件缺失",
+    invalid: "完整性校验失败",
+  };
+  return labels[state];
 }
 
 function formatDateTime(value: string) {

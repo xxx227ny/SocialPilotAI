@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, Response, status
@@ -34,6 +35,11 @@ from app.services.video_artifact_http import (
     safe_artifact_filename,
     stream_file,
 )
+from app.services.video_artifact_storage import (
+    LocalVideoArtifactStorage,
+    VideoArtifactError,
+    VideoArtifactStorage,
+)
 from app.services.video_render_execution_service import (
     VideoRenderExecutionService,
 )
@@ -60,6 +66,27 @@ def get_live_visual_provider_factory() -> VisualProviderFactory:
 
 LiveVisualProviderFactoryDep = Annotated[
     VisualProviderFactory, Depends(get_live_visual_provider_factory)
+]
+
+
+def get_optional_recovery_artifact_storage(
+    app_settings: SettingsDep,
+) -> VideoArtifactStorage | None:
+    configured = (app_settings.video_artifact_storage_root or "").strip()
+    if not configured:
+        return None
+    try:
+        return LocalVideoArtifactStorage(
+            Path(configured),
+            app_settings.video_artifact_max_bytes,
+        )
+    except VideoArtifactError:
+        return None
+
+
+RecoveryArtifactStorageDep = Annotated[
+    VideoArtifactStorage | None,
+    Depends(get_optional_recovery_artifact_storage),
 ]
 
 
@@ -141,8 +168,11 @@ async def execute_video_project_render(
 def get_latest_video_render_task(
     video_project_id: int,
     db: DbSession,
+    artifact_storage: RecoveryArtifactStorageDep,
 ) -> VideoRenderOperationRead:
-    return VideoRenderRecoveryService(db).get_latest(video_project_id)
+    return VideoRenderRecoveryService(
+        db, artifact_storage
+    ).get_latest(video_project_id)
 
 
 @router.post(
@@ -181,8 +211,11 @@ def get_video_render_task(
 def recover_video_render_task(
     task_id: int,
     db: DbSession,
+    artifact_storage: RecoveryArtifactStorageDep,
 ) -> VideoRenderOperationRead:
-    return VideoRenderRecoveryService(db).get_task(task_id)
+    return VideoRenderRecoveryService(
+        db, artifact_storage
+    ).get_task(task_id)
 
 
 @router.post(

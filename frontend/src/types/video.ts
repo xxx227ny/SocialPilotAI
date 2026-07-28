@@ -132,6 +132,34 @@ export interface VideoRenderArtifactSafe
   storage_kind: "local_filesystem";
 }
 
+export type VideoRenderRecoveryCategory =
+  | "created"
+  | "submit_uncertain"
+  | "active"
+  | "refresh_uncertain"
+  | "terminal_failure"
+  | "artifact_persist_failed"
+  | "succeeded"
+  | "succeeded_artifact_unavailable";
+
+export type VideoRenderArtifactState =
+  | "not_applicable"
+  | "available"
+  | "missing"
+  | "invalid";
+
+export interface VideoRenderRecoveryDecision {
+  category: VideoRenderRecoveryCategory;
+  artifact_state: VideoRenderArtifactState;
+  read_only_retry_allowed: boolean;
+  continue_original_submit_allowed: boolean;
+  explicit_refresh_allowed: boolean;
+  resubmit_forbidden: boolean;
+  presentation_fallback_available: boolean;
+  automatic_action_allowed: false;
+  user_message: string;
+}
+
 export interface VideoRenderOperation {
   video_project_id: number;
   product_id: number;
@@ -142,5 +170,6 @@ export interface VideoRenderOperation {
   reused: boolean;
   external_call: boolean;
   recovered: boolean;
+  recovery: VideoRenderRecoveryDecision;
   association_notice: string;
 }

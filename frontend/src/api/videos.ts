@@ -138,6 +138,13 @@ export async function downloadVideoRenderArtifact(
 export async function getVideoRenderArtifacts(
   videoProjectId: number,
 ): Promise<VideoRenderArtifact[]> {
+  if (
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("mode") ===
+      "presentation"
+  ) {
+    return [];
+  }
   const response = await apiClient.get<VideoRenderArtifact[]>(
     `/video-projects/${videoProjectId}/render-artifacts`,
   );

@@ -20,6 +20,7 @@ from app.schemas.video_render import (
     VideoRenderArtifactReferenceRead,
     VideoRenderArtifactSafeRead,
     VideoRenderOperationRead,
+    VideoRenderRecoveryDecisionRead,
     VideoRenderTaskCreate,
     VideoRenderTaskSafeRead,
 )
@@ -77,6 +78,9 @@ class VideoProjectRenderExecutionService:
         self.render_service = VideoRenderService(session)
         self.render_repository = VideoRenderTaskRepository(session)
         self.artifact_repository = VideoRenderArtifactRepository(session)
+        self.recovery_service = VideoRenderRecoveryService(
+            session, artifact_storage
+        )
 
     async def execute(
         self, video_project_id: int
@@ -97,7 +101,7 @@ class VideoProjectRenderExecutionService:
         )
         if task.status != "CREATED" or task.provider_task_id is not None:
             artifact = self.artifact_repository.get_by_task_id(task.id)
-            return build_video_render_operation(
+            return self.recovery_service.build_operation(
                 project,
                 task,
                 artifact,
@@ -113,7 +117,7 @@ class VideoProjectRenderExecutionService:
                 artifact = self.artifact_repository.get_by_task_id(
                     recovered.id
                 )
-                return build_video_render_operation(
+                return self.recovery_service.build_operation(
                     project,
                     recovered,
                     artifact,
@@ -122,7 +126,7 @@ class VideoProjectRenderExecutionService:
                     recovered=True,
                 )
             raise
-        return build_video_render_operation(
+        return self.recovery_service.build_operation(
             project,
             result.task,
             result.artifact,
@@ -199,11 +203,20 @@ class VideoProjectRenderExecutionService:
 class VideoRenderRecoveryService:
     """Read exact or latest Task/Artifact state without provider side effects."""
 
-    def __init__(self, session: Session) -> None:
+    def __init__(
+        self,
+        session: Session,
+        artifact_storage: VideoArtifactStorage | None = None,
+    ) -> None:
         self.project_service = VideoProjectQueryService(session)
         self.render_service = VideoRenderService(session)
         self.render_repository = VideoRenderTaskRepository(session)
         self.artifact_repository = VideoRenderArtifactRepository(session)
+        self.artifact_access = (
+            VideoArtifactAccessService(session, artifact_storage)
+            if artifact_storage is not None
+            else None
+        )
 
     def get_latest(self, video_project_id: int) -> VideoRenderOperationRead:
         project = self.project_service.get(video_project_id)
@@ -214,7 +227,7 @@ class VideoRenderRecoveryService:
                 status_code=404,
             )
         artifact = self.artifact_repository.get_by_task_id(task.id)
-        return build_video_render_operation(
+        return self.build_operation(
             project,
             task,
             artifact,
@@ -227,7 +240,7 @@ class VideoRenderRecoveryService:
         task = self.render_service.get_render_task(task_id)
         project = self.project_service.get(task.video_project_id)
         artifact = self.artifact_repository.get_by_task_id(task.id)
-        return build_video_render_operation(
+        return self.build_operation(
             project,
             task,
             artifact,
@@ -235,6 +248,43 @@ class VideoRenderRecoveryService:
             external_call=False,
             recovered=True,
         )
+
+    def build_operation(
+        self,
+        project: VideoProject,
+        task: VideoRenderTask,
+        artifact: VideoRenderArtifact | None,
+        *,
+        reused: bool,
+        external_call: bool,
+        recovered: bool = False,
+    ) -> VideoRenderOperationRead:
+        return build_video_render_operation(
+            project,
+            task,
+            artifact,
+            reused=reused,
+            external_call=external_call,
+            recovered=recovered,
+            artifact_state=self._artifact_state(task, artifact),
+        )
+
+    def _artifact_state(
+        self,
+        task: VideoRenderTask,
+        artifact: VideoRenderArtifact | None,
+    ) -> str:
+        if task.status != "SUCCEEDED":
+            return "not_applicable"
+        if artifact is None:
+            return "missing"
+        if self.artifact_access is None:
+            return "invalid"
+        try:
+            self.artifact_access.resolve_verified(artifact.id)
+        except AppError as exc:
+            return "missing" if exc.status_code == 404 else "invalid"
+        return "available"
 
 
 class VideoArtifactAccessService:
@@ -306,6 +356,7 @@ def build_video_render_operation(
     *,
     reused: bool,
     external_call: bool,
+    artifact_state: str,
     recovered: bool = False,
 ) -> VideoRenderOperationRead:
     return VideoRenderOperationRead(
@@ -322,7 +373,143 @@ def build_video_render_operation(
         reused=reused,
         external_call=external_call,
         recovered=recovered,
+        recovery=build_recovery_decision(task, artifact_state),
         association_notice=VIDEO_PROJECT_ASSOCIATION_NOTICE,
+    )
+
+
+def build_recovery_decision(
+    task: VideoRenderTask,
+    artifact_state: str,
+) -> VideoRenderRecoveryDecisionRead:
+    status = task.status
+    common = {
+        "artifact_state": artifact_state,
+        "read_only_retry_allowed": True,
+        "presentation_fallback_available": True,
+        "automatic_action_allowed": False,
+    }
+    provider_task_id_available = bool(
+        task.provider_task_id and task.provider_task_id.strip()
+    )
+    if status == "CREATED" and provider_task_id_available:
+        return VideoRenderRecoveryDecisionRead(
+            category="submit_uncertain",
+            continue_original_submit_allowed=False,
+            explicit_refresh_allowed=False,
+            resubmit_forbidden=True,
+            user_message=(
+                "原始RenderTask状态异常且Provider任务身份已存在；"
+                "禁止继续提交，只能重新读取本地状态。"
+            ),
+            **common,
+        )
+    if status == "CREATED":
+        return VideoRenderRecoveryDecisionRead(
+            category="created",
+            continue_original_submit_allowed=True,
+            explicit_refresh_allowed=False,
+            resubmit_forbidden=False,
+            user_message=(
+                "原始RenderTask尚未提交；仅可在双端执行开关和本次费用确认"
+                "均有效时继续提交同一个任务。"
+            ),
+            **common,
+        )
+    if status in {"SUBMITTING", "SUBMIT_UNKNOWN"}:
+        return VideoRenderRecoveryDecisionRead(
+            category="submit_uncertain",
+            continue_original_submit_allowed=False,
+            explicit_refresh_allowed=False,
+            resubmit_forbidden=True,
+            user_message=(
+                "Provider可能已经接收任务；禁止重新提交或自动刷新，"
+                "只能重新读取本地状态。"
+            ),
+            **common,
+        )
+    if status in {"SUBMITTED", "PENDING", "RUNNING"} and (
+        not provider_task_id_available
+    ):
+        return VideoRenderRecoveryDecisionRead(
+            category="refresh_uncertain",
+            continue_original_submit_allowed=False,
+            explicit_refresh_allowed=False,
+            resubmit_forbidden=True,
+            user_message=(
+                "任务状态显示正在处理，但缺少可安全核对的Provider任务身份；"
+                "禁止刷新或重新提交，只能重新读取本地状态。"
+            ),
+            **common,
+        )
+    if status in {"SUBMITTED", "PENDING", "RUNNING"}:
+        return VideoRenderRecoveryDecisionRead(
+            category="active",
+            continue_original_submit_allowed=False,
+            explicit_refresh_allowed=True,
+            resubmit_forbidden=True,
+            user_message=(
+                "任务正在处理中；只允许用户显式刷新一次Provider状态，"
+                "不会后台轮询。"
+            ),
+            **common,
+        )
+    if status == "REFRESHING":
+        return VideoRenderRecoveryDecisionRead(
+            category="refresh_uncertain",
+            continue_original_submit_allowed=False,
+            explicit_refresh_allowed=False,
+            resubmit_forbidden=True,
+            user_message=(
+                "刷新结果尚不确定；禁止并发刷新，只能重新读取本地状态。"
+            ),
+            **common,
+        )
+    if status in {"FAILED", "CANCELED"}:
+        return VideoRenderRecoveryDecisionRead(
+            category="terminal_failure",
+            continue_original_submit_allowed=False,
+            explicit_refresh_allowed=False,
+            resubmit_forbidden=True,
+            user_message=(
+                "任务已进入失败或取消终态；本阶段不会重新提交旧任务"
+                "或自动创建替代任务。"
+            ),
+            **common,
+        )
+    if status == "ARTIFACT_PERSIST_FAILED":
+        return VideoRenderRecoveryDecisionRead(
+            category="artifact_persist_failed",
+            continue_original_submit_allowed=False,
+            explicit_refresh_allowed=False,
+            resubmit_forbidden=True,
+            user_message=(
+                "视频可能已由Provider生成，但本地持久化失败；"
+                "不会访问旧Provider地址、重新下载或重新提交。"
+            ),
+            **common,
+        )
+    if status == "SUCCEEDED" and artifact_state == "available":
+        return VideoRenderRecoveryDecisionRead(
+            category="succeeded",
+            continue_original_submit_allowed=False,
+            explicit_refresh_allowed=False,
+            resubmit_forbidden=True,
+            user_message=(
+                "任务已成功，稳定本地Artifact可用于播放和下载。"
+            ),
+            **common,
+        )
+    return VideoRenderRecoveryDecisionRead(
+        category="succeeded_artifact_unavailable",
+        continue_original_submit_allowed=False,
+        explicit_refresh_allowed=False,
+        resubmit_forbidden=True,
+        user_message=(
+            "RenderTask已成功，但本地视频当前不可用；不会回退到"
+            "Provider URL、重新提交或自动刷新。"
+        ),
+        **common,
     )
 
 

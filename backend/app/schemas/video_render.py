@@ -89,6 +89,32 @@ class VideoRenderArtifactSafeRead(VideoRenderArtifactReferenceRead):
     storage_kind: Literal["local_filesystem"] = "local_filesystem"
 
 
+class VideoRenderRecoveryDecisionRead(BaseModel):
+    category: Literal[
+        "created",
+        "submit_uncertain",
+        "active",
+        "refresh_uncertain",
+        "terminal_failure",
+        "artifact_persist_failed",
+        "succeeded",
+        "succeeded_artifact_unavailable",
+    ]
+    artifact_state: Literal[
+        "not_applicable",
+        "available",
+        "missing",
+        "invalid",
+    ]
+    read_only_retry_allowed: bool
+    continue_original_submit_allowed: bool
+    explicit_refresh_allowed: bool
+    resubmit_forbidden: bool
+    presentation_fallback_available: bool
+    automatic_action_allowed: Literal[False] = False
+    user_message: str
+
+
 class VideoRenderOperationRead(BaseModel):
     video_project_id: int
     product_id: int
@@ -99,6 +125,7 @@ class VideoRenderOperationRead(BaseModel):
     reused: bool
     external_call: bool
     recovered: bool = False
+    recovery: VideoRenderRecoveryDecisionRead
     association_notice: str
 
 
