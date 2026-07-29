@@ -6,9 +6,12 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_text_generation_provider
+from app.core.config import Settings, get_settings
+from app.core.exceptions import AppError
 from app.main import app
 from app.models import AdCampaign, MarketingStrategy
 from app.providers.base import TextGenerationProvider
+from app.services.growth_analysis_service import GrowthAnalysisService
 
 
 class FakeGrowthProvider(TextGenerationProvider):
@@ -75,10 +78,15 @@ def test_growth_api_returns_aggregate_metrics_and_mock_analysis(
     db_session.commit()
     fake_provider = FakeGrowthProvider()
     app.dependency_overrides[get_text_generation_provider] = lambda: fake_provider
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        _env_file=None,
+        enable_growth_execution=True,
+    )
     try:
         response = client.post(f"/api/v1/products/{product_id}/growth-analysis")
     finally:
         app.dependency_overrides.pop(get_text_generation_provider, None)
+        app.dependency_overrides.pop(get_settings, None)
 
     assert response.status_code == 200
     body = response.json()
@@ -97,3 +105,60 @@ def test_growth_api_returns_aggregate_metrics_and_mock_analysis(
         "CTR trails the campaign target."
     ]
     assert fake_provider.calls == 1
+
+
+def test_growth_api_default_gate_blocks_before_provider_resolution_and_write(
+    client: TestClient,
+    db_session: Session,
+    product_payload: dict[str, object],
+) -> None:
+    product_id = client.post("/api/v1/products", json=product_payload).json()["id"]
+    provider_resolutions = 0
+    original_campaign_count = db_session.query(AdCampaign).count()
+    original_strategy_count = db_session.query(MarketingStrategy).count()
+
+    def forbidden_provider() -> TextGenerationProvider:
+        nonlocal provider_resolutions
+        provider_resolutions += 1
+        raise AssertionError("disabled Growth route resolved a Provider")
+
+    app.dependency_overrides[get_settings] = lambda: Settings(_env_file=None)
+    app.dependency_overrides[get_text_generation_provider] = forbidden_provider
+    try:
+        response = client.post(
+            f"/api/v1/products/{product_id}/growth-analysis"
+        )
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
+        app.dependency_overrides.pop(get_text_generation_provider, None)
+
+    assert response.status_code == 503
+    assert response.json()["error"]["message"] == (
+        "Growth analysis execution is disabled by the server"
+    )
+    assert provider_resolutions == 0
+    assert db_session.query(AdCampaign).count() == original_campaign_count
+    assert (
+        db_session.query(MarketingStrategy).count()
+        == original_strategy_count
+    )
+
+
+def test_growth_service_default_gate_cannot_be_bypassed(
+    db_session: Session,
+) -> None:
+    provider = FakeGrowthProvider()
+    service = GrowthAnalysisService(
+        db_session,
+        provider,
+        Settings(_env_file=None),
+    )
+
+    try:
+        service.analyze(999)
+    except AppError as exc:
+        assert exc.status_code == 503
+    else:
+        raise AssertionError("direct service call bypassed Growth gate")
+
+    assert provider.calls == 0

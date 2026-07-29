@@ -3,6 +3,7 @@ import json
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
+from app.core.config import Settings
 from app.core.exceptions import AppError
 from app.providers import (
     ProviderAuthenticationError,
@@ -20,14 +21,19 @@ from app.services.metrics_service import MetricsService
 
 class GrowthAnalysisService:
     def __init__(
-        self, session: Session, provider: TextGenerationProvider
+        self,
+        session: Session,
+        provider: TextGenerationProvider,
+        settings: Settings,
     ) -> None:
+        self.settings = settings
         self.product_repository = ProductRepository(session)
         self.campaign_repository = CampaignRepository(session)
         self.strategy_repository = MarketingStrategyRepository(session)
         self.provider = provider
 
     def analyze(self, product_id: int) -> GrowthAnalysisResponse:
+        self._require_execution_enabled()
         if self.product_repository.get(product_id) is None:
             raise AppError("Product not found", status_code=404)
 
@@ -70,6 +76,13 @@ class GrowthAnalysisService:
         return GrowthAnalysisResponse(
             metrics=metrics, recommendation=recommendation
         )
+
+    def _require_execution_enabled(self) -> None:
+        if not self.settings.enable_growth_execution:
+            raise AppError(
+                "Growth analysis execution is disabled by the server",
+                status_code=503,
+            )
 
     @staticmethod
     def _build_prompt(

@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     enable_strategy_execution: bool = False
     enable_copy_execution: bool = False
     enable_video_render_execution: bool = False
+    enable_growth_execution: bool = False
     wanx_api_key: SecretStr | None = None
     wanx_model: str = "wan2.7-t2v"
     wanx_region: str = "cn-beijing"

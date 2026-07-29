@@ -66,6 +66,21 @@ CopyExecutionGateDep = Annotated[
 ]
 
 
+def require_growth_execution_enabled(
+    app_settings: Annotated[Settings, Depends(get_settings)],
+) -> None:
+    if not app_settings.enable_growth_execution:
+        raise AppError(
+            "Growth analysis execution is disabled by the server",
+            status_code=503,
+        )
+
+
+GrowthExecutionGateDep = Annotated[
+    None, Depends(require_growth_execution_enabled)
+]
+
+
 def require_video_render_execution_enabled(
     app_settings: Annotated[Settings, Depends(get_settings)],
 ) -> None:

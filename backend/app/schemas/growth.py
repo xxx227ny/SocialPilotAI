@@ -1,3 +1,6 @@
+from datetime import date
+from typing import Literal
+
 from pydantic import BaseModel, Field, field_validator
 
 from app.schemas.campaign import CampaignMetricsSchema
@@ -29,3 +32,44 @@ class GrowthRecommendation(BaseModel):
 class GrowthAnalysisResponse(BaseModel):
     metrics: CampaignMetricsSchema
     recommendation: GrowthRecommendation
+
+
+class FeedbackPlatformMetrics(BaseModel):
+    platform: str
+    metrics: CampaignMetricsSchema
+
+
+class FeedbackContextRead(BaseModel):
+    version: Literal["v1"] = "v1"
+    product_id: int
+    data_source: Literal["stored_campaigns"] = "stored_campaigns"
+    context_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    feedback_only: Literal[True] = True
+    recommendation_generated: Literal[False] = False
+    generation_triggered: Literal[False] = False
+    provider_calls: Literal[0] = 0
+
+    campaign_ids: list[int]
+    campaign_count: int = Field(ge=0)
+    date_from: date | None
+    date_to: date | None
+    platforms: list[str]
+    overall_metrics: CampaignMetricsSchema | None
+    platform_metrics: list[FeedbackPlatformMetrics]
+
+    marketing_strategy_id: int | None
+    copy_matrix_id: int | None
+    video_project_id: int | None
+    content_chain_ready: bool
+    content_chain_selection: Literal["latest_video_project_exact_chain"] = (
+        "latest_video_project_exact_chain"
+    )
+
+    campaign_association_scope: Literal["product_only"] = "product_only"
+    creative_attribution_persisted: Literal[False] = False
+    marketing_brief_attribution_persisted: Literal[False] = False
+    association_notice: str
+
+    context_ready: bool
+    metrics_ready: bool
+    missing_requirements: list[str]
