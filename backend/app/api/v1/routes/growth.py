@@ -7,10 +7,18 @@ from app.api.dependencies import GrowthExecutionGateDep, TextProviderDep
 from app.core.config import Settings, get_settings
 from app.db.session import get_db
 from app.schemas.campaign import CampaignUploadResponse
-from app.schemas.growth import FeedbackContextRead, GrowthAnalysisResponse
+from app.schemas.growth import (
+    FeedbackContextRead,
+    GrowthAnalysisRequest,
+    GrowthAnalysisResponse,
+    GrowthRecommendationPreflightRead,
+)
 from app.services.campaign_service import CampaignService
 from app.services.feedback_context_service import FeedbackContextService
 from app.services.growth_analysis_service import GrowthAnalysisService
+from app.services.growth_recommendation_preflight import (
+    GrowthRecommendationPreflightService,
+)
 
 router = APIRouter(prefix="/products")
 DbSession = Annotated[Session, Depends(get_db)]
@@ -49,6 +57,7 @@ def get_product_feedback_context(
 )
 def analyze_product_growth(
     product_id: int,
+    data: GrowthAnalysisRequest,
     execution_gate: GrowthExecutionGateDep,
     provider: TextProviderDep,
     db: DbSession,
@@ -57,4 +66,18 @@ def analyze_product_growth(
     del execution_gate
     return GrowthAnalysisService(
         db, provider, app_settings
-    ).analyze(product_id)
+    ).analyze(product_id, data.expected_context_digest)
+
+
+@router.get(
+    "/{product_id}/growth-analysis/preflight",
+    response_model=GrowthRecommendationPreflightRead,
+)
+def get_growth_recommendation_preflight(
+    product_id: int,
+    db: DbSession,
+    app_settings: SettingsDep,
+) -> GrowthRecommendationPreflightRead:
+    return GrowthRecommendationPreflightService(
+        db, app_settings
+    ).run(product_id)

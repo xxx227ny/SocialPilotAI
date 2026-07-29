@@ -15,6 +15,39 @@ export interface CampaignMetrics {
   roas: number | null;
 }
 
+export type GrowthMetric =
+  | "ctr"
+  | "conversion_rate"
+  | "cpa"
+  | "roas";
+
+export interface GrowthObservation {
+  scope: "overall" | "platform";
+  platform: "TikTok" | "Instagram" | "Facebook" | null;
+  metric: GrowthMetric;
+  direction: "improve" | "test" | "protect" | "investigate";
+  hypothesis: string;
+}
+
+export interface GrowthCopyConstraint {
+  platform: "TikTok" | "Instagram" | "Facebook";
+  hook_direction: string;
+  message_angle: string;
+  cta_direction: string;
+  must_preserve: string[];
+  must_avoid: string[];
+}
+
+export interface GrowthVideoConstraint {
+  platform: "TikTok" | "Instagram" | "Facebook";
+  opening_hook_direction: string;
+  visual_focus: string;
+  pacing_direction: string;
+  cta_direction: string;
+  must_preserve: string[];
+  must_avoid: string[];
+}
+
 export interface GrowthRecommendation {
   problems: string[];
   recommendations: string[];
@@ -22,9 +55,55 @@ export interface GrowthRecommendation {
   creative_suggestions: string[];
 }
 
+export interface GrowthRecommendationConstraints {
+  summary: string;
+  observations: GrowthObservation[];
+  copy_constraints: GrowthCopyConstraint[];
+  video_constraint: GrowthVideoConstraint;
+  budget_guidance: string;
+}
+
+export interface GrowthRecommendationPreflight {
+  product_id: number;
+  context_digest: string;
+  marketing_strategy_id: number | null;
+  copy_matrix_id: number | null;
+  video_project_id: number | null;
+  input_ready: boolean;
+  provider_configured: boolean;
+  execution_enabled: boolean;
+  contract_ready: boolean;
+  ready_for_execution: boolean;
+  missing_requirements: string[];
+  provider_label: string;
+  model_label: string;
+  preflight_only: true;
+  execution_will_call_ai: true;
+  execution_will_write_database: false;
+  execution_will_generate_copy: false;
+  execution_will_generate_video: false;
+  automatic_action_allowed: false;
+  cost_notice: string;
+  attribution_notice: string;
+}
+
 export interface GrowthAnalysis {
-  metrics: CampaignMetrics;
-  recommendation: GrowthRecommendation;
+  version: "v1";
+  product_id: number;
+  source_context_digest: string;
+  source_marketing_strategy_id: number;
+  source_copy_matrix_id: number;
+  source_video_project_id: number;
+  recommendation: GrowthRecommendationConstraints;
+  recommendation_only: true;
+  recommendation_persisted: false;
+  campaign_association_scope: "product_only";
+  causal_attribution_allowed: false;
+  automatic_action_allowed: false;
+  budget_change_allowed: false;
+  copy_generation_triggered: false;
+  video_generation_triggered: false;
+  provider_calls: 1;
 }
 
 export interface FeedbackPlatformMetrics {

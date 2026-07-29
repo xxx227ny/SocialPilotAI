@@ -39,6 +39,19 @@ class FeedbackContextService:
         self.video_repository = VideoProjectRepository(session)
 
     def get(self, product_id: int) -> FeedbackContextRead:
+        context, _, _, _ = self.get_with_validated_chain(product_id)
+        return context
+
+    def get_with_validated_chain(
+        self,
+        product_id: int,
+    ) -> tuple[
+        FeedbackContextRead,
+        MarketingStrategy | None,
+        CopyMatrix | None,
+        VideoProject | None,
+    ]:
+        """Return the public Context plus its already-validated atomic chain."""
         if self.product_repository.get(product_id) is None:
             raise AppError("Product not found", status_code=404)
 
@@ -70,7 +83,7 @@ class FeedbackContextService:
             chain_missing=chain_missing,
         )
 
-        return FeedbackContextRead(
+        context = FeedbackContextRead(
             product_id=product_id,
             context_digest=context_digest,
             campaign_ids=campaign_ids,
@@ -97,6 +110,9 @@ class FeedbackContextService:
             metrics_ready=metrics_ready,
             missing_requirements=missing_requirements,
         )
+        if not content_chain_ready:
+            return context, None, None, None
+        return context, strategy, copy_matrix, project
 
     def _exact_content_chain(
         self,
