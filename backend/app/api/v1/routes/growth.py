@@ -3,10 +3,20 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, UploadFile
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import GrowthExecutionGateDep, TextProviderDep
+from app.api.dependencies import (
+    GrowthExecutionGateDep,
+    TextProviderDep,
+    V2CopyExecutionGateDep,
+)
 from app.core.config import Settings, get_settings
 from app.db.session import get_db
 from app.schemas.campaign import CampaignUploadResponse
+from app.schemas.copy import (
+    V2CopyExecutionRead,
+    V2CopyExecutionRequest,
+    V2CopyPreflightRead,
+    V2CopySourceRequest,
+)
 from app.schemas.growth import (
     FeedbackContextRead,
     GrowthAnalysisRequest,
@@ -19,6 +29,8 @@ from app.services.growth_analysis_service import GrowthAnalysisService
 from app.services.growth_recommendation_preflight import (
     GrowthRecommendationPreflightService,
 )
+from app.services.v2_copy_generation_service import V2CopyGenerationService
+from app.services.v2_copy_preflight import V2CopyPreflightService
 
 router = APIRouter(prefix="/products")
 DbSession = Annotated[Session, Depends(get_db)]
@@ -81,3 +93,34 @@ def get_growth_recommendation_preflight(
     return GrowthRecommendationPreflightService(
         db, app_settings
     ).run(product_id)
+
+
+@router.post(
+    "/{product_id}/v2-copy/preflight",
+    response_model=V2CopyPreflightRead,
+)
+def preflight_v2_copy(
+    product_id: int,
+    data: V2CopySourceRequest,
+    db: DbSession,
+    app_settings: SettingsDep,
+) -> V2CopyPreflightRead:
+    return V2CopyPreflightService(db, app_settings).run(product_id, data)
+
+
+@router.post(
+    "/{product_id}/v2-copy",
+    response_model=V2CopyExecutionRead,
+)
+def generate_v2_copy(
+    product_id: int,
+    data: V2CopyExecutionRequest,
+    execution_gate: V2CopyExecutionGateDep,
+    provider: TextProviderDep,
+    db: DbSession,
+    app_settings: SettingsDep,
+) -> V2CopyExecutionRead:
+    del execution_gate
+    return V2CopyGenerationService(
+        db, provider, app_settings
+    ).generate(product_id, data)

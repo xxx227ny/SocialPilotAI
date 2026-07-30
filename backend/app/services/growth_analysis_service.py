@@ -16,6 +16,7 @@ from app.providers import (
 from app.schemas.growth import (
     GrowthAnalysisResponse,
     GrowthRecommendationConstraints,
+    compute_recommendation_digest,
 )
 from app.services.feedback_context_service import FeedbackContextService
 from app.services.growth_recommendation_preflight import (
@@ -116,6 +117,14 @@ class GrowthAnalysisService:
                 "Qwen returned invalid recommendation data", status_code=502
             ) from exc
 
+        recommendation_digest = compute_recommendation_digest(
+            product_id=product_id,
+            source_context_digest=context.context_digest,
+            source_marketing_strategy_id=strategy.id,
+            source_copy_matrix_id=copy_matrix.id,
+            source_video_project_id=video_project.id,
+            recommendation=recommendation,
+        )
         return GrowthAnalysisResponse(
             product_id=product_id,
             source_context_digest=context.context_digest,
@@ -123,6 +132,7 @@ class GrowthAnalysisService:
             source_copy_matrix_id=copy_matrix.id,
             source_video_project_id=video_project.id,
             recommendation=recommendation,
+            recommendation_digest=recommendation_digest,
         )
 
     def _require_execution_enabled(self) -> None:

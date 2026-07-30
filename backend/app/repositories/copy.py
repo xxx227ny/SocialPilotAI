@@ -44,14 +44,18 @@ class CopyMatrixRepository:
         data: TaskBoundCopyMatrixSchema,
     ) -> CopyMatrix:
         """Persist validated task-bound copies without changing the legacy ORM rule."""
-        result = self.session.execute(
-            insert(CopyMatrix).values(
-                product_id=product_id,
-                marketing_strategy_id=marketing_strategy_id,
-                copies=[copy.model_dump() for copy in data.copies],
+        try:
+            result = self.session.execute(
+                insert(CopyMatrix).values(
+                    product_id=product_id,
+                    marketing_strategy_id=marketing_strategy_id,
+                    copies=[copy.model_dump() for copy in data.copies],
+                )
             )
-        )
-        self.session.commit()
+            self.session.commit()
+        except Exception:
+            self.session.rollback()
+            raise
         inserted_id = result.inserted_primary_key[0]
         copy_matrix = self.get(inserted_id)
         if copy_matrix is None:

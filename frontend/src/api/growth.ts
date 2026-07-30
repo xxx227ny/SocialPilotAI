@@ -5,6 +5,12 @@ import type {
   GrowthAnalysis,
   GrowthRecommendationPreflight,
 } from "../types/growth";
+import type {
+  V2CopyExecutionRequest,
+  V2CopyExecutionResult,
+  V2CopyPreflight,
+  V2CopySourceRequest,
+} from "../types/copy";
 
 export async function uploadCampaignCsv(
   productId: number,
@@ -51,6 +57,32 @@ export async function executeGrowthRecommendation(
   const response = await apiClient.post<GrowthAnalysis>(
     `/products/${productId}/growth-analysis`,
     { expected_context_digest: expectedContextDigest },
+    { signal },
+  );
+  return response.data;
+}
+
+export async function preflightV2Copy(
+  productId: number,
+  data: V2CopySourceRequest,
+  signal?: AbortSignal,
+): Promise<V2CopyPreflight> {
+  const response = await apiClient.post<V2CopyPreflight>(
+    `/products/${productId}/v2-copy/preflight`,
+    data,
+    { signal },
+  );
+  return response.data;
+}
+
+export async function executeV2Copy(
+  productId: number,
+  data: V2CopyExecutionRequest,
+  signal?: AbortSignal,
+): Promise<V2CopyExecutionResult> {
+  const response = await apiClient.post<V2CopyExecutionResult>(
+    `/products/${productId}/v2-copy`,
+    data,
     { signal },
   );
   return response.data;

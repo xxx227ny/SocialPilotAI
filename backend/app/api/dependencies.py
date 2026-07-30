@@ -66,6 +66,26 @@ CopyExecutionGateDep = Annotated[
 ]
 
 
+def require_v2_copy_execution_enabled(
+    app_settings: Annotated[Settings, Depends(get_settings)],
+) -> None:
+    if not app_settings.enable_copy_execution:
+        raise AppError(
+            "Copy execution is disabled by the server",
+            status_code=503,
+        )
+    if not app_settings.enable_v2_copy_execution:
+        raise AppError(
+            "V2 Copy execution is disabled by the server",
+            status_code=503,
+        )
+
+
+V2CopyExecutionGateDep = Annotated[
+    None, Depends(require_v2_copy_execution_enabled)
+]
+
+
 def require_growth_execution_enabled(
     app_settings: Annotated[Settings, Depends(get_settings)],
 ) -> None:

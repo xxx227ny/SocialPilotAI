@@ -1,3 +1,5 @@
+import hashlib
+import json
 from datetime import date
 from typing import Annotated, Literal
 
@@ -16,6 +18,7 @@ SUPPORTED_GROWTH_PLATFORMS = {
     "instagram": "Instagram",
     "facebook": "Facebook",
 }
+GROWTH_RECOMMENDATION_CONTRACT_VERSION = "growth-recommendation-v1"
 BoundedText = Annotated[str, Field(min_length=1, max_length=400)]
 ShortText = Annotated[str, Field(min_length=1, max_length=160)]
 
@@ -163,6 +166,10 @@ class GrowthAnalysisResponse(StrictGrowthModel):
     source_copy_matrix_id: int
     source_video_project_id: int
     recommendation: GrowthRecommendationConstraints
+    recommendation_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recommendation_integrity_scope: Literal[
+        "deterministic_round_trip_not_authenticated"
+    ] = "deterministic_round_trip_not_authenticated"
     recommendation_only: Literal[True] = True
     recommendation_persisted: Literal[False] = False
     campaign_association_scope: Literal["product_only"] = "product_only"
@@ -172,6 +179,34 @@ class GrowthAnalysisResponse(StrictGrowthModel):
     copy_generation_triggered: Literal[False] = False
     video_generation_triggered: Literal[False] = False
     provider_calls: Literal[1] = 1
+
+
+def compute_recommendation_digest(
+    *,
+    product_id: int,
+    source_context_digest: str,
+    source_marketing_strategy_id: int,
+    source_copy_matrix_id: int,
+    source_video_project_id: int,
+    recommendation: GrowthRecommendationConstraints,
+) -> str:
+    """Bind one strict Recommendation to its exact authoritative source."""
+    payload = {
+        "contract_version": GROWTH_RECOMMENDATION_CONTRACT_VERSION,
+        "product_id": product_id,
+        "source_context_digest": source_context_digest,
+        "source_marketing_strategy_id": source_marketing_strategy_id,
+        "source_copy_matrix_id": source_copy_matrix_id,
+        "source_video_project_id": source_video_project_id,
+        "recommendation": recommendation.model_dump(mode="json"),
+    }
+    serialized = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
 class FeedbackPlatformMetrics(BaseModel):

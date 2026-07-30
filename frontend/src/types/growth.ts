@@ -95,6 +95,9 @@ export interface GrowthAnalysis {
   source_copy_matrix_id: number;
   source_video_project_id: number;
   recommendation: GrowthRecommendationConstraints;
+  recommendation_digest: string;
+  recommendation_integrity_scope:
+    "deterministic_round_trip_not_authenticated";
   recommendation_only: true;
   recommendation_persisted: false;
   campaign_association_scope: "product_only";

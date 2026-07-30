@@ -10,6 +10,10 @@ export const copyExecutionEnabled = isEnabledFeatureFlag(
   import.meta.env.VITE_ENABLE_COPY_EXECUTION,
 );
 
+export const v2CopyExecutionEnabled = isEnabledFeatureFlag(
+  import.meta.env.VITE_ENABLE_V2_COPY_EXECUTION,
+);
+
 export const videoRenderExecutionEnabled = isEnabledFeatureFlag(
   import.meta.env.VITE_ENABLE_VIDEO_RENDER_EXECUTION,
 );

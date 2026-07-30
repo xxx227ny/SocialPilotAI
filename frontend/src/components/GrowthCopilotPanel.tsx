@@ -4,11 +4,21 @@ import axios from "axios";
 import { getApiErrorMessage } from "../api/client";
 import {
   executeGrowthRecommendation,
+  executeV2Copy,
   getFeedbackContext,
   getGrowthRecommendationPreflight,
+  preflightV2Copy,
   uploadCampaignCsv,
 } from "../api/growth";
-import { growthExecutionEnabled } from "../config/features";
+import {
+  copyExecutionEnabled,
+  growthExecutionEnabled,
+  v2CopyExecutionEnabled,
+} from "../config/features";
+import type {
+  V2CopyExecutionResult,
+  V2CopyPreflight,
+} from "../types/copy";
 import type {
   CampaignMetrics,
   FeedbackContext,
@@ -43,6 +53,13 @@ const MISSING_LABELS: Record<string, string> = {
   supported_reference_platforms: "受支持的精确Copy/Video平台",
   provider_configuration: "Qwen Provider安全配置",
   growth_execution: "Backend Growth执行开关",
+  stale_context_digest: "当前FeedbackContext已变化",
+  recommendation_digest_mismatch: "Recommendation摘要不匹配",
+  source_content_chain_mismatch: "Recommendation源内容链不匹配",
+  recommendation_copy_platforms: "Copy约束平台不符合精确源CopyMatrix",
+  product_input: "商品生成资料不完整",
+  copy_execution: "Backend Copy执行开关",
+  v2_copy_execution: "Backend V2 Copy执行开关",
 };
 
 export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
@@ -67,6 +84,19 @@ export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
   const [executionError, setExecutionError] = useState("");
   const [recommendationResult, setRecommendationResult] =
     useState<GrowthAnalysis | null>(null);
+  const [v2Preflight, setV2Preflight] =
+    useState<V2CopyPreflight | null>(null);
+  const [v2PreflightState, setV2PreflightState] =
+    useState<PreflightState>("idle");
+  const [v2PreflightError, setV2PreflightError] = useState("");
+  const [v2FeeConfirmed, setV2FeeConfirmed] = useState(false);
+  const [v2AuthorizationConsumed, setV2AuthorizationConsumed] =
+    useState(false);
+  const [v2ExecutionState, setV2ExecutionState] =
+    useState<ExecutionState>("idle");
+  const [v2ExecutionError, setV2ExecutionError] = useState("");
+  const [v2Result, setV2Result] =
+    useState<V2CopyExecutionResult | null>(null);
   const currentProductId = useRef(productId);
   const contextRequestId = useRef(0);
   const uploadRequestId = useRef(0);
@@ -74,13 +104,38 @@ export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
   const uploadController = useRef<AbortController | null>(null);
   const preflightController = useRef<AbortController | null>(null);
   const executionController = useRef<AbortController | null>(null);
+  const v2PreflightController = useRef<AbortController | null>(null);
+  const v2ExecutionController = useRef<AbortController | null>(null);
   const preflightRequestId = useRef(0);
   const executionRequestId = useRef(0);
+  const v2PreflightRequestId = useRef(0);
+  const v2ExecutionRequestId = useRef(0);
   const manualReadLock = useRef(false);
   const uploadLock = useRef(false);
   const preflightLock = useRef(false);
   const executionLock = useRef(false);
   const authorizationConsumedRef = useRef(false);
+  const v2PreflightLock = useRef(false);
+  const v2ExecutionLock = useRef(false);
+  const v2AuthorizationConsumedRef = useRef(false);
+
+  const resetV2Copy = useCallback(() => {
+    v2PreflightRequestId.current += 1;
+    v2ExecutionRequestId.current += 1;
+    v2PreflightController.current?.abort();
+    v2ExecutionController.current?.abort();
+    v2PreflightLock.current = false;
+    v2ExecutionLock.current = false;
+    v2AuthorizationConsumedRef.current = false;
+    setV2Preflight(null);
+    setV2PreflightState("idle");
+    setV2PreflightError("");
+    setV2FeeConfirmed(false);
+    setV2AuthorizationConsumed(false);
+    setV2ExecutionState("idle");
+    setV2ExecutionError("");
+    setV2Result(null);
+  }, []);
 
   const resetRecommendation = useCallback(() => {
     preflightRequestId.current += 1;
@@ -98,13 +153,16 @@ export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
     setExecutionState("idle");
     setExecutionError("");
     setRecommendationResult(null);
-  }, []);
+    resetV2Copy();
+  }, [resetV2Copy]);
 
   const readContext = useCallback(
     async (expectedProductId: number, manual: boolean) => {
       if (
         manual &&
-        (manualReadLock.current || executionLock.current)
+        (manualReadLock.current ||
+          executionLock.current ||
+          v2ExecutionLock.current)
       ) {
         return;
       }
@@ -184,11 +242,19 @@ export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
       uploadController.current?.abort();
       preflightController.current?.abort();
       executionController.current?.abort();
+      v2PreflightController.current?.abort();
+      v2ExecutionController.current?.abort();
     };
   }, [productId, readContext, resetRecommendation]);
 
   async function handleUpload() {
-    if (!file || uploadLock.current || executionLock.current) return;
+    if (
+      !file ||
+      uploadLock.current ||
+      executionLock.current ||
+      v2ExecutionLock.current
+    )
+      return;
     uploadLock.current = true;
     const expectedProductId = productId;
     const requestId = ++uploadRequestId.current;
@@ -244,7 +310,8 @@ export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
     if (
       !context ||
       preflightLock.current ||
-      executionLock.current
+      executionLock.current ||
+      v2ExecutionLock.current
     ) {
       return;
     }
@@ -311,6 +378,7 @@ export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
       samePreflightIdentity(preflight, context) &&
       feeConfirmed &&
       !authorizationConsumed &&
+      v2ExecutionState !== "submitting" &&
       executionState !== "submitting",
   );
 
@@ -320,6 +388,7 @@ export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
       !context ||
       !preflight ||
       executionLock.current ||
+      v2ExecutionLock.current ||
       authorizationConsumedRef.current
     ) {
       return;
@@ -351,6 +420,7 @@ export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
       ) {
         return;
       }
+      resetV2Copy();
       setRecommendationResult(result);
       setExecutionState("succeeded");
       setPreflight(null);
@@ -385,6 +455,188 @@ export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
     }
   }
 
+  const canPreflightV2 = Boolean(
+    recommendationResult &&
+      context &&
+      sameExecutionIdentity(recommendationResult, context) &&
+      executionState !== "submitting" &&
+      v2ExecutionState !== "submitting" &&
+      v2ExecutionState !== "succeeded" &&
+      v2ExecutionState !== "uncertain",
+  );
+
+  async function handleV2Preflight() {
+    if (
+      !canPreflightV2 ||
+      !recommendationResult ||
+      v2PreflightLock.current ||
+      v2ExecutionLock.current ||
+      executionLock.current
+    ) {
+      return;
+    }
+    v2PreflightLock.current = true;
+    const expectedProductId = productId;
+    const expectedRecommendation = recommendationResult;
+    const requestId = ++v2PreflightRequestId.current;
+    const controller = new AbortController();
+    v2PreflightController.current?.abort();
+    v2PreflightController.current = controller;
+    setV2PreflightState("checking");
+    setV2PreflightError("");
+    setV2FeeConfirmed(false);
+    setV2AuthorizationConsumed(false);
+    v2AuthorizationConsumedRef.current = false;
+    setV2ExecutionState("idle");
+    setV2ExecutionError("");
+    setV2Result(null);
+    try {
+      const result = await preflightV2Copy(
+        expectedProductId,
+        v2SourceRequest(expectedRecommendation),
+        controller.signal,
+      );
+      if (
+        controller.signal.aborted ||
+        requestId !== v2PreflightRequestId.current ||
+        currentProductId.current !== expectedProductId ||
+        recommendationResult !== expectedRecommendation ||
+        !sameV2PreflightIdentity(
+          result,
+          expectedRecommendation,
+          expectedProductId,
+        )
+      ) {
+        return;
+      }
+      setV2Preflight(result);
+      setV2PreflightState(
+        result.ready_for_execution ? "ready" : "blocked",
+      );
+    } catch (error) {
+      if (
+        controller.signal.aborted ||
+        requestId !== v2PreflightRequestId.current ||
+        currentProductId.current !== expectedProductId
+      ) {
+        return;
+      }
+      setV2Preflight(null);
+      setV2PreflightState("failed");
+      setV2PreflightError(
+        getApiErrorMessage(
+          error,
+          "V2 Copy Preflight失败，请重新读取Context后重试。",
+        ),
+      );
+    } finally {
+      if (requestId === v2PreflightRequestId.current) {
+        v2PreflightLock.current = false;
+      }
+    }
+  }
+
+  const canExecuteV2 = Boolean(
+    recommendationResult &&
+      v2Preflight &&
+      v2PreflightState === "ready" &&
+      v2Preflight.ready_for_execution &&
+      sameV2PreflightIdentity(
+        v2Preflight,
+        recommendationResult,
+        productId,
+      ) &&
+      copyExecutionEnabled &&
+      v2CopyExecutionEnabled &&
+      v2FeeConfirmed &&
+      !v2AuthorizationConsumed &&
+      v2ExecutionState !== "submitting",
+  );
+
+  async function handleExecuteV2Copy() {
+    if (
+      !canExecuteV2 ||
+      !recommendationResult ||
+      !v2Preflight ||
+      v2ExecutionLock.current ||
+      executionLock.current ||
+      v2AuthorizationConsumedRef.current
+    ) {
+      return;
+    }
+    v2ExecutionLock.current = true;
+    v2AuthorizationConsumedRef.current = true;
+    setV2AuthorizationConsumed(true);
+    setV2FeeConfirmed(false);
+    const expectedProductId = productId;
+    const expectedRecommendation = recommendationResult;
+    const expectedPreflight = v2Preflight;
+    const requestId = ++v2ExecutionRequestId.current;
+    const controller = new AbortController();
+    v2ExecutionController.current?.abort();
+    v2ExecutionController.current = controller;
+    setV2ExecutionState("submitting");
+    setV2ExecutionError("");
+    setV2Result(null);
+    try {
+      const result = await executeV2Copy(
+        expectedProductId,
+        {
+          ...v2SourceRequest(expectedRecommendation),
+          expected_preflight_digest:
+            expectedPreflight.preflight_digest,
+        },
+        controller.signal,
+      );
+      if (
+        controller.signal.aborted ||
+        requestId !== v2ExecutionRequestId.current ||
+        currentProductId.current !== expectedProductId ||
+        recommendationResult !== expectedRecommendation ||
+        !sameV2ExecutionIdentity(
+          result,
+          expectedRecommendation,
+          expectedProductId,
+        )
+      ) {
+        return;
+      }
+      setV2Result(result);
+      setV2ExecutionState("succeeded");
+      setV2Preflight(null);
+      setV2PreflightState("idle");
+    } catch (error) {
+      if (
+        controller.signal.aborted ||
+        requestId !== v2ExecutionRequestId.current ||
+        currentProductId.current !== expectedProductId
+      ) {
+        return;
+      }
+      const uncertain = axios.isAxiosError(error) && !error.response;
+      setV2ExecutionState(uncertain ? "uncertain" : "failed");
+      setV2ExecutionError(
+        uncertain
+          ? "V2 Copy结果不确定；不会自动重试，也不能在当前Recommendation上直接重提。"
+          : getApiErrorMessage(
+              error,
+              "V2 Copy生成失败；重新执行前必须重新Preflight并确认费用。",
+            ),
+      );
+      setV2Preflight(null);
+      setV2PreflightState("idle");
+      setV2FeeConfirmed(false);
+    } finally {
+      if (requestId === v2ExecutionRequestId.current) {
+        v2ExecutionLock.current = false;
+      }
+    }
+  }
+
+  const panelSubmitting =
+    executionState === "submitting" ||
+    v2ExecutionState === "submitting";
+
   return (
     <section className="growth-panel" aria-label="Structured FeedbackContext">
       <div className="growth-panel__header">
@@ -394,7 +646,9 @@ export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
         </div>
         <div className="growth-panel__zero-ai">
           <strong>
-            {recommendationResult?.provider_calls ?? 0} AI Calls
+            {(recommendationResult?.provider_calls ?? 0) +
+              (v2Result?.provider_calls ?? 0)}{" "}
+            AI Calls
           </strong>
           <small>Context读取始终Provider-free</small>
         </div>
@@ -405,7 +659,7 @@ export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
           <input
             accept=".csv,text/csv"
             type="file"
-            disabled={uploading || executionState === "submitting"}
+            disabled={uploading || panelSubmitting}
             onChange={(event) =>
               setFile(event.target.files?.[0] ?? null)
             }
@@ -417,7 +671,7 @@ export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
           disabled={
             !file ||
             uploading ||
-            executionState === "submitting"
+            panelSubmitting
           }
           onClick={() => void handleUpload()}
         >
@@ -428,7 +682,7 @@ export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
           disabled={
             reading ||
             contextState === "loading" ||
-            executionState === "submitting"
+            panelSubmitting
           }
           onClick={() => void readContext(productId, true)}
         >
@@ -476,7 +730,7 @@ export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
             disabled={
               !context ||
               preflightState === "checking" ||
-              executionState === "submitting"
+              panelSubmitting
             }
             onClick={() => void handlePreflight()}
           >
@@ -525,7 +779,7 @@ export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
             disabled={
               preflightState !== "ready" ||
               authorizationConsumed ||
-              executionState === "submitting"
+              panelSubmitting
             }
             onChange={(event) => setFeeConfirmed(event.target.checked)}
           />
@@ -565,10 +819,123 @@ export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
           Recommendation不持久化；页面刷新后可能丢失。再次执行可能再次产生Provider费用。
           C4.2必须重新验证Product、Digest和精确内容链。
         </p>
+
+        {recommendationResult && (
+          <section
+            className="growth-v2-copy"
+            aria-label="Recommendation-Bound V2 Copy"
+          >
+            <div className="growth-context-section-title">
+              <strong>V2 Copy Candidate</strong>
+              <small>
+                独立Preflight、独立费用确认；不会继承Recommendation授权
+              </small>
+            </div>
+            <div className="growth-recommendation__actions">
+              <button
+                type="button"
+                disabled={
+                  !canPreflightV2 ||
+                  v2PreflightState === "checking" ||
+                  panelSubmitting
+                }
+                onClick={() => void handleV2Preflight()}
+              >
+                {v2PreflightState === "checking"
+                  ? "检查中…"
+                  : "运行V2 Copy Preflight"}
+              </button>
+              <span>
+                Frontend Gates：
+                {copyExecutionEnabled && v2CopyExecutionEnabled
+                  ? "均已开启"
+                  : "默认关闭"}
+              </span>
+            </div>
+
+            {v2PreflightState === "idle" &&
+              v2ExecutionState !== "succeeded" &&
+              v2ExecutionState !== "uncertain" && (
+                <ContextMessage
+                  title="尚未运行V2 Copy Preflight"
+                  detail="只读核对Recommendation Digest、Context和精确内容链，不调用Provider、不写数据库。"
+                />
+              )}
+            {v2PreflightState === "checking" && (
+              <ContextMessage
+                title="正在运行V2 Copy Preflight"
+                detail="正在重新计算摘要并核对全部源身份。"
+              />
+            )}
+            {v2PreflightState === "failed" && (
+              <ContextMessage
+                title="V2 Copy Preflight失败"
+                detail={v2PreflightError}
+                error
+              />
+            )}
+            {(v2PreflightState === "ready" ||
+              v2PreflightState === "blocked") &&
+              v2Preflight && (
+                <V2CopyPreflightResult
+                  preflight={v2Preflight}
+                  state={v2PreflightState}
+                />
+              )}
+
+            <label className="growth-recommendation__confirm">
+              <input
+                type="checkbox"
+                checked={v2FeeConfirmed}
+                disabled={
+                  v2PreflightState !== "ready" ||
+                  v2AuthorizationConsumed ||
+                  panelSubmitting
+                }
+                onChange={(event) =>
+                  setV2FeeConfirmed(event.target.checked)
+                }
+              />
+              <span>
+                我单独确认本次V2 Copy Candidate会调用Qwen并可能产生费用；此授权仅使用一次。
+              </span>
+            </label>
+            <button
+              className="growth-recommendation__execute"
+              type="button"
+              disabled={!canExecuteV2}
+              onClick={() => void handleExecuteV2Copy()}
+            >
+              {v2ExecutionState === "submitting"
+                ? "正在生成V2 Copy Candidate…"
+                : "调用Qwen生成V2 Copy Candidate"}
+            </button>
+            {v2ExecutionState === "failed" && (
+              <ContextMessage
+                title="V2 Copy生成失败"
+                detail={v2ExecutionError}
+                error
+              />
+            )}
+            {v2ExecutionState === "uncertain" && (
+              <ContextMessage
+                title="V2 Copy结果不确定"
+                detail={v2ExecutionError}
+                error
+              />
+            )}
+            {v2ExecutionState === "succeeded" && v2Result && (
+              <V2CopyCandidateResult result={v2Result} />
+            )}
+            <p className="growth-panel__boundary">
+              仅保存V2 Copy Candidate；未修改源Copy，未创建VideoProject，
+              父子版本关系尚未持久化。网络响应丢失时无法可靠确认本次是否落库，
+              不会自动重试或用latest CopyMatrix冒充结果。
+            </p>
+          </section>
+        )}
+
         <div className="growth-recommendation__future">
-          <button type="button" disabled>
-            C4.2A 生成V2 Copy（未开放）
-          </button>
           <button type="button" disabled>
             C4.2B 生成V2 VideoProject（未开放）
           </button>
@@ -799,6 +1166,121 @@ function RecommendationResult({ result }: { result: GrowthAnalysis }) {
         Product级数据形成的测试假设，不是创意因果证明。本次结果未持久化、
         未修改预算、未生成V2 Copy或VideoProject，也没有自动执行权限。
       </p>
+      <p className="growth-context-attribution">
+        Recommendation Digest：
+        <span title={result.recommendation_digest}>
+          {result.recommendation_digest.slice(0, 12)}…
+        </span>
+        ；完整性范围为确定性往返校验，不是签名、鉴权或Provider来源证明。
+      </p>
+    </div>
+  );
+}
+
+function V2CopyPreflightResult({
+  preflight,
+  state,
+}: {
+  preflight: V2CopyPreflight;
+  state: "ready" | "blocked";
+}) {
+  return (
+    <div className="growth-recommendation__preflight">
+      <div className="growth-context-summary">
+        <div>
+          <small>V2 Preflight</small>
+          <strong>{state === "ready" ? "READY" : "BLOCKED"}</strong>
+        </div>
+        <div>
+          <small>Target platforms</small>
+          <strong>{preflight.target_platforms.join(" / ")}</strong>
+        </div>
+        <div>
+          <small>Copy Gate</small>
+          <strong>
+            {preflight.copy_execution_enabled ? "已开启" : "默认关闭"}
+          </strong>
+        </div>
+        <div>
+          <small>V2 Copy Gate</small>
+          <strong>
+            {preflight.v2_copy_execution_enabled
+              ? "已开启"
+              : "默认关闭"}
+          </strong>
+        </div>
+      </div>
+      <p>
+        Preflight Digest：
+        <span title={preflight.preflight_digest}>
+          {preflight.preflight_digest.slice(0, 12)}…
+        </span>
+      </p>
+      <p>{preflight.cost_notice}</p>
+      <p>{preflight.association_notice}</p>
+      {preflight.missing_requirements.length > 0 && (
+        <div className="growth-context-missing">
+          <strong>Blocked requirements</strong>
+          <ul>
+            {preflight.missing_requirements.map((item) => (
+              <li key={item}>{MISSING_LABELS[item] ?? item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function V2CopyCandidateResult({
+  result,
+}: {
+  result: V2CopyExecutionResult;
+}) {
+  return (
+    <div className="growth-v2-copy__result">
+      <div className="growth-context-section-title">
+        <strong>V2 Copy Candidate</strong>
+        <small>
+          CopyMatrix #{result.generated_copy_matrix.id} ·{" "}
+          {result.target_platforms.join(" / ")}
+        </small>
+      </div>
+      <div className="growth-context-chain">
+        <div>
+          <small>Source Strategy</small>
+          <strong>#{result.source_marketing_strategy_id}</strong>
+        </div>
+        <div>
+          <small>Source CopyMatrix</small>
+          <strong>#{result.source_copy_matrix_id}</strong>
+        </div>
+        <div>
+          <small>Source VideoProject</small>
+          <strong>#{result.source_video_project_id}</strong>
+        </div>
+      </div>
+      <p>
+        Context {result.source_context_digest.slice(0, 12)}… · Recommendation{" "}
+        {result.source_recommendation_digest.slice(0, 12)}…
+      </p>
+      <div className="growth-v2-copy__cards">
+        {result.generated_copy_matrix.copies.map((copy) => (
+          <article key={copy.platform}>
+            <strong>{copy.platform}</strong>
+            <p>Hook：{copy.hook}</p>
+            <p>Caption：{copy.caption}</p>
+            <p>Hashtags：{copy.hashtags.join(" ")}</p>
+            <p>CTA：{copy.cta}</p>
+          </article>
+        ))}
+      </div>
+      <ul className="growth-v2-copy__boundaries">
+        <li>仅保存V2 Copy Candidate</li>
+        <li>未修改源Copy</li>
+        <li>未创建VideoProject</li>
+        <li>父子版本关系尚未持久化</li>
+      </ul>
     </div>
   );
 }
@@ -876,5 +1358,57 @@ function sameExecutionIdentity(
       context.marketing_strategy_id &&
     result.source_copy_matrix_id === context.copy_matrix_id &&
     result.source_video_project_id === context.video_project_id
+  );
+}
+
+function v2SourceRequest(result: GrowthAnalysis) {
+  return {
+    source_context_digest: result.source_context_digest,
+    source_marketing_strategy_id:
+      result.source_marketing_strategy_id,
+    source_copy_matrix_id: result.source_copy_matrix_id,
+    source_video_project_id: result.source_video_project_id,
+    recommendation_digest: result.recommendation_digest,
+    recommendation: result.recommendation,
+  };
+}
+
+function sameV2PreflightIdentity(
+  preflight: V2CopyPreflight,
+  recommendation: GrowthAnalysis,
+  productId: number,
+) {
+  return (
+    preflight.product_id === productId &&
+    preflight.source_context_digest ===
+      recommendation.source_context_digest &&
+    preflight.source_recommendation_digest ===
+      recommendation.recommendation_digest &&
+    preflight.source_marketing_strategy_id ===
+      recommendation.source_marketing_strategy_id &&
+    preflight.source_copy_matrix_id ===
+      recommendation.source_copy_matrix_id &&
+    preflight.source_video_project_id ===
+      recommendation.source_video_project_id
+  );
+}
+
+function sameV2ExecutionIdentity(
+  result: V2CopyExecutionResult,
+  recommendation: GrowthAnalysis,
+  productId: number,
+) {
+  return (
+    result.product_id === productId &&
+    result.source_context_digest ===
+      recommendation.source_context_digest &&
+    result.source_recommendation_digest ===
+      recommendation.recommendation_digest &&
+    result.source_marketing_strategy_id ===
+      recommendation.source_marketing_strategy_id &&
+    result.source_copy_matrix_id ===
+      recommendation.source_copy_matrix_id &&
+    result.source_video_project_id ===
+      recommendation.source_video_project_id
   );
 }
