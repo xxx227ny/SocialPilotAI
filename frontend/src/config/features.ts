@@ -14,6 +14,10 @@ export const v2CopyExecutionEnabled = isEnabledFeatureFlag(
   import.meta.env.VITE_ENABLE_V2_COPY_EXECUTION,
 );
 
+export const v2VideoProjectExecutionEnabled = isEnabledFeatureFlag(
+  import.meta.env.VITE_ENABLE_V2_VIDEO_PROJECT_EXECUTION,
+);
+
 export const videoRenderExecutionEnabled = isEnabledFeatureFlag(
   import.meta.env.VITE_ENABLE_VIDEO_RENDER_EXECUTION,
 );

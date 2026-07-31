@@ -1,6 +1,18 @@
 from datetime import datetime
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
+
+from app.schemas.growth import GrowthRecommendationConstraints
+
+V2_VIDEO_PROJECT_CONTRACT_VERSION = "v2-video-project-v1"
 
 
 class VideoProjectRequest(BaseModel):
@@ -72,3 +84,118 @@ class VideoProjectSchema(VideoPlanSchema):
     status: str
     created_at: datetime
     updated_at: datetime
+
+
+class StrictV2VideoModel(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+
+class V2VideoProjectSourceRequest(StrictV2VideoModel):
+    source_context_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_marketing_strategy_id: int = Field(gt=0)
+    source_copy_matrix_id: int = Field(gt=0)
+    source_video_project_id: int = Field(gt=0)
+    recommendation_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recommendation: GrowthRecommendationConstraints
+    candidate_copy_matrix_id: int = Field(gt=0)
+
+
+class V2VideoProjectExecutionRequest(V2VideoProjectSourceRequest):
+    expected_preflight_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class V2VideoSceneProviderOutput(StrictV2VideoModel):
+    sequence: int = Field(gt=0)
+    duration_seconds: int = Field(gt=0, le=180)
+    shot_type: str = Field(min_length=1, max_length=120)
+    visual_description: str = Field(min_length=1, max_length=1000)
+    action: str = Field(min_length=1, max_length=600)
+    narration: str = Field(min_length=1, max_length=1000)
+
+
+class V2VideoProjectProviderOutput(StrictV2VideoModel):
+    title: str = Field(min_length=1, max_length=300)
+    concept: str = Field(min_length=1, max_length=1600)
+    scenes: list[V2VideoSceneProviderOutput] = Field(
+        min_length=1, max_length=12
+    )
+    cta: str = Field(min_length=1, max_length=400)
+
+    @model_validator(mode="after")
+    def validate_timeline(
+        self, info: ValidationInfo
+    ) -> "V2VideoProjectProviderOutput":
+        sequences = [scene.sequence for scene in self.scenes]
+        if sequences != list(range(1, len(self.scenes) + 1)):
+            raise ValueError(
+                "scene sequences must start at 1 and be ordered and continuous"
+            )
+        expected_duration = (
+            info.context.get("duration_seconds")
+            if info.context is not None
+            else None
+        )
+        if expected_duration is not None and sum(
+            scene.duration_seconds for scene in self.scenes
+        ) != int(expected_duration):
+            raise ValueError(
+                "scene durations must equal the source VideoProject duration"
+            )
+        return self
+
+
+class V2VideoProjectPreflightRead(StrictV2VideoModel):
+    product_id: int
+    source_context_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_recommendation_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_marketing_strategy_id: int
+    source_copy_matrix_id: int
+    source_video_project_id: int
+    candidate_copy_matrix_id: int
+    platform: str
+    duration_seconds: int
+    aspect_ratio: str
+    input_ready: bool
+    provider_configured: bool
+    v2_video_project_execution_enabled: bool
+    contract_ready: bool
+    ready_for_execution: bool
+    missing_requirements: list[str]
+    preflight_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    preflight_only: Literal[True] = True
+    execution_will_call_qwen: Literal[True] = True
+    execution_will_create_video_project: Literal[True] = True
+    execution_will_call_wanx: Literal[False] = False
+    execution_will_create_render_task: Literal[False] = False
+    execution_will_create_artifact: Literal[False] = False
+    automatic_action_allowed: Literal[False] = False
+    cost_notice: str
+    association_notice: str
+
+
+class V2VideoProjectExecutionRead(StrictV2VideoModel):
+    version: Literal["v2-video-project-candidate-v1"] = (
+        "v2-video-project-candidate-v1"
+    )
+    product_id: int
+    source_context_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_recommendation_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_marketing_strategy_id: int
+    source_copy_matrix_id: int
+    source_video_project_id: int
+    candidate_copy_matrix_id: int
+    generated_video_project: VideoProjectSchema
+    provider_calls: Literal[1] = 1
+    wanx_calls: Literal[0] = 0
+    render_tasks_created: Literal[0] = 0
+    artifacts_created: Literal[0] = 0
+    source_video_project_modified: Literal[False] = False
+    source_copy_modified: Literal[False] = False
+    candidate_copy_modified: Literal[False] = False
+    recommendation_persisted: Literal[False] = False
+    candidate_copy_matrix_association_persisted: Literal[True] = True
+    candidate_copy_source_parent_relation_persisted: Literal[False] = False
+    source_video_parent_relation_persisted: Literal[False] = False
+    rendered: Literal[False] = False
+    automatic_action_allowed: Literal[False] = False
+    association_notice: str

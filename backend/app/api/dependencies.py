@@ -86,6 +86,21 @@ V2CopyExecutionGateDep = Annotated[
 ]
 
 
+def require_v2_video_project_execution_enabled(
+    app_settings: Annotated[Settings, Depends(get_settings)],
+) -> None:
+    if not app_settings.enable_v2_video_project_execution:
+        raise AppError(
+            "V2 VideoProject execution is disabled by the server",
+            status_code=503,
+        )
+
+
+V2VideoProjectExecutionGateDep = Annotated[
+    None, Depends(require_v2_video_project_execution_enabled)
+]
+
+
 def require_growth_execution_enabled(
     app_settings: Annotated[Settings, Depends(get_settings)],
 ) -> None:

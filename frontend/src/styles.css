@@ -1610,6 +1610,47 @@ textarea { font: inherit; }
   font-weight: 700;
 }
 
+.growth-v2-video {
+  display: grid;
+  gap: 0.85rem;
+  margin-top: 0.35rem;
+  padding: 1rem;
+  border: 1px solid rgba(124, 58, 237, 0.25);
+  border-radius: 14px;
+  background: #faf7ff;
+}
+
+.growth-v2-video__result {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid #c4b5fd;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.growth-v2-video__scenes {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.growth-v2-video__scenes li {
+  padding: 0.75rem;
+  border: 1px solid #e4def7;
+  border-radius: 10px;
+  background: #fcfbff;
+}
+
+.growth-v2-video__scenes p {
+  margin: 0.3rem 0 0;
+  color: #4b5565;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
 @media (max-width: 720px) {
   .growth-panel__header {
     align-items: flex-start;

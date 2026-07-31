@@ -14,7 +14,12 @@ import {
   copyExecutionEnabled,
   growthExecutionEnabled,
   v2CopyExecutionEnabled,
+  v2VideoProjectExecutionEnabled,
 } from "../config/features";
+import {
+  executeV2VideoProject,
+  preflightV2VideoProject,
+} from "../api/videos";
 import type {
   V2CopyExecutionResult,
   V2CopyPreflight,
@@ -25,6 +30,10 @@ import type {
   GrowthAnalysis,
   GrowthRecommendationPreflight,
 } from "../types/growth";
+import type {
+  V2VideoProjectExecutionResult,
+  V2VideoProjectPreflight,
+} from "../types/video";
 
 interface GrowthCopilotPanelProps {
   productId: number;
@@ -56,10 +65,15 @@ const MISSING_LABELS: Record<string, string> = {
   stale_context_digest: "当前FeedbackContext已变化",
   recommendation_digest_mismatch: "Recommendation摘要不匹配",
   source_content_chain_mismatch: "Recommendation源内容链不匹配",
+  source_video_project_schema: "源VideoProject生产Schema无效",
   recommendation_copy_platforms: "Copy约束平台不符合精确源CopyMatrix",
   product_input: "商品生成资料不完整",
   copy_execution: "Backend Copy执行开关",
   v2_copy_execution: "Backend V2 Copy执行开关",
+  candidate_copy_matrix_mismatch: "候选CopyMatrix身份或Strategy关联不匹配",
+  recommendation_video_platform: "Recommendation视频平台与源VideoProject不匹配",
+  candidate_copy_platform: "候选CopyMatrix缺少严格有效的目标平台文案",
+  v2_video_project_execution: "Backend V2 VideoProject执行开关",
 };
 
 export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
@@ -97,6 +111,19 @@ export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
   const [v2ExecutionError, setV2ExecutionError] = useState("");
   const [v2Result, setV2Result] =
     useState<V2CopyExecutionResult | null>(null);
+  const [v2VideoPreflight, setV2VideoPreflight] =
+    useState<V2VideoProjectPreflight | null>(null);
+  const [v2VideoPreflightState, setV2VideoPreflightState] =
+    useState<PreflightState>("idle");
+  const [v2VideoPreflightError, setV2VideoPreflightError] = useState("");
+  const [v2VideoFeeConfirmed, setV2VideoFeeConfirmed] = useState(false);
+  const [v2VideoAuthorizationConsumed, setV2VideoAuthorizationConsumed] =
+    useState(false);
+  const [v2VideoExecutionState, setV2VideoExecutionState] =
+    useState<ExecutionState>("idle");
+  const [v2VideoExecutionError, setV2VideoExecutionError] = useState("");
+  const [v2VideoResult, setV2VideoResult] =
+    useState<V2VideoProjectExecutionResult | null>(null);
   const currentProductId = useRef(productId);
   const contextRequestId = useRef(0);
   const uploadRequestId = useRef(0);
@@ -106,10 +133,16 @@ export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
   const executionController = useRef<AbortController | null>(null);
   const v2PreflightController = useRef<AbortController | null>(null);
   const v2ExecutionController = useRef<AbortController | null>(null);
+  const v2VideoPreflightController =
+    useRef<AbortController | null>(null);
+  const v2VideoExecutionController =
+    useRef<AbortController | null>(null);
   const preflightRequestId = useRef(0);
   const executionRequestId = useRef(0);
   const v2PreflightRequestId = useRef(0);
   const v2ExecutionRequestId = useRef(0);
+  const v2VideoPreflightRequestId = useRef(0);
+  const v2VideoExecutionRequestId = useRef(0);
   const manualReadLock = useRef(false);
   const uploadLock = useRef(false);
   const preflightLock = useRef(false);
@@ -118,6 +151,27 @@ export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
   const v2PreflightLock = useRef(false);
   const v2ExecutionLock = useRef(false);
   const v2AuthorizationConsumedRef = useRef(false);
+  const v2VideoPreflightLock = useRef(false);
+  const v2VideoExecutionLock = useRef(false);
+  const v2VideoAuthorizationConsumedRef = useRef(false);
+
+  const resetV2Video = useCallback(() => {
+    v2VideoPreflightRequestId.current += 1;
+    v2VideoExecutionRequestId.current += 1;
+    v2VideoPreflightController.current?.abort();
+    v2VideoExecutionController.current?.abort();
+    v2VideoPreflightLock.current = false;
+    v2VideoExecutionLock.current = false;
+    v2VideoAuthorizationConsumedRef.current = false;
+    setV2VideoPreflight(null);
+    setV2VideoPreflightState("idle");
+    setV2VideoPreflightError("");
+    setV2VideoFeeConfirmed(false);
+    setV2VideoAuthorizationConsumed(false);
+    setV2VideoExecutionState("idle");
+    setV2VideoExecutionError("");
+    setV2VideoResult(null);
+  }, []);
 
   const resetV2Copy = useCallback(() => {
     v2PreflightRequestId.current += 1;
@@ -135,7 +189,8 @@ export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
     setV2ExecutionState("idle");
     setV2ExecutionError("");
     setV2Result(null);
-  }, []);
+    resetV2Video();
+  }, [resetV2Video]);
 
   const resetRecommendation = useCallback(() => {
     preflightRequestId.current += 1;
@@ -162,7 +217,8 @@ export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
         manual &&
         (manualReadLock.current ||
           executionLock.current ||
-          v2ExecutionLock.current)
+          v2ExecutionLock.current ||
+          v2VideoExecutionLock.current)
       ) {
         return;
       }
@@ -244,6 +300,8 @@ export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
       executionController.current?.abort();
       v2PreflightController.current?.abort();
       v2ExecutionController.current?.abort();
+      v2VideoPreflightController.current?.abort();
+      v2VideoExecutionController.current?.abort();
     };
   }, [productId, readContext, resetRecommendation]);
 
@@ -252,7 +310,8 @@ export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
       !file ||
       uploadLock.current ||
       executionLock.current ||
-      v2ExecutionLock.current
+      v2ExecutionLock.current ||
+      v2VideoExecutionLock.current
     )
       return;
     uploadLock.current = true;
@@ -311,7 +370,8 @@ export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
       !context ||
       preflightLock.current ||
       executionLock.current ||
-      v2ExecutionLock.current
+      v2ExecutionLock.current ||
+      v2VideoExecutionLock.current
     ) {
       return;
     }
@@ -389,6 +449,7 @@ export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
       !preflight ||
       executionLock.current ||
       v2ExecutionLock.current ||
+      v2VideoExecutionLock.current ||
       authorizationConsumedRef.current
     ) {
       return;
@@ -471,7 +532,8 @@ export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
       !recommendationResult ||
       v2PreflightLock.current ||
       v2ExecutionLock.current ||
-      executionLock.current
+      executionLock.current ||
+      v2VideoExecutionLock.current
     ) {
       return;
     }
@@ -560,6 +622,7 @@ export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
       !v2Preflight ||
       v2ExecutionLock.current ||
       executionLock.current ||
+      v2VideoExecutionLock.current ||
       v2AuthorizationConsumedRef.current
     ) {
       return;
@@ -601,6 +664,7 @@ export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
       ) {
         return;
       }
+      resetV2Video();
       setV2Result(result);
       setV2ExecutionState("succeeded");
       setV2Preflight(null);
@@ -633,9 +697,204 @@ export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
     }
   }
 
+  const canPreflightV2Video = Boolean(
+    recommendationResult &&
+      v2Result &&
+      v2ExecutionState === "succeeded" &&
+      sameV2ExecutionIdentity(
+        v2Result,
+        recommendationResult,
+        productId,
+      ) &&
+      v2VideoExecutionState !== "submitting" &&
+      v2VideoExecutionState !== "succeeded" &&
+      v2VideoExecutionState !== "uncertain",
+  );
+
+  async function handleV2VideoPreflight() {
+    if (
+      !canPreflightV2Video ||
+      !recommendationResult ||
+      !v2Result ||
+      v2VideoPreflightLock.current ||
+      v2VideoExecutionLock.current ||
+      executionLock.current ||
+      v2ExecutionLock.current
+    ) {
+      return;
+    }
+    v2VideoPreflightLock.current = true;
+    const expectedProductId = productId;
+    const expectedRecommendation = recommendationResult;
+    const expectedCopy = v2Result;
+    const requestId = ++v2VideoPreflightRequestId.current;
+    const controller = new AbortController();
+    v2VideoPreflightController.current?.abort();
+    v2VideoPreflightController.current = controller;
+    setV2VideoPreflightState("checking");
+    setV2VideoPreflightError("");
+    setV2VideoFeeConfirmed(false);
+    setV2VideoAuthorizationConsumed(false);
+    v2VideoAuthorizationConsumedRef.current = false;
+    setV2VideoExecutionState("idle");
+    setV2VideoExecutionError("");
+    setV2VideoResult(null);
+    try {
+      const result = await preflightV2VideoProject(
+        expectedProductId,
+        v2VideoSourceRequest(expectedRecommendation, expectedCopy),
+        controller.signal,
+      );
+      if (
+        controller.signal.aborted ||
+        requestId !== v2VideoPreflightRequestId.current ||
+        currentProductId.current !== expectedProductId ||
+        recommendationResult !== expectedRecommendation ||
+        v2Result !== expectedCopy ||
+        !sameV2VideoPreflightIdentity(
+          result,
+          expectedRecommendation,
+          expectedCopy,
+          expectedProductId,
+        )
+      ) {
+        return;
+      }
+      setV2VideoPreflight(result);
+      setV2VideoPreflightState(
+        result.ready_for_execution ? "ready" : "blocked",
+      );
+    } catch (error) {
+      if (
+        controller.signal.aborted ||
+        requestId !== v2VideoPreflightRequestId.current ||
+        currentProductId.current !== expectedProductId
+      ) {
+        return;
+      }
+      setV2VideoPreflight(null);
+      setV2VideoPreflightState("failed");
+      setV2VideoPreflightError(
+        getApiErrorMessage(
+          error,
+          "V2 VideoProject Preflight failed; reread Context and retry.",
+        ),
+      );
+    } finally {
+      if (requestId === v2VideoPreflightRequestId.current) {
+        v2VideoPreflightLock.current = false;
+      }
+    }
+  }
+
+  const canExecuteV2Video = Boolean(
+    recommendationResult &&
+      v2Result &&
+      v2VideoPreflight &&
+      v2VideoPreflightState === "ready" &&
+      v2VideoPreflight.ready_for_execution &&
+      sameV2VideoPreflightIdentity(
+        v2VideoPreflight,
+        recommendationResult,
+        v2Result,
+        productId,
+      ) &&
+      v2VideoProjectExecutionEnabled &&
+      v2VideoFeeConfirmed &&
+      !v2VideoAuthorizationConsumed &&
+      v2VideoExecutionState !== "submitting",
+  );
+
+  async function handleExecuteV2Video() {
+    if (
+      !canExecuteV2Video ||
+      !recommendationResult ||
+      !v2Result ||
+      !v2VideoPreflight ||
+      v2VideoExecutionLock.current ||
+      executionLock.current ||
+      v2ExecutionLock.current ||
+      v2VideoAuthorizationConsumedRef.current
+    ) {
+      return;
+    }
+    v2VideoExecutionLock.current = true;
+    v2VideoAuthorizationConsumedRef.current = true;
+    setV2VideoAuthorizationConsumed(true);
+    setV2VideoFeeConfirmed(false);
+    const expectedProductId = productId;
+    const expectedRecommendation = recommendationResult;
+    const expectedCopy = v2Result;
+    const expectedPreflight = v2VideoPreflight;
+    const requestId = ++v2VideoExecutionRequestId.current;
+    const controller = new AbortController();
+    v2VideoExecutionController.current?.abort();
+    v2VideoExecutionController.current = controller;
+    setV2VideoExecutionState("submitting");
+    setV2VideoExecutionError("");
+    setV2VideoResult(null);
+    try {
+      const result = await executeV2VideoProject(
+        expectedProductId,
+        {
+          ...v2VideoSourceRequest(expectedRecommendation, expectedCopy),
+          expected_preflight_digest:
+            expectedPreflight.preflight_digest,
+        },
+        controller.signal,
+      );
+      if (
+        controller.signal.aborted ||
+        requestId !== v2VideoExecutionRequestId.current ||
+        currentProductId.current !== expectedProductId ||
+        recommendationResult !== expectedRecommendation ||
+        v2Result !== expectedCopy ||
+        !sameV2VideoExecutionIdentity(
+          result,
+          expectedRecommendation,
+          expectedCopy,
+          expectedPreflight,
+          expectedProductId,
+        )
+      ) {
+        return;
+      }
+      setV2VideoResult(result);
+      setV2VideoExecutionState("succeeded");
+      setV2VideoPreflight(null);
+      setV2VideoPreflightState("idle");
+    } catch (error) {
+      if (
+        controller.signal.aborted ||
+        requestId !== v2VideoExecutionRequestId.current ||
+        currentProductId.current !== expectedProductId
+      ) {
+        return;
+      }
+      const uncertain = axios.isAxiosError(error) && !error.response;
+      setV2VideoExecutionState(uncertain ? "uncertain" : "failed");
+      setV2VideoExecutionError(
+        uncertain
+          ? "V2 VideoProject result is uncertain. No automatic retry or latest-project recovery will be used."
+          : getApiErrorMessage(
+              error,
+              "V2 VideoProject generation failed; run a new Preflight and confirm cost again.",
+            ),
+      );
+      setV2VideoPreflight(null);
+      setV2VideoPreflightState("idle");
+      setV2VideoFeeConfirmed(false);
+    } finally {
+      if (requestId === v2VideoExecutionRequestId.current) {
+        v2VideoExecutionLock.current = false;
+      }
+    }
+  }
+
   const panelSubmitting =
     executionState === "submitting" ||
-    v2ExecutionState === "submitting";
+    v2ExecutionState === "submitting" ||
+    v2VideoExecutionState === "submitting";
 
   return (
     <section className="growth-panel" aria-label="Structured FeedbackContext">
@@ -647,7 +906,8 @@ export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
         <div className="growth-panel__zero-ai">
           <strong>
             {(recommendationResult?.provider_calls ?? 0) +
-              (v2Result?.provider_calls ?? 0)}{" "}
+              (v2Result?.provider_calls ?? 0) +
+              (v2VideoResult?.provider_calls ?? 0)}{" "}
             AI Calls
           </strong>
           <small>Context读取始终Provider-free</small>
@@ -935,11 +1195,121 @@ export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
           </section>
         )}
 
-        <div className="growth-recommendation__future">
-          <button type="button" disabled>
-            C4.2B 生成V2 VideoProject（未开放）
-          </button>
-        </div>
+        {recommendationResult && v2Result && (
+          <section
+            className="growth-v2-video"
+            aria-label="Recommendation-Bound V2 VideoProject"
+          >
+            <div className="growth-context-section-title">
+              <strong>V2 VideoProject Candidate</strong>
+              <small>
+                Exact candidate CopyMatrix #{v2Result.generated_copy_matrix.id};
+                Qwen planning only, no Wanx or render
+              </small>
+            </div>
+            <div className="growth-recommendation__actions">
+              <button
+                type="button"
+                disabled={
+                  !canPreflightV2Video ||
+                  v2VideoPreflightState === "checking" ||
+                  panelSubmitting
+                }
+                onClick={() => void handleV2VideoPreflight()}
+              >
+                {v2VideoPreflightState === "checking"
+                  ? "Checking..."
+                  : "Run V2 VideoProject Preflight"}
+              </button>
+              <span>
+                Frontend Gate:{" "}
+                {v2VideoProjectExecutionEnabled
+                  ? "enabled"
+                  : "default closed"}
+              </span>
+            </div>
+            {v2VideoPreflightState === "idle" &&
+              v2VideoExecutionState !== "succeeded" &&
+              v2VideoExecutionState !== "uncertain" && (
+                <ContextMessage
+                  title="V2 VideoProject Preflight not yet run"
+                  detail="Read-only validation; no Provider call and no database write."
+                />
+              )}
+            {v2VideoPreflightState === "checking" && (
+              <ContextMessage
+                title="Checking V2 VideoProject inputs"
+                detail="Revalidating Context, Recommendation, source chain, candidate CopyMatrix, and production constraints."
+              />
+            )}
+            {v2VideoPreflightState === "failed" && (
+              <ContextMessage
+                title="V2 VideoProject Preflight failed"
+                detail={v2VideoPreflightError}
+                error
+              />
+            )}
+            {(v2VideoPreflightState === "ready" ||
+              v2VideoPreflightState === "blocked") &&
+              v2VideoPreflight && (
+                <V2VideoPreflightResult
+                  preflight={v2VideoPreflight}
+                  state={v2VideoPreflightState}
+                />
+              )}
+            <label className="growth-recommendation__confirm">
+              <input
+                type="checkbox"
+                checked={v2VideoFeeConfirmed}
+                disabled={
+                  v2VideoPreflightState !== "ready" ||
+                  v2VideoAuthorizationConsumed ||
+                  panelSubmitting
+                }
+                onChange={(event) =>
+                  setV2VideoFeeConfirmed(event.target.checked)
+                }
+              />
+              <span>
+                I separately authorize this single Qwen VideoProject-planning
+                call. This authorization does not permit Wanx or rendering.
+              </span>
+            </label>
+            <button
+              className="growth-recommendation__execute"
+              type="button"
+              disabled={!canExecuteV2Video}
+              onClick={() => void handleExecuteV2Video()}
+            >
+              {v2VideoExecutionState === "submitting"
+                ? "Generating V2 VideoProject..."
+                : "Call Qwen to create V2 VideoProject"}
+            </button>
+            {v2VideoExecutionState === "failed" && (
+              <ContextMessage
+                title="V2 VideoProject generation failed"
+                detail={v2VideoExecutionError}
+                error
+              />
+            )}
+            {v2VideoExecutionState === "uncertain" && (
+              <ContextMessage
+                title="V2 VideoProject result uncertain"
+                detail={v2VideoExecutionError}
+                error
+              />
+            )}
+            {v2VideoExecutionState === "succeeded" && v2VideoResult && (
+              <V2VideoCandidateResult result={v2VideoResult} />
+            )}
+            <p className="growth-panel__boundary">
+              The saved VideoProject references the exact V2 Copy Candidate.
+              Recommendation and parent-version provenance are not persisted.
+              No automatic render, retry, Submit, Refresh, or latest-project
+              recovery is performed.
+            </p>
+          </section>
+        )}
       </section>
     </section>
   );
@@ -1285,6 +1655,123 @@ function V2CopyCandidateResult({
   );
 }
 
+function V2VideoPreflightResult({
+  preflight,
+  state,
+}: {
+  preflight: V2VideoProjectPreflight;
+  state: "ready" | "blocked";
+}) {
+  return (
+    <div className="growth-recommendation__preflight">
+      <div className="growth-context-summary">
+        <div>
+          <small>Preflight</small>
+          <strong>{state === "ready" ? "READY" : "BLOCKED"}</strong>
+        </div>
+        <div>
+          <small>Candidate CopyMatrix</small>
+          <strong>#{preflight.candidate_copy_matrix_id}</strong>
+        </div>
+        <div>
+          <small>Production</small>
+          <strong>
+            {preflight.platform} · {preflight.duration_seconds}s ·{" "}
+            {preflight.aspect_ratio}
+          </strong>
+        </div>
+        <div>
+          <small>Backend Gate</small>
+          <strong>
+            {preflight.v2_video_project_execution_enabled
+              ? "enabled"
+              : "default closed"}
+          </strong>
+        </div>
+      </div>
+      <p>
+        Preflight Digest:{" "}
+        <span title={preflight.preflight_digest}>
+          {preflight.preflight_digest.slice(0, 12)}…
+        </span>
+      </p>
+      <p>{preflight.cost_notice}</p>
+      <p>{preflight.association_notice}</p>
+      {preflight.missing_requirements.length > 0 && (
+        <div className="growth-context-missing">
+          <strong>Blocked requirements</strong>
+          <ul>
+            {preflight.missing_requirements.map((item) => (
+              <li key={item}>{MISSING_LABELS[item] ?? item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function V2VideoCandidateResult({
+  result,
+}: {
+  result: V2VideoProjectExecutionResult;
+}) {
+  const project = result.generated_video_project;
+  return (
+    <div className="growth-v2-video__result">
+      <div className="growth-context-section-title">
+        <strong>
+          VideoProject #{project.id} · {project.title}
+        </strong>
+        <small>
+          CopyMatrix #{result.candidate_copy_matrix_id} · {project.platform} ·{" "}
+          {project.duration_seconds}s · {project.aspect_ratio}
+        </small>
+      </div>
+      <p>{project.concept}</p>
+      <ul className="growth-v2-video__scenes">
+        {project.scenes.map((scene) => (
+          <li key={scene.sequence}>
+            <strong>
+              Scene {scene.sequence} · {scene.duration_seconds}s ·{" "}
+              {scene.shot_type}
+            </strong>
+            <p>{scene.visual_description}</p>
+            <p>{scene.action}</p>
+            <p>{scene.narration}</p>
+          </li>
+        ))}
+      </ul>
+      <p>CTA: {project.cta}</p>
+      <ul className="growth-v2-copy__boundaries">
+        <li>
+          Candidate CopyMatrix association persisted ={" "}
+          {result.candidate_copy_matrix_association_persisted ? "yes" : "no"}
+        </li>
+        <li>
+          Candidate Copy → source Copy parent persisted ={" "}
+          {result.candidate_copy_source_parent_relation_persisted
+            ? "yes"
+            : "no"}
+        </li>
+        <li>
+          New VideoProject → source VideoProject parent persisted ={" "}
+          {result.source_video_parent_relation_persisted ? "yes" : "no"}
+        </li>
+        <li>
+          Recommendation persisted ={" "}
+          {result.recommendation_persisted ? "yes" : "no"}
+        </li>
+        <li>Wanx Calls = {result.wanx_calls}</li>
+        <li>RenderTask = {result.render_tasks_created}</li>
+        <li>Artifact = {result.artifacts_created}</li>
+        <li>尚未渲染</li>
+      </ul>
+      <p>{result.association_notice}</p>
+    </div>
+  );
+}
+
 function MetricsGrid({
   metrics,
   compact = false,
@@ -1410,5 +1897,71 @@ function sameV2ExecutionIdentity(
       recommendation.source_copy_matrix_id &&
     result.source_video_project_id ===
       recommendation.source_video_project_id
+  );
+}
+
+function v2VideoSourceRequest(
+  recommendation: GrowthAnalysis,
+  copy: V2CopyExecutionResult,
+) {
+  return {
+    ...v2SourceRequest(recommendation),
+    candidate_copy_matrix_id: copy.generated_copy_matrix.id,
+  };
+}
+
+function sameV2VideoPreflightIdentity(
+  preflight: V2VideoProjectPreflight,
+  recommendation: GrowthAnalysis,
+  copy: V2CopyExecutionResult,
+  productId: number,
+) {
+  return (
+    preflight.product_id === productId &&
+    preflight.source_context_digest ===
+      recommendation.source_context_digest &&
+    preflight.source_recommendation_digest ===
+      recommendation.recommendation_digest &&
+    preflight.source_marketing_strategy_id ===
+      recommendation.source_marketing_strategy_id &&
+    preflight.source_copy_matrix_id ===
+      recommendation.source_copy_matrix_id &&
+    preflight.source_video_project_id ===
+      recommendation.source_video_project_id &&
+    preflight.candidate_copy_matrix_id ===
+      copy.generated_copy_matrix.id
+  );
+}
+
+function sameV2VideoExecutionIdentity(
+  result: V2VideoProjectExecutionResult,
+  recommendation: GrowthAnalysis,
+  copy: V2CopyExecutionResult,
+  preflight: V2VideoProjectPreflight,
+  productId: number,
+) {
+  return (
+    result.product_id === productId &&
+    result.source_context_digest ===
+      recommendation.source_context_digest &&
+    result.source_recommendation_digest ===
+      recommendation.recommendation_digest &&
+    result.source_marketing_strategy_id ===
+      recommendation.source_marketing_strategy_id &&
+    result.source_copy_matrix_id ===
+      recommendation.source_copy_matrix_id &&
+    result.source_video_project_id ===
+      recommendation.source_video_project_id &&
+    result.candidate_copy_matrix_id ===
+      copy.generated_copy_matrix.id &&
+    result.generated_video_project.product_id === productId &&
+    result.generated_video_project.marketing_strategy_id ===
+      recommendation.source_marketing_strategy_id &&
+    result.generated_video_project.copy_matrix_id ===
+      copy.generated_copy_matrix.id &&
+    result.generated_video_project.platform === preflight.platform &&
+    result.generated_video_project.duration_seconds ===
+      preflight.duration_seconds &&
+    result.generated_video_project.aspect_ratio === preflight.aspect_ratio
   );
 }

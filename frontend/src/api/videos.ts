@@ -7,6 +7,10 @@ import type {
   VideoRenderArtifactSafe,
   VideoRenderOperation,
   VideoRenderPreflight,
+  V2VideoProjectExecutionRequest,
+  V2VideoProjectExecutionResult,
+  V2VideoProjectPreflight,
+  V2VideoProjectSourceRequest,
 } from "../types/video";
 import axios from "axios";
 
@@ -17,6 +21,32 @@ export async function generateVideoProject(
   const response = await apiClient.post<VideoProject>(
     `/products/${productId}/video-projects`,
     payload,
+  );
+  return response.data;
+}
+
+export async function preflightV2VideoProject(
+  productId: number,
+  payload: V2VideoProjectSourceRequest,
+  signal?: AbortSignal,
+): Promise<V2VideoProjectPreflight> {
+  const response = await apiClient.post<V2VideoProjectPreflight>(
+    `/products/${productId}/v2-video-project/preflight`,
+    payload,
+    { signal },
+  );
+  return response.data;
+}
+
+export async function executeV2VideoProject(
+  productId: number,
+  payload: V2VideoProjectExecutionRequest,
+  signal?: AbortSignal,
+): Promise<V2VideoProjectExecutionResult> {
+  const response = await apiClient.post<V2VideoProjectExecutionResult>(
+    `/products/${productId}/v2-video-project`,
+    payload,
+    { signal },
   );
   return response.data;
 }

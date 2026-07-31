@@ -1,3 +1,5 @@
+import type { GrowthRecommendationConstraints } from "./growth";
+
 export interface VideoProjectRequest {
   platform: string;
   duration_seconds: number;
@@ -25,6 +27,76 @@ export interface VideoProject extends VideoProjectRequest {
   status: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface V2VideoProjectSourceRequest {
+  source_context_digest: string;
+  source_marketing_strategy_id: number;
+  source_copy_matrix_id: number;
+  source_video_project_id: number;
+  recommendation_digest: string;
+  recommendation: GrowthRecommendationConstraints;
+  candidate_copy_matrix_id: number;
+}
+
+export interface V2VideoProjectExecutionRequest
+  extends V2VideoProjectSourceRequest {
+  expected_preflight_digest: string;
+}
+
+export interface V2VideoProjectPreflight {
+  product_id: number;
+  source_context_digest: string;
+  source_recommendation_digest: string;
+  source_marketing_strategy_id: number;
+  source_copy_matrix_id: number;
+  source_video_project_id: number;
+  candidate_copy_matrix_id: number;
+  platform: string;
+  duration_seconds: number;
+  aspect_ratio: string;
+  input_ready: boolean;
+  provider_configured: boolean;
+  v2_video_project_execution_enabled: boolean;
+  contract_ready: boolean;
+  ready_for_execution: boolean;
+  missing_requirements: string[];
+  preflight_digest: string;
+  preflight_only: true;
+  execution_will_call_qwen: true;
+  execution_will_create_video_project: true;
+  execution_will_call_wanx: false;
+  execution_will_create_render_task: false;
+  execution_will_create_artifact: false;
+  automatic_action_allowed: false;
+  cost_notice: string;
+  association_notice: string;
+}
+
+export interface V2VideoProjectExecutionResult {
+  version: "v2-video-project-candidate-v1";
+  product_id: number;
+  source_context_digest: string;
+  source_recommendation_digest: string;
+  source_marketing_strategy_id: number;
+  source_copy_matrix_id: number;
+  source_video_project_id: number;
+  candidate_copy_matrix_id: number;
+  generated_video_project: VideoProject;
+  provider_calls: 1;
+  wanx_calls: 0;
+  render_tasks_created: 0;
+  artifacts_created: 0;
+  source_video_project_modified: false;
+  source_copy_modified: false;
+  candidate_copy_modified: false;
+  recommendation_persisted: false;
+  candidate_copy_matrix_association_persisted: true;
+  candidate_copy_source_parent_relation_persisted: false;
+  source_video_parent_relation_persisted: false;
+  rendered: false;
+  automatic_action_allowed: false;
+  association_notice: string;
 }
 
 export interface VideoRenderPreflight {

@@ -37,6 +37,34 @@ class VideoProjectRepository:
     def get(self, video_project_id: int) -> VideoProject | None:
         return self.session.get(VideoProject, video_project_id)
 
+    def create_for_exact_chain(
+        self,
+        product_id: int,
+        marketing_strategy_id: int,
+        copy_matrix_id: int,
+        plan: VideoPlanSchema,
+    ) -> VideoProject:
+        project = VideoProject(
+            product_id=product_id,
+            marketing_strategy_id=marketing_strategy_id,
+            copy_matrix_id=copy_matrix_id,
+            platform=plan.platform,
+            title=plan.title,
+            concept=plan.concept,
+            duration_seconds=plan.duration_seconds,
+            aspect_ratio=plan.aspect_ratio,
+            scenes=[scene.model_dump() for scene in plan.scenes],
+            cta=plan.cta,
+            status="planned",
+        )
+        try:
+            self.session.add(project)
+            self.session.commit()
+        except Exception:
+            self.session.rollback()
+            raise
+        return project
+
     def get_latest_by_product(self, product_id: int) -> VideoProject | None:
         statement = (
             select(VideoProject)

@@ -7,6 +7,7 @@ from app.api.dependencies import (
     GrowthExecutionGateDep,
     TextProviderDep,
     V2CopyExecutionGateDep,
+    V2VideoProjectExecutionGateDep,
 )
 from app.core.config import Settings, get_settings
 from app.db.session import get_db
@@ -23,6 +24,12 @@ from app.schemas.growth import (
     GrowthAnalysisResponse,
     GrowthRecommendationPreflightRead,
 )
+from app.schemas.video import (
+    V2VideoProjectExecutionRead,
+    V2VideoProjectExecutionRequest,
+    V2VideoProjectPreflightRead,
+    V2VideoProjectSourceRequest,
+)
 from app.services.campaign_service import CampaignService
 from app.services.feedback_context_service import FeedbackContextService
 from app.services.growth_analysis_service import GrowthAnalysisService
@@ -31,6 +38,12 @@ from app.services.growth_recommendation_preflight import (
 )
 from app.services.v2_copy_generation_service import V2CopyGenerationService
 from app.services.v2_copy_preflight import V2CopyPreflightService
+from app.services.v2_video_project_generation_service import (
+    V2VideoProjectGenerationService,
+)
+from app.services.v2_video_project_preflight import (
+    V2VideoProjectPreflightService,
+)
 
 router = APIRouter(prefix="/products")
 DbSession = Annotated[Session, Depends(get_db)]
@@ -122,5 +135,38 @@ def generate_v2_copy(
 ) -> V2CopyExecutionRead:
     del execution_gate
     return V2CopyGenerationService(
+        db, provider, app_settings
+    ).generate(product_id, data)
+
+
+@router.post(
+    "/{product_id}/v2-video-project/preflight",
+    response_model=V2VideoProjectPreflightRead,
+)
+def preflight_v2_video_project(
+    product_id: int,
+    data: V2VideoProjectSourceRequest,
+    db: DbSession,
+    app_settings: SettingsDep,
+) -> V2VideoProjectPreflightRead:
+    return V2VideoProjectPreflightService(
+        db, app_settings
+    ).run(product_id, data)
+
+
+@router.post(
+    "/{product_id}/v2-video-project",
+    response_model=V2VideoProjectExecutionRead,
+)
+def generate_v2_video_project(
+    product_id: int,
+    data: V2VideoProjectExecutionRequest,
+    execution_gate: V2VideoProjectExecutionGateDep,
+    provider: TextProviderDep,
+    db: DbSession,
+    app_settings: SettingsDep,
+) -> V2VideoProjectExecutionRead:
+    del execution_gate
+    return V2VideoProjectGenerationService(
         db, provider, app_settings
     ).generate(product_id, data)
