@@ -8,10 +8,19 @@ from app.core.exceptions import AppError
 from app.providers import (
     ProviderAuthenticationError,
     ProviderConfigurationError,
+    ProviderError,
     QwenProvider,
     WanxProvider,
 )
 from app.providers.base import TextGenerationProvider
+from app.providers.live_configuration import (
+    get_provider_failure_metadata,
+    provider_public_http_status,
+    public_provider_failure,
+    qwen_provider_configured,
+    safe_error_message,
+    wanx_provider_configured,
+)
 from app.providers.visual_base import VisualGenerationProvider
 from app.services.video_artifact_storage import (
     HttpProviderOutputFetcher,
@@ -24,11 +33,31 @@ from app.services.video_artifact_storage import (
 
 def get_text_generation_provider() -> TextGenerationProvider:
     try:
-        return QwenProvider()
-    except ProviderAuthenticationError as exc:
+        return SafeObservableTextProvider(QwenProvider())
+    except (ProviderAuthenticationError, ProviderConfigurationError) as exc:
         raise AppError(
             "Qwen API credentials are not configured", status_code=503
         ) from exc
+
+
+class SafeObservableTextProvider(TextGenerationProvider):
+    """Translate classified Qwen failures into safe public categories."""
+
+    def __init__(self, provider: TextGenerationProvider) -> None:
+        self.provider = provider
+
+    def generate(self, prompt: str) -> str:
+        try:
+            return self.provider.generate(prompt)
+        except ProviderError as exc:
+            metadata = get_provider_failure_metadata(exc)
+            if metadata is None:
+                raise
+            raise AppError(
+                safe_error_message(metadata),
+                provider_public_http_status(metadata),
+                provider_failure=public_provider_failure(metadata),
+            ) from exc
 
 
 TextProviderDep = Annotated[
@@ -79,6 +108,7 @@ def require_v2_copy_execution_enabled(
             "V2 Copy execution is disabled by the server",
             status_code=503,
         )
+    _require_live_qwen_configuration(app_settings)
 
 
 V2CopyExecutionGateDep = Annotated[
@@ -94,6 +124,7 @@ def require_v2_video_project_execution_enabled(
             "V2 VideoProject execution is disabled by the server",
             status_code=503,
         )
+    _require_live_qwen_configuration(app_settings)
 
 
 V2VideoProjectExecutionGateDep = Annotated[
@@ -109,6 +140,7 @@ def require_growth_execution_enabled(
             "Growth analysis execution is disabled by the server",
             status_code=503,
         )
+    _require_live_qwen_configuration(app_settings)
 
 
 GrowthExecutionGateDep = Annotated[
@@ -124,11 +156,30 @@ def require_video_render_execution_enabled(
             "Video render execution is disabled by the server",
             status_code=503,
         )
+    if (
+        app_settings.require_live_provider_coherence
+        and not wanx_provider_configured(app_settings)
+    ):
+        raise AppError(
+            "Wanx live provider configuration is inconsistent",
+            status_code=503,
+        )
 
 
 VideoRenderExecutionGateDep = Annotated[
     None, Depends(require_video_render_execution_enabled)
 ]
+
+
+def _require_live_qwen_configuration(app_settings: Settings) -> None:
+    if (
+        app_settings.require_live_provider_coherence
+        and not qwen_provider_configured(app_settings)
+    ):
+        raise AppError(
+            "Qwen live provider configuration is inconsistent",
+            status_code=503,
+        )
 
 
 def get_visual_generation_provider() -> VisualGenerationProvider:

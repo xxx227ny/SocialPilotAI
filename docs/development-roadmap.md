@@ -10,6 +10,38 @@
 - ⛔ Blocked
 - ⚠️ Not entering now
 
+## Competition live mainline priority
+
+The active competition delivery order is now:
+
+1. Real Qwen/Wanx end-to-end generation, durable Artifact playback, Range,
+   and download.
+2. TikTok, Instagram, and YouTube account binding and publishing.
+3. Platform metrics ingestion.
+4. Growth Copilot recommendations for the next optimization cycle.
+
+The following work is deferred until after the competition mainline is
+operational: C4.3A complex version graphs, automatic KOL matching, email
+marketing, automatic mutation of real ad budgets or bids, multi-tenant and
+complex authorization, large-scale parallel batch processing, and unrelated
+architecture expansion. Existing safety gates, exact-identity validation,
+recovery, and Presentation isolation remain required and must not be removed.
+
+V2-L1 is currently blocked at its first real-call gate. On 2026-07-31 the
+single authorized Recommendation Qwen request returned an uncertain result;
+authorization was consumed and no retry was made. V2 Copy Qwen, V2
+VideoProject Qwen, Wanx Submit/Refresh, render, and Artifact delivery therefore
+remain unexecuted. The next mainline action is Provider-side request/billing
+diagnosis followed by new explicit cost authorization, not V2-L2 or C4.3A.
+
+V2-L1A confirmed that the historical uncertainty was created at the
+Frontend's former 5-second deadline, which was shorter than the Provider
+deadline. After correcting the timeout chain and completing Fake regression,
+the single newly authorized Recommendation request returned a definitive
+Provider failure. It was not retried, and all later Qwen/Wanx stages remained
+at zero. Provider-console diagnosis and a new explicit authorization are still
+required before Live mainline work can resume.
+
 ## Development tree
 
 ```mermaid
@@ -242,5 +274,136 @@ Product-input fail-closed correction (2026-07-30): V2 Copy Preflight now treats 
 | ✅ Completed; checkpoint pending | 2026-07-30 | Added Provider-free, read-only `POST /api/v1/products/{product_id}/v2-video-project/preflight` and independently gated `POST /api/v1/products/{product_id}/v2-video-project`. Backend rebuilds the current FeedbackContext and exact source Strategy/CopyMatrix/VideoProject chain, recomputes Recommendation and Preflight digests, loads the exact candidate CopyMatrix ID, validates Product/Strategy/platform compatibility and the candidate platform-copy structure, and binds normalized candidate content plus fixed source duration/aspect ratio into the digest. Provider output is an `extra="forbid"` title/concept/scenes/CTA object with bounded trimmed text, a continuous ordered timeline from 1, and an exact source-duration sum | Backend owns Product, Strategy, candidate CopyMatrix, platform, duration, aspect ratio, and `planned` status. One successful Fake Qwen plan creates exactly one VideoProject referencing the candidate CopyMatrix; source VideoProject, source/candidate CopyMatrix, Strategy, Campaign, RenderTask, and Artifact rows are unchanged. Route and Service gates default false and authorization is separate, single-use, synchronously consumed, and never inherited from Recommendation or V2 Copy. No Wanx, Submit, Refresh, render, polling, retry, latest-VideoProject recovery, or C4.3A version graph is allowed | C4.2B focused: 26 passed; Recommendation/V2 Copy/FeedbackContext: 105 passed; Video/Render/Artifact: 119 passed, 1 safe skip; Product/Strategy/Copy: 113 passed; Campaign/Metrics/Dashboard/Demo: 13 passed; full default pytest: 393 passed, 3 real-provider skips, 1 known warning. Ruff, TypeScript, and repository-external Vite production build passed with 126 modules. Browser Smoke covered explicit default-off frontend gating, ready Preflight, separate fee confirmation, rapid double-click, valid success, strict-invalid output, safe Provider failure, response-loss uncertainty, Backend restart, rapid Product switching, Context invalidation, and zero RenderTask/Artifact writes. Presentation redirected correctly, loaded Demo Snapshot/`0 AI Calls` across all four stages, made four snapshot GETs and zero C4.2B requests, and ended with 0 console errors/warnings | Recommendation and FeedbackContext remain non-persistent. Candidate-Copy Recommendation parentage and old-to-new VideoProject parentage are not stored, so a reload cannot prove either relation. The Backend proves only that the submitted strict Recommendation, current source chain, and exact candidate CopyMatrix are structurally and digest-compatible at execution time. An uncertain request cannot be reconciled by selecting latest VideoProject | Independent audit, then user-authorized V2-C4.2B checkpoint; do not start C4.3A |
 
 Source-schema and association-truth correction (2026-07-30): the Provider-free Preflight and the execution-time second validation now run the complete existing `VideoPlanSchema` contract over the source VideoProject, including title, concept, platform, duration, aspect ratio, scenes, CTA, exact sequence continuity, and exact total duration. Invalid legacy/direct-write source data returns safe blocked Preflight output with `source_video_project_schema`; execution revalidation returns safe HTTP 409 before Provider generation or writes. The public success contract now distinguishes the durable `candidate_copy_matrix_association_persisted=true` foreign key from the non-persistent candidate-Copy → source-Copy parent relation, new-VideoProject → source-VideoProject parent relation, and Recommendation relation. Correction gates passed with 40 focused, 105 Recommendation/V2 Copy/FeedbackContext, 119 Video/Render/Artifact plus 1 safe skip, 113 Product/Strategy/Copy, 13 Campaign/Metrics/Dashboard/Demo, and 407 full tests plus 3 real-provider skips and 1 known warning. Ruff, TypeScript, repository-external Vite build, isolated invalid/valid Browser Smoke, and Presentation four-stage isolation passed with console 0/0.
+
+### V2-L1C Qwen/Wanx credential separation and safe observability
+
+The Live correction gives Qwen and Wanx independent key, Workspace, region,
+endpoint, and model contracts. The prior launcher/key-coherence design could
+inject the Wanx credential into Qwen and derived Qwen routing from Wanx
+Workspace state; those cross-Provider assumptions are removed. Qwen may use
+the deprecated `DASHSCOPE_API_KEY` only when `QWEN_API_KEY` is absent, while
+Wanx has no legacy or cross-Provider fallback. Exact Alibaba HTTPS endpoints
+are normalized and validated against each Provider's own Beijing Workspace.
+Provider failures retain only classified non-secret metadata and a short
+request-ID digest. The two earlier Recommendation HTTP results remain
+unrecoverable; no real Qwen or Wanx generation is permitted in this correction.
+The V2-L1C targeted suite passed 46 tests; Provider/Live regression passed 56;
+the combined Growth/Copy/VideoProject/Render/Artifact suite passed 156; and the
+complete default suite passed 453 with 3 real-provider skips and one known
+Starlette/httpx warning. Ruff, TypeScript, repository-external Vite production
+build (126 modules), UTF-8, Markdown links, diff, and sensitive-data gates
+passed. Real Qwen/Wanx calls were 0. V2-L2 and C4.3A remain out of scope.
+
+### V2-L1E Qwen 503 source traceability
+
+L1D's public HTTP 503 was generated by SocialPilot Backend after local
+Provider object construction but before Provider generation or HTTP transport:
+Recommendation Preflight accepted the independent Qwen
+configuration, but `GrowthAnalysisService` still checked only the deprecated
+DashScope alias in its second gate. With a Qwen-only local configuration that
+gate returned `Qwen provider is not configured`; Alibaba returned no HTTP
+status or request ID and the attempt was non-billable. The second gate now
+uses the same Qwen readiness contract as Preflight.
+
+Provider failures now retain a strict allowlisted payload through Provider,
+Service, route, HTTP response, Frontend parsing, and UI. Backend-owned 503,
+connect/proxy failure, Provider 4xx/5xx, response uncertainty, schema failure,
+and browser delivery uncertainty are distinct. No real Qwen or Wanx request is
+authorized by this correction; a new Recommendation attempt requires separate
+user approval after all Fake and quality gates pass.
+
+### V2-L1K V2 Copy platform evidence consistency audit
+
+The V2 Copy contract now names four different platform scopes explicitly:
+`source_copy_platforms`, `allowed_copy_constraint_platforms`,
+`recommendation_target_copy_platforms`, and `v2_copy_target_platforms`.
+The success response also returns `persisted_copy_platforms`, the exact
+Preflight digest, and the persisted CopyMatrix ID. The compatibility
+`target_platforms` field remains temporarily available, but the workspace no
+longer uses its ambiguous label.
+
+Execution rebuilds Preflight, recomputes the digest, validates Provider output
+against the exact ordered V2 target, prepares the new CopyMatrix without a
+commit, reads its authoritative platform order, and commits only after all
+platform and identity evidence agrees. A mismatch rolls back and returns a
+safe failure. The Frontend independently refuses to show success if the
+Preflight digest, target list, persisted list, generated cards, or CopyMatrix
+identity disagree.
+
+The L1J database proves that CopyMatrix #2 is a complete TikTok-only row bound
+to Product #1 and Strategy #1. It does not persist the Recommendation,
+Preflight response, digest, or candidate-to-Recommendation parent relation.
+Therefore its structure is consistent with a single-platform target, while
+the earlier manually recorded three-platform text cannot be attributed to a
+specific API field after the session ended. CopyMatrix #2 is retained as a
+Live candidate with unproven Recommendation ownership and is not eligible for
+V2 VideoProject execution.
+
+L1K verification passed 63 focused V2 Copy tests, 95 combined
+Recommendation/V2 Copy tests, and 476 full tests with 3 real-Provider skips
+and one known Starlette/httpx warning. Ruff, TypeScript, Vite production build
+(126 modules), UTF-8, Markdown links, diff, and sensitive-data gates passed.
+All reproduction used Fake Providers; real Qwen, Wanx, Provider HTTP calls,
+and AI fees were 0.
+
+### V2-L1M Qwen execution-environment connection diagnosis
+
+L1L's `connection_failed` did not identify an Alibaba outage. The Backend was
+started inside the restricted execution Sandbox: the Backend Python runtime
+resolved the Workspace host 5/5 but outbound TCP, TLS, and unauthenticated HTTP
+all failed 0/5. The same Python 3.12 virtual environment, httpx/OpenAI versions,
+OpenSSL stack, timeouts, `trust_env=true`, endpoint normalization, and local
+configuration executed with approved normal-system networking and passed DNS,
+TCP 443, TLS/SNI/certificate verification, IPv4, IPv6, and unauthenticated HEAD
+5/5. HEAD returned HTTP 404, proving gateway reachability only; it was not a
+model request and does not prove Qwen generation success.
+
+Connection failures now preserve distinct safe categories for DNS resolution,
+TCP refusal, connect timeout, network unreachable, TLS handshake, certificate
+verification, proxy unavailability, pre-request reset, and unknown connection
+failure. Frontend messages expose only safe Chinese guidance. No host, IP,
+endpoint, Workspace, credential, Authorization value, or raw exception is
+added to the public contract. The optional workspace connectivity button was
+not added because the execution-environment cause was reproduced and normal
+system connectivity met the 5/5 stability gate.
+
+L1M targeted Provider/Recommendation tests passed 108; full pytest passed 483
+with 3 real-Provider skips and one known warning. Ruff, TypeScript, and Vite
+production build (126 modules) passed. Real Qwen/Wanx generation, Provider
+model HTTP, Recommendation/V2 Copy/V2 VideoProject execution, and AI fees were
+all 0. Any future real verification service must be started with explicitly
+approved normal-system network access; a new paid-call authorization remains
+separate.
+
+### V2-L1N continuous real Qwen/Wanx mainline verification
+
+V2-L1 is complete. The Live Backend ran with explicitly approved normal-system
+network access; restricted Sandbox execution remains forbidden for real
+Provider traffic. The same runtime passed Qwen and Wanx configuration, TCP,
+TLS, and unauthenticated HTTP reachability checks before any paid request.
+
+The user-authorized continuous browser session completed exactly one real
+Recommendation Qwen call, one real V2 Copy Qwen call, and one real V2
+VideoProject Qwen call. The V2 Copy evidence was Source `TikTok / Instagram /
+Facebook`, Allowed `TikTok / Instagram / Facebook`, Recommendation Target
+`TikTok`, and V2 Copy Target `TikTok`. Backend persisted CopyMatrix #3 with the
+same target platform. It then persisted planned VideoProject #2, bound exactly
+to CopyMatrix #3, with `TikTok`, 10 seconds, and `9:16` production constraints.
+
+One real Wanx Submit created RenderTask #1. One explicit same-task status
+refresh reached `SUCCEEDED` without polling, retry, replacement, or duplicate
+Submit. Artifact #1 is a `video/mp4` file of 1,501,205 bytes with SHA-256
+`8EA00B62025B93E4604F22C585940AD04B7B73C27155017112624624B6D55361`.
+Stable Content, bodyless HEAD, 100-byte Range, full Download, paused playback,
+and exact-task refresh recovery all passed through Backend Artifact endpoints.
+
+Automatic retry, duplicate Qwen POST, and duplicate Wanx Submit counts were
+all 0. The maximum possibly billed work was three Qwen generations and one
+Wanx generation. Presentation remained isolated from Provider execution; the
+Live dataset intentionally had no Demo Snapshot, so Presentation reported that
+the snapshot was not ready while its shell remained active and Provider POST
+counts stayed unchanged. Browser console state was not inspected and is not
+reported as zero. The next mainline is V2-L2 Social Account Binding and
+Publishing, which requires separate authorization and is not started here.
 
 Substage gates are in [V2 Plan](v2-plan.md). Execution records belong in [Progress Log](progress-log.md).

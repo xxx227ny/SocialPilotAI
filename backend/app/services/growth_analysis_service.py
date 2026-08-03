@@ -9,9 +9,18 @@ from app.models import CopyMatrix, MarketingStrategy, VideoProject
 from app.providers import (
     ProviderAuthenticationError,
     ProviderConnectionError,
+    ProviderError,
     ProviderModelError,
     ProviderQuotaError,
     TextGenerationProvider,
+)
+from app.providers.live_configuration import (
+    get_provider_failure_metadata,
+    provider_failure_metadata,
+    provider_public_http_status,
+    public_provider_failure,
+    qwen_provider_configured,
+    safe_error_message,
 )
 from app.schemas.growth import (
     GrowthAnalysisResponse,
@@ -90,17 +99,32 @@ class GrowthAnalysisService:
                     required_video_constraint_platform=expected_video_platform,
                 )
             )
-        except ProviderAuthenticationError as exc:
-            raise AppError("Qwen authentication failed", status_code=502) from exc
-        except ProviderConnectionError as exc:
-            raise AppError("Qwen service is unavailable", status_code=503) from exc
-        except ProviderQuotaError as exc:
-            raise AppError(
-                "Qwen quota or rate limit prevents execution",
-                status_code=503,
-            ) from exc
-        except ProviderModelError as exc:
-            raise AppError("Qwen generation failed", status_code=502) from exc
+        except ProviderError as exc:
+            metadata = get_provider_failure_metadata(exc)
+            if metadata is not None:
+                raise AppError(
+                    safe_error_message(metadata),
+                    provider_public_http_status(metadata),
+                    provider_failure=public_provider_failure(metadata),
+                ) from exc
+            if isinstance(exc, ProviderAuthenticationError):
+                raise AppError(
+                    "Qwen authentication failed", status_code=502
+                ) from exc
+            if isinstance(exc, ProviderConnectionError):
+                raise AppError(
+                    "Qwen service is unavailable", status_code=503
+                ) from exc
+            if isinstance(exc, ProviderQuotaError):
+                raise AppError(
+                    "Qwen quota or rate limit prevents execution",
+                    status_code=503,
+                ) from exc
+            if isinstance(exc, ProviderModelError):
+                raise AppError(
+                    "Qwen generation failed", status_code=502
+                ) from exc
+            raise
 
         try:
             recommendation = GrowthRecommendationConstraints.model_validate_json(
@@ -113,8 +137,17 @@ class GrowthAnalysisService:
                 expected_video_platform=expected_video_platform,
             )
         except (ValidationError, ValueError) as exc:
+            metadata = provider_failure_metadata(
+                provider="qwen",
+                phase="schema",
+                provider_code="invalid_provider_output",
+                uncertain=False,
+                potentially_billable=True,
+            )
             raise AppError(
-                "Qwen returned invalid recommendation data", status_code=502
+                "Qwen returned invalid recommendation data",
+                status_code=provider_public_http_status(metadata),
+                provider_failure=public_provider_failure(metadata),
             ) from exc
 
         recommendation_digest = compute_recommendation_digest(
@@ -143,8 +176,7 @@ class GrowthAnalysisService:
             )
 
     def _require_provider_configured(self) -> None:
-        secret = self.settings.dashscope_api_key
-        if secret is None or not secret.get_secret_value().strip():
+        if not qwen_provider_configured(self.settings):
             raise AppError("Qwen provider is not configured", status_code=503)
 
     @staticmethod

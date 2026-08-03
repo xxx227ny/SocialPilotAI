@@ -241,6 +241,7 @@ export function ProductCenterPage() {
                 />
               ) : selectedProduct ? (
                 <ProductDetail
+                  key={selectedProduct.id}
                   product={selectedProduct}
                   selectedPlatforms={platformDrafts[selectedProduct.id] ?? []}
                   onPlatformsChange={(platforms) =>
@@ -295,6 +296,10 @@ function ProductDetail({
   onPlatformsChange: (platforms: PlatformName[]) => void;
   onProductUpdated: (product: Product) => void;
 }) {
+  const [liveVideoProjectId, setLiveVideoProjectId] = useState<
+    number | undefined
+  >();
+
   return (
     <article className="product-detail-card">
       <header>
@@ -358,14 +363,20 @@ function ProductDetail({
         onProductUpdated={onProductUpdated}
       />
 
-      <VideoRenderPreflightPanel product={product} />
-
       <section className="product-detail-card__existing-workflow">
         <p className="strategy-preflight__note">
           Strategy与Copy Matrix操作已迁移到上方的受控流程；普通工作区不再调用旧Product-only Copy入口。
         </p>
-        <GrowthCopilotPanel productId={product.id} />
+        <GrowthCopilotPanel
+          productId={product.id}
+          onVideoProjectGenerated={setLiveVideoProjectId}
+        />
       </section>
+
+      <VideoRenderPreflightPanel
+        product={product}
+        videoProjectId={liveVideoProjectId}
+      />
     </article>
   );
 }

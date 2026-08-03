@@ -107,6 +107,10 @@ export interface V2CopyPreflight {
   source_marketing_strategy_id: number;
   source_copy_matrix_id: number;
   source_video_project_id: number;
+  source_copy_platforms: PlatformCopy["platform"][];
+  allowed_copy_constraint_platforms: PlatformCopy["platform"][];
+  recommendation_target_copy_platforms: PlatformCopy["platform"][];
+  v2_copy_target_platforms: PlatformCopy["platform"][];
   target_platforms: PlatformCopy["platform"][];
   expected_copy_count: number;
   input_ready: boolean;
@@ -136,6 +140,13 @@ export interface V2CopyExecutionResult {
   source_marketing_strategy_id: number;
   source_copy_matrix_id: number;
   source_video_project_id: number;
+  source_copy_platforms: PlatformCopy["platform"][];
+  allowed_copy_constraint_platforms: PlatformCopy["platform"][];
+  recommendation_target_copy_platforms: PlatformCopy["platform"][];
+  v2_copy_target_platforms: PlatformCopy["platform"][];
+  persisted_copy_platforms: PlatformCopy["platform"][];
+  preflight_digest: string;
+  copy_matrix_id: number;
   target_platforms: PlatformCopy["platform"][];
   generated_copy_matrix: PersistedCopyMatrix;
   source_kind: "feedback_recommendation_constraints";

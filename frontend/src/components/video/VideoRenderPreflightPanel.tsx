@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import {
   executeVideoProjectRender,
+  getVideoProject,
   getLatestVideoProjectForProduct,
   getLatestVideoRenderTask,
   getVideoRenderPreflight,
@@ -50,7 +51,22 @@ interface ActiveContext {
   renderTaskId: number | null;
 }
 
-export function VideoRenderPreflightPanel({ product }: { product: Product }) {
+const WANX_MISSING_LABELS: Record<string, string> = {
+  provider_configuration: "Wanx Provider安全配置",
+  wanx_credentials_configuration: "Wanx凭据配置",
+  wanx_workspace_configuration: "Wanx Workspace配置",
+  wanx_region_configuration: "Wanx Region配置",
+  wanx_endpoint_configuration: "Wanx Endpoint配置",
+  wanx_model_configuration: "Wanx模型配置",
+};
+
+export function VideoRenderPreflightPanel({
+  product,
+  videoProjectId,
+}: {
+  product: Product;
+  videoProjectId?: number;
+}) {
   const [state, setState] = useState<PanelState>("idle");
   const [project, setProject] = useState<VideoProject | null>(null);
   const [preflight, setPreflight] = useState<VideoRenderPreflight | null>(null);
@@ -98,10 +114,12 @@ export function VideoRenderPreflightPanel({ product }: { product: Product }) {
     async function load() {
       let loadedProject: VideoProject;
       try {
-        loadedProject = await getLatestVideoProjectForProduct(
-          product.id,
-          controller.signal,
-        );
+        loadedProject = videoProjectId
+          ? await getVideoProject(videoProjectId, controller.signal)
+          : await getLatestVideoProjectForProduct(
+              product.id,
+              controller.signal,
+            );
       } catch (loadError) {
         if (!isActive(requestId, product.id, null, null, controller)) return;
         if (isVideoProjectNotFound(loadError)) {
@@ -222,7 +240,7 @@ export function VideoRenderPreflightPanel({ product }: { product: Product }) {
       controller.abort();
       actionControllerRef.current?.abort();
     };
-  }, [product.id, retryKey]);
+  }, [product.id, retryKey, videoProjectId]);
 
   function isActive(
     requestId: number,
@@ -286,6 +304,7 @@ export function VideoRenderPreflightPanel({ product }: { product: Product }) {
       return;
     }
     submitLockRef.current = true;
+    setCostConfirmed(false);
     const controller = new AbortController();
     actionControllerRef.current?.abort();
     actionControllerRef.current = controller;
@@ -736,7 +755,9 @@ function PreflightResult({
           <strong>尚缺运行条件</strong>
           <ul>
             {preflight.missing_requirements.map((requirement) => (
-              <li key={requirement}>{requirement}</li>
+              <li key={requirement}>
+                {WANX_MISSING_LABELS[requirement] ?? "受控执行条件"}
+              </li>
             ))}
           </ul>
         </div>
@@ -923,11 +944,13 @@ function isBusyState(state: PanelState) {
 function safeErrorLabel(code: string) {
   const labels: Record<string, string> = {
     execution_disabled: "执行已关闭",
-    provider_not_configured: "Provider未配置",
+    provider_not_configured: "Wanx未配置",
     artifact_storage_not_configured: "Artifact存储未配置",
     association_mismatch: "关联不一致",
     invalid_input: "输入无效",
-    authentication: "认证失败",
+    authentication: "Provider认证失败",
+    permission_denied: "Provider权限不足",
+    endpoint_or_model_not_found: "Endpoint或模型错误",
     quota_or_rate_limit: "配额或限流",
     network: "网络错误",
     timeout: "请求超时",

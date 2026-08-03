@@ -5,6 +5,10 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.models import CopyMatrix, MarketingStrategy, Product, VideoProject
+from app.providers.live_configuration import (
+    qwen_missing_requirements,
+    qwen_provider_configured,
+)
 from app.repositories.product import ProductRepository
 from app.schemas.copy import (
     V2_COPY_CONTRACT_VERSION,
@@ -42,9 +46,12 @@ class V2CopyPreflightService:
         # FeedbackContext already returns 404 for a missing Product.
         assert product is not None
 
-        target_platforms = [
+        source_copy_platforms = self._source_copy_platforms(copy_matrix)
+        allowed_copy_constraint_platforms = list(source_copy_platforms)
+        recommendation_target_copy_platforms = [
             item.platform for item in data.recommendation.copy_constraints
         ]
+        v2_copy_target_platforms = list(recommendation_target_copy_platforms)
         calculated_recommendation_digest = compute_recommendation_digest(
             product_id=product_id,
             source_context_digest=data.source_context_digest,
@@ -68,7 +75,9 @@ class V2CopyPreflightService:
             product_id,
         ):
             missing.append("source_content_chain_mismatch")
-        if not self._target_platforms_valid(target_platforms, copy_matrix):
+        if not self._target_platforms_valid(
+            v2_copy_target_platforms, copy_matrix
+        ):
             missing.append("recommendation_copy_platforms")
         if not self._product_ready(product):
             missing.append("product_input")
@@ -76,6 +85,7 @@ class V2CopyPreflightService:
         provider_configured = self._provider_configured()
         if not provider_configured:
             missing.append("provider_configuration")
+            missing.extend(qwen_missing_requirements(self.settings))
         if not self.settings.enable_copy_execution:
             missing.append("copy_execution")
         if not self.settings.enable_v2_copy_execution:
@@ -118,7 +128,14 @@ class V2CopyPreflightService:
                 video_project.id if video_project is not None else None
             ),
             request=data,
-            target_platforms=target_platforms,
+            source_copy_platforms=source_copy_platforms,
+            allowed_copy_constraint_platforms=(
+                allowed_copy_constraint_platforms
+            ),
+            recommendation_target_copy_platforms=(
+                recommendation_target_copy_platforms
+            ),
+            v2_copy_target_platforms=v2_copy_target_platforms,
         )
         return V2CopyPreflightRead(
             product_id=product_id,
@@ -127,8 +144,16 @@ class V2CopyPreflightService:
             source_marketing_strategy_id=data.source_marketing_strategy_id,
             source_copy_matrix_id=data.source_copy_matrix_id,
             source_video_project_id=data.source_video_project_id,
-            target_platforms=target_platforms,
-            expected_copy_count=len(target_platforms),
+            source_copy_platforms=source_copy_platforms,
+            allowed_copy_constraint_platforms=(
+                allowed_copy_constraint_platforms
+            ),
+            recommendation_target_copy_platforms=(
+                recommendation_target_copy_platforms
+            ),
+            v2_copy_target_platforms=v2_copy_target_platforms,
+            target_platforms=v2_copy_target_platforms,
+            expected_copy_count=len(v2_copy_target_platforms),
             input_ready=input_ready,
             provider_configured=provider_configured,
             copy_execution_enabled=self.settings.enable_copy_execution,
@@ -151,7 +176,10 @@ class V2CopyPreflightService:
         current_copy_matrix_id: int | None,
         current_video_project_id: int | None,
         request: V2CopySourceRequest,
-        target_platforms: list[str],
+        source_copy_platforms: list[str],
+        allowed_copy_constraint_platforms: list[str],
+        recommendation_target_copy_platforms: list[str],
+        v2_copy_target_platforms: list[str],
     ) -> str:
         payload = {
             "contract_version": V2_COPY_CONTRACT_VERSION,
@@ -172,7 +200,16 @@ class V2CopyPreflightService:
                 "copy_matrix_id": request.source_copy_matrix_id,
                 "video_project_id": request.source_video_project_id,
             },
-            "target_platforms": target_platforms,
+            "platform_evidence": {
+                "source_copy_platforms": source_copy_platforms,
+                "allowed_copy_constraint_platforms": (
+                    allowed_copy_constraint_platforms
+                ),
+                "recommendation_target_copy_platforms": (
+                    recommendation_target_copy_platforms
+                ),
+                "v2_copy_target_platforms": v2_copy_target_platforms,
+            },
         }
         serialized = json.dumps(
             payload,
@@ -183,8 +220,7 @@ class V2CopyPreflightService:
         return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
     def _provider_configured(self) -> bool:
-        secret = self.settings.dashscope_api_key
-        return bool(secret and secret.get_secret_value().strip())
+        return qwen_provider_configured(self.settings)
 
     @staticmethod
     def _same_chain(
@@ -228,6 +264,16 @@ class V2CopyPreflightService:
             platform.casefold() in source_platforms
             for platform in target_platforms
         )
+
+    @staticmethod
+    def _source_copy_platforms(copy_matrix: CopyMatrix | None) -> list[str]:
+        if copy_matrix is None:
+            return []
+        return [
+            str(item.get("platform", "")).strip()
+            for item in (copy_matrix.copies or [])
+            if isinstance(item, dict) and str(item.get("platform", "")).strip()
+        ]
 
     @staticmethod
     def _product_ready(product: Product) -> bool:

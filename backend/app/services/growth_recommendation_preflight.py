@@ -2,6 +2,10 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.models import CopyMatrix, VideoProject
+from app.providers.live_configuration import (
+    qwen_missing_requirements,
+    qwen_provider_configured,
+)
 from app.schemas.growth import (
     GrowthRecommendationPreflightRead,
     normalize_growth_platform,
@@ -91,6 +95,7 @@ class GrowthRecommendationPreflightService:
             missing.append("supported_reference_platforms")
         if not provider_configured:
             missing.append("provider_configuration")
+            missing.extend(qwen_missing_requirements(self.settings))
         if not self.settings.enable_growth_execution:
             missing.append("growth_execution")
         ready_for_execution = all(
@@ -120,8 +125,7 @@ class GrowthRecommendationPreflightService:
         )
 
     def _provider_configured(self) -> bool:
-        secret = self.settings.dashscope_api_key
-        return bool(secret and secret.get_secret_value().strip())
+        return qwen_provider_configured(self.settings)
 
     @staticmethod
     def _reference_platforms_ready(

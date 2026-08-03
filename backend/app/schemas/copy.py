@@ -14,7 +14,7 @@ from app.schemas.growth import GrowthRecommendationConstraints
 
 PlatformName = Literal["TikTok", "Instagram", "Facebook"]
 REQUIRED_PLATFORMS = {"TikTok", "Instagram", "Facebook"}
-V2_COPY_CONTRACT_VERSION = "v2-copy-v1"
+V2_COPY_CONTRACT_VERSION = "v2-copy-v2"
 
 
 class PlatformCopySchema(BaseModel):
@@ -235,6 +235,18 @@ class V2CopyPreflightRead(StrictV2CopyModel):
     source_marketing_strategy_id: int
     source_copy_matrix_id: int
     source_video_project_id: int
+    source_copy_platforms: list[PlatformName] = Field(max_length=3)
+    allowed_copy_constraint_platforms: list[PlatformName] = Field(
+        max_length=3
+    )
+    recommendation_target_copy_platforms: list[PlatformName] = Field(
+        min_length=1, max_length=3
+    )
+    v2_copy_target_platforms: list[PlatformName] = Field(
+        min_length=1, max_length=3
+    )
+    # Compatibility field for existing clients. New UI must use the explicit
+    # v2_copy_target_platforms evidence field.
     target_platforms: list[PlatformName] = Field(min_length=1, max_length=3)
     expected_copy_count: int = Field(ge=1, le=3)
     input_ready: bool
@@ -255,6 +267,16 @@ class V2CopyPreflightRead(StrictV2CopyModel):
     cost_notice: str
     association_notice: str
 
+    @model_validator(mode="after")
+    def validate_platform_evidence(self) -> "V2CopyPreflightRead":
+        if (
+            self.recommendation_target_copy_platforms
+            != self.v2_copy_target_platforms
+            or self.target_platforms != self.v2_copy_target_platforms
+        ):
+            raise ValueError("V2 Copy Preflight platform evidence is inconsistent")
+        return self
+
 
 class V2CopyExecutionRead(StrictV2CopyModel):
     version: Literal["v2-copy-candidate-v1"] = "v2-copy-candidate-v1"
@@ -264,6 +286,15 @@ class V2CopyExecutionRead(StrictV2CopyModel):
     source_marketing_strategy_id: int
     source_copy_matrix_id: int
     source_video_project_id: int
+    source_copy_platforms: list[PlatformName]
+    allowed_copy_constraint_platforms: list[PlatformName]
+    recommendation_target_copy_platforms: list[PlatformName]
+    v2_copy_target_platforms: list[PlatformName]
+    persisted_copy_platforms: list[PlatformName]
+    preflight_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    copy_matrix_id: int = Field(gt=0)
+    # Compatibility field for existing clients. New UI must use the explicit
+    # v2_copy_target_platforms evidence field.
     target_platforms: list[PlatformName]
     generated_copy_matrix: CopyMatrixRead
     source_kind: Literal["feedback_recommendation_constraints"] = (
@@ -279,3 +310,20 @@ class V2CopyExecutionRead(StrictV2CopyModel):
     version_label_persisted: Literal[False] = False
     automatic_action_allowed: Literal[False] = False
     association_notice: str
+
+    @model_validator(mode="after")
+    def validate_persisted_platform_evidence(self) -> "V2CopyExecutionRead":
+        generated_platforms = [
+            copy.platform for copy in self.generated_copy_matrix.copies
+        ]
+        if not (
+            self.recommendation_target_copy_platforms
+            == self.v2_copy_target_platforms
+            == self.persisted_copy_platforms
+            == generated_platforms
+            == self.target_platforms
+        ):
+            raise ValueError("V2 Copy persisted platform evidence is inconsistent")
+        if self.copy_matrix_id != self.generated_copy_matrix.id:
+            raise ValueError("V2 Copy persisted identity evidence is inconsistent")
+        return self

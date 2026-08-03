@@ -6,7 +6,11 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings
 from app.core.exceptions import AppError
 from app.models import CopyMatrix, MarketingStrategy, Product, VideoProject
-from app.providers.wanx_provider import WANX_REGION_HOSTS
+from app.providers.live_configuration import (
+    wanx_missing_requirements,
+    wanx_provider_configured,
+)
+from app.providers.wanx_provider import WANX_RATIOS
 from app.repositories.product import ProductRepository
 from app.repositories.video import VideoProjectRepository
 from app.schemas.video import VideoPlanSchema, VideoProjectSchema, VideoSceneSchema
@@ -83,6 +87,7 @@ class VideoRenderPreflightService:
         provider_configured = self._provider_configured()
         if not provider_configured:
             missing.append("provider_configuration")
+            missing.extend(wanx_missing_requirements(self.settings))
         if not self.settings.enable_video_render_execution:
             missing.append("video_render_execution")
         artifact_storage_configured = self._artifact_storage_configured()
@@ -147,6 +152,28 @@ class VideoRenderPreflightService:
                     VideoSceneSchema.model_validate(scene)
                 except ValidationError:
                     missing.append(f"scene_{index}_schema")
+            first_scene = next(
+                (
+                    scene
+                    for scene in project.scenes
+                    if isinstance(scene, dict) and scene.get("sequence") == 1
+                ),
+                None,
+            )
+            first_duration = (
+                first_scene.get("duration_seconds")
+                if first_scene is not None
+                else None
+            )
+            if (
+                not isinstance(first_duration, int)
+                or isinstance(first_duration, bool)
+                or first_duration < 2
+                or first_duration > 15
+            ):
+                missing.append("wanx_scene_duration")
+        if project.aspect_ratio not in WANX_RATIOS:
+            missing.append("wanx_aspect_ratio")
 
         strategy = self.session.get(
             MarketingStrategy, project.marketing_strategy_id
@@ -181,15 +208,7 @@ class VideoRenderPreflightService:
         return missing
 
     def _provider_configured(self) -> bool:
-        key = self.settings.wanx_api_key
-        if key is None or not key.get_secret_value().strip():
-            return False
-        if self.settings.wanx_endpoint:
-            return True
-        return bool(
-            (self.settings.wanx_workspace_id or "").strip()
-            and self.settings.wanx_region in WANX_REGION_HOSTS
-        )
+        return wanx_provider_configured(self.settings)
 
     def _artifact_storage_configured(self) -> bool:
         configured = (self.settings.video_artifact_storage_root or "").strip()

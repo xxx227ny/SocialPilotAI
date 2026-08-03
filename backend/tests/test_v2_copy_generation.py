@@ -32,6 +32,7 @@ from app.providers.base import (
     ProviderQuotaError,
     TextGenerationProvider,
 )
+from app.repositories.copy import CopyMatrixRepository
 from app.schemas.copy import V2CopyExecutionRequest, V2CopySourceRequest
 from app.schemas.growth import (
     GrowthRecommendationConstraints,
@@ -255,6 +256,49 @@ def preflight(
     return data, result.preflight_digest
 
 
+def request_for_platforms(
+    source: dict[str, object], platforms: list[str]
+) -> V2CopySourceRequest:
+    request = deepcopy(source["request"])
+    base = request["recommendation"]["copy_constraints"][0]
+    request["recommendation"]["copy_constraints"] = [
+        {
+            **base,
+            "platform": platform,
+            "hook_direction": f"Lead with the {platform} routine.",
+        }
+        for platform in platforms
+    ]
+    recommendation = GrowthRecommendationConstraints.model_validate(
+        request["recommendation"]
+    )
+    request["recommendation_digest"] = compute_recommendation_digest(
+        product_id=int(source["product_id"]),
+        source_context_digest=str(request["source_context_digest"]),
+        source_marketing_strategy_id=int(
+            request["source_marketing_strategy_id"]
+        ),
+        source_copy_matrix_id=int(request["source_copy_matrix_id"]),
+        source_video_project_id=int(request["source_video_project_id"]),
+        recommendation=recommendation,
+    )
+    return V2CopySourceRequest.model_validate(request)
+
+
+def provider_output_for(platforms: list[str]) -> dict[str, object]:
+    base = valid_provider_output()["copies"][0]
+    return {
+        "copies": [
+            {
+                **base,
+                "platform": platform,
+                "hook": f"{platform} controlled hook.",
+            }
+            for platform in platforms
+        ]
+    }
+
+
 def test_recommendation_digest_is_stable_and_tracks_every_source_field() -> None:
     recommendation = GrowthRecommendationConstraints.model_validate(
         valid_recommendation()
@@ -356,6 +400,20 @@ def test_preflight_is_provider_free_read_only_and_stable(
     assert first.json()["preflight_digest"] == second.json()["preflight_digest"]
     assert first.json()["ready_for_execution"] is True
     assert first.json()["preflight_only"] is True
+    assert first.json()["source_copy_platforms"] == [
+        "TikTok",
+        "Instagram",
+        "Facebook",
+    ]
+    assert first.json()["allowed_copy_constraint_platforms"] == [
+        "TikTok",
+        "Instagram",
+        "Facebook",
+    ]
+    assert first.json()["recommendation_target_copy_platforms"] == [
+        "TikTok"
+    ]
+    assert first.json()["v2_copy_target_platforms"] == ["TikTok"]
     assert provider_resolutions == 0
     assert model_counts(db_session) == before
 
@@ -775,6 +833,23 @@ def test_success_api_returns_backend_owned_candidate_contract(
     assert body["recommendation_persisted"] is False
     assert body["parent_relation_persisted"] is False
     assert body["version_label_persisted"] is False
+    assert body["source_copy_platforms"] == [
+        "TikTok",
+        "Instagram",
+        "Facebook",
+    ]
+    assert body["allowed_copy_constraint_platforms"] == [
+        "TikTok",
+        "Instagram",
+        "Facebook",
+    ]
+    assert body["recommendation_target_copy_platforms"] == ["TikTok"]
+    assert body["v2_copy_target_platforms"] == ["TikTok"]
+    assert body["persisted_copy_platforms"] == ["TikTok"]
+    assert body["preflight_digest"] == preflight_response.json()[
+        "preflight_digest"
+    ]
+    assert body["copy_matrix_id"] == body["generated_copy_matrix"]["id"]
     assert model_counts(db_session)["CopyMatrix"] == before["CopyMatrix"] + 1
 
 
@@ -938,6 +1013,150 @@ def test_provider_platform_order_must_match_recommendation_order(
     assert model_counts(db_session) == before
 
 
+def test_platform_evidence_scenario_a_single_target_succeeds(
+    client: TestClient,
+    db_session: Session,
+    product_payload: dict[str, object],
+) -> None:
+    source = create_source(client, db_session, product_payload)
+    data = request_for_platforms(source, ["TikTok"])
+    preflight_result = V2CopyPreflightService(
+        db_session, enabled_settings()
+    ).run(int(source["product_id"]), data)
+    before = model_counts(db_session)
+    provider = ControlledV2CopyProvider(provider_output_for(["TikTok"]))
+    app.dependency_overrides[get_text_generation_provider] = lambda: provider
+    app.dependency_overrides[get_settings] = enabled_settings
+    try:
+        response = client.post(
+            f"/api/v1/products/{source['product_id']}/v2-copy",
+            json={
+                **data.model_dump(mode="json"),
+                "expected_preflight_digest": preflight_result.preflight_digest,
+            },
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 200
+    result = response.json()
+    assert preflight_result.source_copy_platforms == [
+        "TikTok",
+        "Instagram",
+        "Facebook",
+    ]
+    assert preflight_result.allowed_copy_constraint_platforms == [
+        "TikTok",
+        "Instagram",
+        "Facebook",
+    ]
+    assert preflight_result.recommendation_target_copy_platforms == ["TikTok"]
+    assert preflight_result.v2_copy_target_platforms == ["TikTok"]
+    assert result["persisted_copy_platforms"] == ["TikTok"]
+    assert provider.calls == 1
+    assert model_counts(db_session)["CopyMatrix"] == before["CopyMatrix"] + 1
+
+
+def test_platform_evidence_scenario_b_three_targets_rejects_one_output(
+    client: TestClient,
+    db_session: Session,
+    product_payload: dict[str, object],
+) -> None:
+    source = create_source(client, db_session, product_payload)
+    data = request_for_platforms(
+        source, ["TikTok", "Instagram", "Facebook"]
+    )
+    preflight_result = V2CopyPreflightService(
+        db_session, enabled_settings()
+    ).run(int(source["product_id"]), data)
+    before = model_counts(db_session)
+    provider = ControlledV2CopyProvider(provider_output_for(["TikTok"]))
+    app.dependency_overrides[get_text_generation_provider] = lambda: provider
+    app.dependency_overrides[get_settings] = enabled_settings
+    try:
+        response = client.post(
+            f"/api/v1/products/{source['product_id']}/v2-copy",
+            json={
+                **data.model_dump(mode="json"),
+                "expected_preflight_digest": preflight_result.preflight_digest,
+            },
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 502
+    assert preflight_result.v2_copy_target_platforms == [
+        "TikTok",
+        "Instagram",
+        "Facebook",
+    ]
+    assert provider.calls == 1
+    assert model_counts(db_session) == before
+
+
+def test_platform_evidence_scenario_c_rejects_reversed_order(
+    client: TestClient,
+    db_session: Session,
+    product_payload: dict[str, object],
+) -> None:
+    source = create_source(client, db_session, product_payload)
+    data = request_for_platforms(source, ["TikTok", "Instagram"])
+    preflight_result = V2CopyPreflightService(
+        db_session, enabled_settings()
+    ).run(int(source["product_id"]), data)
+    before = model_counts(db_session)
+    provider = ControlledV2CopyProvider(
+        provider_output_for(["Instagram", "TikTok"])
+    )
+    app.dependency_overrides[get_text_generation_provider] = lambda: provider
+    app.dependency_overrides[get_settings] = enabled_settings
+    try:
+        response = client.post(
+            f"/api/v1/products/{source['product_id']}/v2-copy",
+            json={
+                **data.model_dump(mode="json"),
+                "expected_preflight_digest": preflight_result.preflight_digest,
+            },
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 502
+    assert provider.calls == 1
+    assert model_counts(db_session) == before
+
+
+def test_platform_evidence_scenario_d_changed_target_stops_before_provider(
+    client: TestClient,
+    db_session: Session,
+    product_payload: dict[str, object],
+) -> None:
+    source = create_source(client, db_session, product_payload)
+    three_platform_data = request_for_platforms(
+        source, ["TikTok", "Instagram", "Facebook"]
+    )
+    three_platform_preflight = V2CopyPreflightService(
+        db_session, enabled_settings()
+    ).run(int(source["product_id"]), three_platform_data)
+    one_platform_data = request_for_platforms(source, ["TikTok"])
+    provider = ControlledV2CopyProvider()
+    before = model_counts(db_session)
+    app.dependency_overrides[get_text_generation_provider] = lambda: provider
+    app.dependency_overrides[get_settings] = enabled_settings
+    try:
+        response = client.post(
+            f"/api/v1/products/{source['product_id']}/v2-copy",
+            json={
+                **one_platform_data.model_dump(mode="json"),
+                "expected_preflight_digest": (
+                    three_platform_preflight.preflight_digest
+                ),
+            },
+        )
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 409
+    assert provider.calls == 0
+    assert model_counts(db_session) == before
+
+
 @pytest.mark.parametrize(
     "output",
     [
@@ -1070,6 +1289,65 @@ def test_stale_expected_preflight_digest_stops_before_provider(
         )
     assert exc_info.value.status_code == 409
     assert provider.calls == 0
+
+
+def test_persisted_platform_mismatch_rolls_back_without_false_success(
+    client: TestClient,
+    db_session: Session,
+    product_payload: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = create_source(client, db_session, product_payload)
+    data = request_for_platforms(source, ["TikTok", "Instagram"])
+    preflight_result = V2CopyPreflightService(
+        db_session, enabled_settings()
+    ).run(int(source["product_id"]), data)
+    before = model_counts(db_session)
+    original = CopyMatrixRepository.create_for_exact_strategy
+
+    def return_inconsistent_platforms(
+        repository: CopyMatrixRepository,
+        product_id: int,
+        marketing_strategy_id: int,
+        copy_data: object,
+        *,
+        commit: bool = True,
+    ) -> CopyMatrix:
+        generated = original(
+            repository,
+            product_id,
+            marketing_strategy_id,
+            copy_data,  # type: ignore[arg-type]
+            commit=commit,
+        )
+        generated.copies = [generated.copies[0]]
+        return generated
+
+    monkeypatch.setattr(
+        CopyMatrixRepository,
+        "create_for_exact_strategy",
+        return_inconsistent_platforms,
+    )
+    provider = ControlledV2CopyProvider(
+        provider_output_for(["TikTok", "Instagram"])
+    )
+    with pytest.raises(AppError, match="could not be saved") as exc_info:
+        V2CopyGenerationService(
+            db_session, provider, enabled_settings()
+        ).generate(
+            int(source["product_id"]),
+            V2CopyExecutionRequest.model_validate(
+                {
+                    **data.model_dump(mode="json"),
+                    "expected_preflight_digest": (
+                        preflight_result.preflight_digest
+                    ),
+                }
+            ),
+        )
+    assert exc_info.value.status_code == 500
+    assert provider.calls == 1
+    assert model_counts(db_session) == before
 
 
 def test_commit_failure_rolls_back_without_false_success(

@@ -670,9 +670,15 @@ def test_unrelated_campaign_platform_observation_is_rejected_safely(
         app.dependency_overrides.pop(get_text_generation_provider, None)
 
     assert response.status_code == 502
-    assert response.json()["error"]["message"] == (
-        "Qwen returned invalid recommendation data"
-    )
+    error = response.json()["error"]
+    assert error["provider"] == "qwen"
+    assert error["phase"] == "schema"
+    assert error["provider_http_status"] is None
+    assert error["safe_error_code"] == "invalid_provider_output"
+    assert error["request_id_digest"] is None
+    assert error["uncertain"] is False
+    assert error["potentially_billable"] is True
+    assert "message" not in error
     assert provider.calls == 1
     assert model_counts(db_session) == before
     serialized = response.text.casefold()
@@ -747,9 +753,14 @@ def test_dynamic_platform_mismatch_is_safe_and_writes_nothing(
         app.dependency_overrides.pop(get_text_generation_provider, None)
 
     assert response.status_code == 502
-    assert response.json()["error"]["message"] == (
-        "Qwen returned invalid recommendation data"
-    )
+    error = response.json()["error"]
+    assert error["provider"] == "qwen"
+    assert error["phase"] == "schema"
+    assert error["provider_http_status"] is None
+    assert error["safe_error_code"] == "invalid_provider_output"
+    assert error["uncertain"] is False
+    assert error["potentially_billable"] is True
+    assert "message" not in error
     assert provider.calls == 1
     assert model_counts(db_session) == before
 
@@ -830,9 +841,14 @@ def test_invalid_json_or_shape_is_safe_and_never_persisted(
         app.dependency_overrides.pop(get_text_generation_provider, None)
 
     assert response.status_code == 502
-    assert response.json()["error"]["message"] == (
-        "Qwen returned invalid recommendation data"
-    )
+    error = response.json()["error"]
+    assert error["provider"] == "qwen"
+    assert error["phase"] == "schema"
+    assert error["provider_http_status"] is None
+    assert error["safe_error_code"] == "invalid_provider_output"
+    assert error["uncertain"] is False
+    assert error["potentially_billable"] is True
+    assert "message" not in error
     assert model_counts(db_session) == before
 
 

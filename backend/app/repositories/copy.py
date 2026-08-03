@@ -42,6 +42,8 @@ class CopyMatrixRepository:
         product_id: int,
         marketing_strategy_id: int,
         data: TaskBoundCopyMatrixSchema,
+        *,
+        commit: bool = True,
     ) -> CopyMatrix:
         """Persist validated task-bound copies without changing the legacy ORM rule."""
         try:
@@ -52,7 +54,10 @@ class CopyMatrixRepository:
                     copies=[copy.model_dump() for copy in data.copies],
                 )
             )
-            self.session.commit()
+            if commit:
+                self.session.commit()
+            else:
+                self.session.flush()
         except Exception:
             self.session.rollback()
             raise

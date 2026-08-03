@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import axios from "axios";
 
-import { getApiErrorMessage } from "../api/client";
+import {
+  getApiErrorMessage,
+  getProviderFailureDetails,
+  getProviderFailureMessage,
+} from "../api/client";
 import {
   executeGrowthRecommendation,
   executeV2Copy,
@@ -29,6 +33,7 @@ import type {
   FeedbackContext,
   GrowthAnalysis,
   GrowthRecommendationPreflight,
+  ProviderFailureDetails,
 } from "../types/growth";
 import type {
   V2VideoProjectExecutionResult,
@@ -37,6 +42,7 @@ import type {
 
 interface GrowthCopilotPanelProps {
   productId: number;
+  onVideoProjectGenerated?: (videoProjectId: number) => void;
 }
 
 type ContextState =
@@ -61,6 +67,11 @@ const MISSING_LABELS: Record<string, string> = {
   exact_content_chain: "同一Product的精确内容链",
   supported_reference_platforms: "受支持的精确Copy/Video平台",
   provider_configuration: "Qwen Provider安全配置",
+  qwen_credentials_configuration: "Qwen凭据配置",
+  qwen_workspace_configuration: "Qwen Workspace配置",
+  qwen_region_configuration: "Qwen Region配置",
+  qwen_endpoint_configuration: "Qwen Endpoint配置",
+  qwen_model_configuration: "Qwen模型配置",
   growth_execution: "Backend Growth执行开关",
   stale_context_digest: "当前FeedbackContext已变化",
   recommendation_digest_mismatch: "Recommendation摘要不匹配",
@@ -76,7 +87,28 @@ const MISSING_LABELS: Record<string, string> = {
   v2_video_project_execution: "Backend V2 VideoProject执行开关",
 };
 
-export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
+function isUncertainGenerationError(error: unknown): boolean {
+  if (!axios.isAxiosError(error)) return false;
+  if (!error.response) {
+    return error.code === "ECONNABORTED" || error.code === "ETIMEDOUT";
+  }
+  const data = error.response.data as
+    | { error?: { message?: unknown } }
+    | undefined;
+  return (
+    [503, 504].includes(error.response.status) &&
+    [
+      "Qwen service is unavailable",
+      "Qwen request result is uncertain",
+      "Qwen provider is temporarily unavailable",
+    ].includes(String(data?.error?.message ?? ""))
+  );
+}
+
+export function GrowthCopilotPanel({
+  productId,
+  onVideoProjectGenerated,
+}: GrowthCopilotPanelProps) {
   const [file, setFile] = useState<File | null>(null);
   const [context, setContext] = useState<FeedbackContext | null>(null);
   const [contextState, setContextState] =
@@ -96,6 +128,8 @@ export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
   const [executionState, setExecutionState] =
     useState<ExecutionState>("idle");
   const [executionError, setExecutionError] = useState("");
+  const [recommendationFailure, setRecommendationFailure] =
+    useState<ProviderFailureDetails | null>(null);
   const [recommendationResult, setRecommendationResult] =
     useState<GrowthAnalysis | null>(null);
   const [v2Preflight, setV2Preflight] =
@@ -207,6 +241,7 @@ export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
     setAuthorizationConsumed(false);
     setExecutionState("idle");
     setExecutionError("");
+    setRecommendationFailure(null);
     setRecommendationResult(null);
     resetV2Copy();
   }, [resetV2Copy]);
@@ -387,6 +422,7 @@ export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
     setFeeConfirmed(false);
     setExecutionState("idle");
     setExecutionError("");
+    setRecommendationFailure(null);
     setRecommendationResult(null);
     try {
       const result = await getGrowthRecommendationPreflight(
@@ -466,6 +502,7 @@ export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
     executionController.current = controller;
     setExecutionState("submitting");
     setExecutionError("");
+    setRecommendationFailure(null);
     setRecommendationResult(null);
     try {
       const result = await executeGrowthRecommendation(
@@ -494,12 +531,15 @@ export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
       ) {
         return;
       }
+      const providerFailure = getProviderFailureDetails(error, true);
       const uncertain =
-        axios.isAxiosError(error) &&
-        (!error.response || error.response.status === 503);
+        providerFailure?.uncertain ?? isUncertainGenerationError(error);
+      setRecommendationFailure(providerFailure);
       setExecutionState(uncertain ? "uncertain" : "failed");
       setExecutionError(
-        uncertain
+        providerFailure
+          ? getProviderFailureMessage(providerFailure)
+          : uncertain
           ? "执行结果不确定；不会自动重试。重新执行前必须重新Preflight并确认费用。"
           : getApiErrorMessage(
               error,
@@ -664,6 +704,16 @@ export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
       ) {
         return;
       }
+      if (!hasConsistentV2PlatformEvidence(result, expectedPreflight)) {
+        setV2ExecutionState("failed");
+        setV2ExecutionError(
+          "Backend返回的V2 Copy平台或Digest证据不一致；结果不会作为成功候选使用。",
+        );
+        setV2Preflight(null);
+        setV2PreflightState("idle");
+        setV2FeeConfirmed(false);
+        return;
+      }
       resetV2Video();
       setV2Result(result);
       setV2ExecutionState("succeeded");
@@ -677,7 +727,7 @@ export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
       ) {
         return;
       }
-      const uncertain = axios.isAxiosError(error) && !error.response;
+      const uncertain = isUncertainGenerationError(error);
       setV2ExecutionState(uncertain ? "uncertain" : "failed");
       setV2ExecutionError(
         uncertain
@@ -863,6 +913,7 @@ export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
       setV2VideoExecutionState("succeeded");
       setV2VideoPreflight(null);
       setV2VideoPreflightState("idle");
+      onVideoProjectGenerated?.(result.generated_video_project.id);
     } catch (error) {
       if (
         controller.signal.aborted ||
@@ -871,7 +922,7 @@ export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
       ) {
         return;
       }
-      const uncertain = axios.isAxiosError(error) && !error.response;
+      const uncertain = isUncertainGenerationError(error);
       setV2VideoExecutionState(uncertain ? "uncertain" : "failed");
       setV2VideoExecutionError(
         uncertain
@@ -1070,6 +1121,9 @@ export function GrowthCopilotPanel({ productId }: GrowthCopilotPanelProps) {
             detail={executionError}
             error
           />
+        )}
+        {recommendationFailure && (
+          <ProviderFailureSummary failure={recommendationFailure} />
         )}
         {executionState === "succeeded" && recommendationResult && (
           <RecommendationResult result={recommendationResult} />
@@ -1430,6 +1484,40 @@ function ContextResult({ context }: { context: FeedbackContext }) {
   );
 }
 
+function ProviderFailureSummary({
+  failure,
+}: {
+  failure: ProviderFailureDetails;
+}) {
+  return (
+    <div className="growth-recommendation__preflight">
+      <strong>安全错误诊断</strong>
+      <div className="growth-context-summary">
+        <div>
+          <small>错误类别</small>
+          <strong>{failure.safe_error_code}</strong>
+        </div>
+        <div>
+          <small>失败阶段</small>
+          <strong>{failure.phase}</strong>
+        </div>
+        <div>
+          <small>Provider HTTP</small>
+          <strong>{failure.provider_http_status ?? "未收到响应"}</strong>
+        </div>
+        <div>
+          <small>可能计费</small>
+          <strong>{failure.potentially_billable ? "是" : "否"}</strong>
+        </div>
+      </div>
+      {failure.request_id_digest && (
+        <p>Request ID安全摘要：{failure.request_id_digest}</p>
+      )}
+      <p>失败后旧Preflight和费用授权已失效，不会自动重试。</p>
+    </div>
+  );
+}
+
 function PreflightResult({
   preflight,
   state,
@@ -1562,8 +1650,24 @@ function V2CopyPreflightResult({
           <strong>{state === "ready" ? "READY" : "BLOCKED"}</strong>
         </div>
         <div>
-          <small>Target platforms</small>
-          <strong>{preflight.target_platforms.join(" / ")}</strong>
+          <small>源CopyMatrix平台</small>
+          <strong>{preflight.source_copy_platforms.join(" / ")}</strong>
+        </div>
+        <div>
+          <small>Recommendation允许引用平台</small>
+          <strong>
+            {preflight.allowed_copy_constraint_platforms.join(" / ")}
+          </strong>
+        </div>
+        <div>
+          <small>Recommendation实际Copy目标平台</small>
+          <strong>
+            {preflight.recommendation_target_copy_platforms.join(" / ")}
+          </strong>
+        </div>
+        <div>
+          <small>本次V2 Copy生成目标平台</small>
+          <strong>{preflight.v2_copy_target_platforms.join(" / ")}</strong>
         </div>
         <div>
           <small>Copy Gate</small>
@@ -1612,9 +1716,34 @@ function V2CopyCandidateResult({
       <div className="growth-context-section-title">
         <strong>V2 Copy Candidate</strong>
         <small>
-          CopyMatrix #{result.generated_copy_matrix.id} ·{" "}
-          {result.target_platforms.join(" / ")}
+          CopyMatrix #{result.copy_matrix_id}
         </small>
+      </div>
+      <div className="growth-context-summary">
+        <div>
+          <small>源CopyMatrix平台</small>
+          <strong>{result.source_copy_platforms.join(" / ")}</strong>
+        </div>
+        <div>
+          <small>Recommendation允许引用平台</small>
+          <strong>
+            {result.allowed_copy_constraint_platforms.join(" / ")}
+          </strong>
+        </div>
+        <div>
+          <small>Recommendation实际Copy目标平台</small>
+          <strong>
+            {result.recommendation_target_copy_platforms.join(" / ")}
+          </strong>
+        </div>
+        <div>
+          <small>本次V2 Copy生成目标平台</small>
+          <strong>{result.v2_copy_target_platforms.join(" / ")}</strong>
+        </div>
+        <div>
+          <small>实际持久化候选平台</small>
+          <strong>{result.persisted_copy_platforms.join(" / ")}</strong>
+        </div>
       </div>
       <div className="growth-context-chain">
         <div>
@@ -1897,6 +2026,39 @@ function sameV2ExecutionIdentity(
       recommendation.source_copy_matrix_id &&
     result.source_video_project_id ===
       recommendation.source_video_project_id
+  );
+}
+
+function sameOrderedPlatforms(left: string[], right: string[]) {
+  return (
+    left.length === right.length &&
+    left.every((platform, index) => platform === right[index])
+  );
+}
+
+function hasConsistentV2PlatformEvidence(
+  result: V2CopyExecutionResult,
+  preflight: V2CopyPreflight,
+) {
+  const generatedPlatforms = result.generated_copy_matrix.copies.map(
+    (copy) => copy.platform,
+  );
+  return (
+    result.preflight_digest === preflight.preflight_digest &&
+    result.copy_matrix_id === result.generated_copy_matrix.id &&
+    sameOrderedPlatforms(
+      result.recommendation_target_copy_platforms,
+      result.v2_copy_target_platforms,
+    ) &&
+    sameOrderedPlatforms(
+      result.v2_copy_target_platforms,
+      preflight.v2_copy_target_platforms,
+    ) &&
+    sameOrderedPlatforms(
+      result.v2_copy_target_platforms,
+      result.persisted_copy_platforms,
+    ) &&
+    sameOrderedPlatforms(result.persisted_copy_platforms, generatedPlatforms)
   );
 }
 

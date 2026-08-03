@@ -1,4 +1,4 @@
-import { apiClient } from "./client";
+import { AI_EXECUTION_TIMEOUT_MS, apiClient } from "./client";
 import type {
   LiveRenderTaskResponse,
   VideoProject,
@@ -46,7 +46,7 @@ export async function executeV2VideoProject(
   const response = await apiClient.post<V2VideoProjectExecutionResult>(
     `/products/${productId}/v2-video-project`,
     payload,
-    { signal },
+    { signal, timeout: AI_EXECUTION_TIMEOUT_MS },
   );
   return response.data;
 }
@@ -99,7 +99,7 @@ export async function executeVideoProjectRender(
   const response = await apiClient.post<VideoRenderOperation>(
     `/video-projects/${videoProjectId}/render-execution`,
     undefined,
-    { signal },
+    { signal, timeout: AI_EXECUTION_TIMEOUT_MS },
   );
   return response.data;
 }

@@ -79,7 +79,7 @@ class V2CopyGenerationService:
                 "V2 Copy source changed; read Context and Preflight again",
                 status_code=409,
             )
-        target_platforms = list(preflight.target_platforms)
+        target_platforms = list(preflight.v2_copy_target_platforms)
         prompt = self.build_prompt(
             product=product,
             strategy=strategy,
@@ -116,23 +116,44 @@ class V2CopyGenerationService:
                 product.id,
                 strategy.id,
                 copy_data,
+                commit=False,
             )
+            persisted_copy_platforms = [
+                str(item.get("platform", "")).strip()
+                for item in (generated.copies or [])
+                if isinstance(item, dict)
+            ]
+            if persisted_copy_platforms != target_platforms:
+                raise ValueError("persisted platform evidence mismatch")
+            result = V2CopyExecutionRead(
+                product_id=product.id,
+                source_context_digest=context.context_digest,
+                source_recommendation_digest=data.recommendation_digest,
+                source_marketing_strategy_id=strategy.id,
+                source_copy_matrix_id=source_copy.id,
+                source_video_project_id=video_project.id,
+                source_copy_platforms=list(preflight.source_copy_platforms),
+                allowed_copy_constraint_platforms=list(
+                    preflight.allowed_copy_constraint_platforms
+                ),
+                recommendation_target_copy_platforms=list(
+                    preflight.recommendation_target_copy_platforms
+                ),
+                v2_copy_target_platforms=target_platforms,
+                persisted_copy_platforms=persisted_copy_platforms,
+                preflight_digest=preflight.preflight_digest,
+                copy_matrix_id=generated.id,
+                target_platforms=target_platforms,
+                generated_copy_matrix=CopyMatrixRead.model_validate(generated),
+                association_notice=V2_COPY_ASSOCIATION_NOTICE,
+            )
+            self.session.commit()
         except Exception as exc:
+            self.session.rollback()
             raise AppError(
                 "V2 Copy Candidate could not be saved", status_code=500
             ) from exc
-
-        return V2CopyExecutionRead(
-            product_id=product.id,
-            source_context_digest=context.context_digest,
-            source_recommendation_digest=data.recommendation_digest,
-            source_marketing_strategy_id=strategy.id,
-            source_copy_matrix_id=source_copy.id,
-            source_video_project_id=video_project.id,
-            target_platforms=target_platforms,
-            generated_copy_matrix=CopyMatrixRead.model_validate(generated),
-            association_notice=V2_COPY_ASSOCIATION_NOTICE,
-        )
+        return result
 
     def _require_execution_enabled(self) -> None:
         if not self.settings.enable_copy_execution:

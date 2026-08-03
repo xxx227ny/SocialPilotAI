@@ -3,6 +3,46 @@ export interface CampaignUploadResponse {
   imported_count: number;
 }
 
+export type ProviderFailurePhase =
+  | "connect"
+  | "request"
+  | "response"
+  | "schema"
+  | "delivery";
+
+export type ProviderSafeErrorCode =
+  | "connection_failed"
+  | "dns_resolution_failed"
+  | "tcp_connection_refused"
+  | "connect_timeout"
+  | "network_unreachable"
+  | "tls_handshake_failed"
+  | "tls_certificate_failed"
+  | "connection_reset_before_request"
+  | "connection_failed_unknown"
+  | "proxy_unavailable"
+  | "invalid_request"
+  | "authentication_failed"
+  | "permission_denied"
+  | "endpoint_or_model_not_found"
+  | "response_uncertain"
+  | "rate_or_quota_limited"
+  | "provider_service_error"
+  | "invalid_provider_output"
+  | "delivery_uncertain"
+  | "provider_error";
+
+export interface ProviderFailureDetails {
+  provider: "qwen" | "wanx";
+  phase: ProviderFailurePhase;
+  provider_http_status: number | null;
+  safe_error_code: ProviderSafeErrorCode;
+  request_id_digest: string | null;
+  uncertain: boolean;
+  potentially_billable: boolean;
+  occurred_at: string;
+}
+
 export interface CampaignMetrics {
   impressions: number;
   clicks: number;

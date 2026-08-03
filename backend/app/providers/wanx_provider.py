@@ -9,10 +9,15 @@ from app.core.config import Settings, settings
 from app.providers.base import (
     ProviderAuthenticationError,
     ProviderConfigurationError,
-    ProviderConnectionError,
     ProviderModelError,
-    ProviderQuotaError,
-    ProviderTimeoutError,
+)
+from app.providers.live_configuration import (
+    WANX_REGION_HOSTS,
+    audit_live_provider_configuration,
+    controlled_wanx_endpoint,
+    metadata_for_http_failure,
+    metadata_for_transport_failure,
+    provider_error_from_metadata,
 )
 from app.providers.visual_base import (
     VisualGenerationProvider,
@@ -22,10 +27,6 @@ from app.providers.visual_base import (
     VisualTaskSubmission,
 )
 
-WANX_REGION_HOSTS = {
-    "cn-beijing": "{workspace_id}.cn-beijing.maas.aliyuncs.com",
-    "ap-southeast-1": "{workspace_id}.ap-southeast-1.maas.aliyuncs.com",
-}
 WANX_STATUSES = {
     "PENDING",
     "RUNNING",
@@ -47,14 +48,42 @@ class WanxProvider(VisualGenerationProvider):
         *,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
-        if app_settings.wanx_api_key is None:
+        if (
+            app_settings.wanx_api_key is None
+            or not app_settings.wanx_api_key.get_secret_value().strip()
+        ):
             raise ProviderAuthenticationError(
                 "Wanx API credentials are not configured"
             )
 
-        self.api_key = app_settings.wanx_api_key.get_secret_value()
+        configuration = audit_live_provider_configuration(app_settings)
+        if (
+            app_settings.require_live_provider_coherence
+            and not configuration.wanx.ready
+        ):
+            raise ProviderConfigurationError(
+                "Wanx live provider configuration is inconsistent"
+            )
+        if app_settings.wanx_endpoint and (
+            not controlled_wanx_endpoint(app_settings.wanx_endpoint)
+            or (
+                not configuration.wanx.endpoint_valid
+                and transport is None
+            )
+        ):
+            raise ProviderConfigurationError("Wanx endpoint is invalid")
+
+        self.api_key = app_settings.wanx_api_key.get_secret_value().strip()
         self.model = app_settings.wanx_model
-        self.endpoint = self._resolve_endpoint(app_settings)
+        self.endpoint = (
+            configuration.wanx_endpoint
+            if app_settings.require_live_provider_coherence
+            else (
+                controlled_wanx_endpoint(app_settings.wanx_endpoint)
+                if transport is not None and app_settings.wanx_endpoint
+                else self._resolve_endpoint(app_settings)
+            )
+        )
         self.timeout = app_settings.wanx_timeout
         self.transport = transport
 
@@ -97,12 +126,7 @@ class WanxProvider(VisualGenerationProvider):
         usage = payload.get("usage")
         metadata: dict[str, object] = {
             key: value
-            for key in (
-                "submit_time",
-                "scheduled_time",
-                "end_time",
-                "orig_prompt",
-            )
+            for key in ("submit_time", "scheduled_time", "end_time")
             if (value := output.get(key)) is not None
         }
         if isinstance(usage, dict):
@@ -143,20 +167,46 @@ class WanxProvider(VisualGenerationProvider):
                     json=json,
                 )
         except httpx.TimeoutException as exc:
-            raise ProviderTimeoutError("Wanx request timed out") from exc
-        except httpx.RequestError as exc:
-            raise ProviderConnectionError("Wanx service is unavailable") from exc
-
-        if response.status_code in {401, 403}:
-            raise ProviderAuthenticationError("Wanx authentication failed")
-        if response.status_code == 429:
-            raise ProviderQuotaError("Wanx request was rate limited")
-        if response.status_code >= 500:
-            raise ProviderConnectionError("Wanx service is unavailable")
-        if response.is_error:
-            raise ProviderModelError(
-                f"Wanx request failed with status {response.status_code}"
+            metadata = metadata_for_transport_failure(
+                provider="wanx", phase=self._phase(method, path), error=exc
             )
+            error = provider_error_from_metadata(metadata)
+            error.args = ("Wanx request timed out",)
+            raise error from exc
+        except httpx.RequestError as exc:
+            metadata = metadata_for_transport_failure(
+                provider="wanx", phase=self._phase(method, path), error=exc
+            )
+            error = provider_error_from_metadata(metadata)
+            error.args = ("Wanx service is unavailable",)
+            raise error from exc
+
+        if response.is_error:
+            code, request_id = self._safe_response_identifiers(response)
+            metadata = metadata_for_http_failure(
+                provider="wanx",
+                phase=self._phase(method, path),
+                http_status=response.status_code,
+                provider_code=code,
+                request_id=request_id,
+            )
+            error = provider_error_from_metadata(metadata)
+            messages = {
+                "authentication_failed": "Wanx authentication failed",
+                "permission_denied": "Wanx permission denied",
+                "rate_or_quota_limited": "Wanx request was rate limited",
+                "endpoint_or_model_not_found": (
+                    "Wanx endpoint or model was not found"
+                ),
+                "invalid_request": "Wanx request parameters are invalid",
+                "provider_service_error": "Wanx service is unavailable",
+            }
+            error.args = (
+                messages.get(
+                    metadata.safe_error_code or "", "Wanx request failed"
+                ),
+            )
+            raise error
         try:
             payload = response.json()
         except ValueError as exc:
@@ -168,7 +218,10 @@ class WanxProvider(VisualGenerationProvider):
     @staticmethod
     def _resolve_endpoint(app_settings: Settings) -> str:
         if app_settings.wanx_endpoint:
-            return app_settings.wanx_endpoint.rstrip("/")
+            audit = audit_live_provider_configuration(app_settings)
+            if not audit.wanx.endpoint_valid:
+                raise ProviderConfigurationError("Wanx endpoint is invalid")
+            return audit.wanx_endpoint
         workspace_id = (app_settings.wanx_workspace_id or "").strip()
         host_template = WANX_REGION_HOSTS.get(app_settings.wanx_region)
         if not workspace_id or host_template is None:
@@ -177,6 +230,28 @@ class WanxProvider(VisualGenerationProvider):
             )
         host = host_template.format(workspace_id=workspace_id)
         return f"https://{host}/api/v1"
+
+    @staticmethod
+    def _phase(method: str, path: str) -> str:
+        if method == "POST":
+            return "submit"
+        return "refresh" if "/tasks/" in path else "request"
+
+    @staticmethod
+    def _safe_response_identifiers(
+        response: httpx.Response,
+    ) -> tuple[object, object]:
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = None
+        code = payload.get("code") if isinstance(payload, dict) else None
+        request_id = None
+        if isinstance(payload, dict):
+            request_id = payload.get("request_id") or payload.get("requestId")
+        if request_id is None:
+            request_id = response.headers.get("x-request-id")
+        return code, request_id
 
     @staticmethod
     def _validate_request(request: VisualGenerationRequest) -> None:

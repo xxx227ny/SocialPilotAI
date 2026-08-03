@@ -19,9 +19,19 @@ class Settings(BaseSettings):
     api_v1_prefix: str = "/api/v1"
     debug: bool = False
     database_url: str = "sqlite:///./socialpilot.db"
+    qwen_api_key: SecretStr | None = None
+    # Deprecated one-way alias for QWEN_API_KEY. Never used by Wanx.
     dashscope_api_key: SecretStr | None = None
+    qwen_workspace_id: str | None = None
+    qwen_region: str = "cn-beijing"
     qwen_model: str = "qwen-plus"
-    qwen_timeout: float = Field(default=30, gt=0, le=300)
+    qwen_endpoint: str | None = None
+    qwen_timeout: float = Field(default=120, gt=0, le=120)
+    qwen_connect_timeout: float = Field(default=10, gt=0, le=30)
+    qwen_read_timeout: float = Field(default=120, gt=0, le=120)
+    qwen_write_timeout: float = Field(default=30, gt=0, le=60)
+    qwen_pool_timeout: float = Field(default=10, gt=0, le=30)
+    require_live_provider_coherence: bool = False
     enable_strategy_execution: bool = False
     enable_copy_execution: bool = False
     enable_v2_copy_execution: bool = False

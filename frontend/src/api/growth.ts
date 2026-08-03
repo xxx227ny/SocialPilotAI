@@ -1,4 +1,4 @@
-import { apiClient } from "./client";
+import { AI_EXECUTION_TIMEOUT_MS, apiClient } from "./client";
 import type {
   CampaignUploadResponse,
   FeedbackContext,
@@ -57,7 +57,7 @@ export async function executeGrowthRecommendation(
   const response = await apiClient.post<GrowthAnalysis>(
     `/products/${productId}/growth-analysis`,
     { expected_context_digest: expectedContextDigest },
-    { signal },
+    { signal, timeout: AI_EXECUTION_TIMEOUT_MS },
   );
   return response.data;
 }
@@ -83,7 +83,7 @@ export async function executeV2Copy(
   const response = await apiClient.post<V2CopyExecutionResult>(
     `/products/${productId}/v2-copy`,
     data,
-    { signal },
+    { signal, timeout: AI_EXECUTION_TIMEOUT_MS },
   );
   return response.data;
 }

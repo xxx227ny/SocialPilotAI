@@ -6,6 +6,10 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.models import CopyMatrix, MarketingStrategy, VideoProject
+from app.providers.live_configuration import (
+    qwen_missing_requirements,
+    qwen_provider_configured,
+)
 from app.repositories.copy import CopyMatrixRepository
 from app.repositories.product import ProductRepository
 from app.schemas.copy import V2PlatformCopySchema
@@ -94,6 +98,7 @@ class V2VideoProjectPreflightService:
         provider_configured = self._provider_configured()
         if not provider_configured:
             missing.append("provider_configuration")
+            missing.extend(qwen_missing_requirements(self.settings))
         execution_enabled = self.settings.enable_v2_video_project_execution
         if not execution_enabled:
             missing.append("v2_video_project_execution")
@@ -257,8 +262,7 @@ class V2VideoProjectPreflightService:
         return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
     def _provider_configured(self) -> bool:
-        secret = self.settings.dashscope_api_key
-        return bool(secret and secret.get_secret_value().strip())
+        return qwen_provider_configured(self.settings)
 
     @staticmethod
     def _same_source_chain(
