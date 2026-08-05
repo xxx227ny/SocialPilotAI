@@ -25,3 +25,15 @@ backend/scripts/check_wanx_raw_request.py
 .vscode/
 *.log
 .DS_Store
+
+# Repository-local generated data and media
+*.sqlite3
+*.mp4
+artifacts/
+build/
+tmp/
+temp/
+*.tmp
+
+# Explicitly retain the verified competition fixture
+!demo_assets/verified_wanx_output.mp4
