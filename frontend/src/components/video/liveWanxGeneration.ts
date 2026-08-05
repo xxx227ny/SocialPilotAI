@@ -34,7 +34,7 @@ export function selectLatestPlayableArtifact(
 ): VideoRenderArtifact | undefined {
   return [...artifacts]
     .reverse()
-    .find((artifact) => artifact.provider_output_url);
+    .find((artifact) => artifact.storage_path || artifact.provider_output_url);
 }
 
 export async function executeLiveGeneration({

@@ -1,3 +1,5 @@
+import os
+import sys
 from functools import lru_cache
 
 from pydantic import Field, SecretStr, field_validator
@@ -8,7 +10,6 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables or a local .env."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -38,6 +39,18 @@ class Settings(BaseSettings):
     enable_v2_video_project_execution: bool = False
     enable_video_render_execution: bool = False
     enable_growth_execution: bool = False
+    enable_social_account_binding: bool = False
+    enable_youtube_publishing: bool = False
+    google_oauth_client_id: str | None = None
+    google_oauth_client_secret: SecretStr | None = None
+    google_oauth_redirect_uri: str | None = (
+        "http://127.0.0.1:8000/api/v1/social-accounts/youtube/callback"
+    )
+    social_token_encryption_key: SecretStr | None = None
+    social_token_encryption_key_id: str = "v1"
+    frontend_social_redirect_path: str = "/products"
+    social_frontend_base_url: str = "http://127.0.0.1:5173"
+    youtube_request_timeout: float = Field(default=30, gt=0, le=120)
     wanx_api_key: SecretStr | None = None
     wanx_model: str = "wan2.7-t2v"
     wanx_region: str = "cn-beijing"
@@ -64,7 +77,15 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    return Settings(_env_file=_local_env_file())
+
+
+def _local_env_file() -> str | None:
+    """Load local runtime configuration, but never during tests or fake smoke."""
+    disabled = os.getenv("SOCIALPILOT_DISABLE_DOTENV", "").lower()
+    if disabled in {"1", "true", "yes"} or "pytest" in sys.modules:
+        return None
+    return ".env"
 
 
 settings = get_settings()

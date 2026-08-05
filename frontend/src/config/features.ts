@@ -25,3 +25,11 @@ export const videoRenderExecutionEnabled = isEnabledFeatureFlag(
 export const growthExecutionEnabled = isEnabledFeatureFlag(
   import.meta.env.VITE_ENABLE_GROWTH_EXECUTION,
 );
+
+export const socialAccountBindingEnabled = isEnabledFeatureFlag(
+  import.meta.env.VITE_ENABLE_SOCIAL_ACCOUNT_BINDING,
+);
+
+export const youtubePublishingEnabled = isEnabledFeatureFlag(
+  import.meta.env.VITE_ENABLE_YOUTUBE_PUBLISHING,
+);

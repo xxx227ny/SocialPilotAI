@@ -9,8 +9,9 @@ import type {
 export const AI_EXECUTION_TIMEOUT_MS = 180_000;
 
 export const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1",
+  baseURL: import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1",
   timeout: 5000,
+  withCredentials: true,
 });
 
 const SAFE_PROVIDER_MESSAGES: Record<string, string> = {

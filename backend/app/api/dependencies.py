@@ -22,6 +22,7 @@ from app.providers.live_configuration import (
     wanx_provider_configured,
 )
 from app.providers.visual_base import VisualGenerationProvider
+from app.providers.youtube_provider import YouTubeProvider, YouTubeProviderError
 from app.services.video_artifact_storage import (
     HttpProviderOutputFetcher,
     LocalVideoArtifactStorage,
@@ -227,4 +228,61 @@ def get_video_artifact_storage(
 
 VideoArtifactStorageDep = Annotated[
     VideoArtifactStorage, Depends(get_video_artifact_storage)
+]
+
+
+def require_social_account_binding_enabled(
+    app_settings: Annotated[Settings, Depends(get_settings)],
+) -> None:
+    if not app_settings.enable_social_account_binding:
+        raise AppError("Social account binding is disabled by the server", 503)
+
+
+SocialAccountBindingGateDep = Annotated[
+    None, Depends(require_social_account_binding_enabled)
+]
+
+
+def require_youtube_publishing_enabled(
+    app_settings: Annotated[Settings, Depends(get_settings)],
+) -> None:
+    if not app_settings.enable_youtube_publishing:
+        raise AppError("YouTube publishing is disabled by the server", 503)
+
+
+YouTubePublishingGateDep = Annotated[
+    None, Depends(require_youtube_publishing_enabled)
+]
+
+
+def get_youtube_provider(
+    app_settings: Annotated[Settings, Depends(get_settings)],
+) -> YouTubeProvider:
+    try:
+        return YouTubeProvider(app_settings)
+    except YouTubeProviderError as exc:
+        raise AppError("YouTube provider is not configured", 503) from exc
+
+
+def get_binding_youtube_provider(
+    gate: SocialAccountBindingGateDep,
+    provider: Annotated[YouTubeProvider, Depends(get_youtube_provider)],
+) -> YouTubeProvider:
+    del gate
+    return provider
+
+
+def get_publishing_youtube_provider(
+    gate: YouTubePublishingGateDep,
+    provider: Annotated[YouTubeProvider, Depends(get_youtube_provider)],
+) -> YouTubeProvider:
+    del gate
+    return provider
+
+
+BindingYouTubeProviderDep = Annotated[
+    YouTubeProvider, Depends(get_binding_youtube_provider)
+]
+PublishingYouTubeProviderDep = Annotated[
+    YouTubeProvider, Depends(get_publishing_youtube_provider)
 ]

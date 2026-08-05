@@ -1,11 +1,15 @@
 import type { VideoRenderArtifact } from "../../types/video";
+import { getVideoRenderArtifactContentUrl } from "../../api/videos";
 
 interface VerifiedWanxOutputProps {
   artifact: VideoRenderArtifact;
 }
 
 export function VerifiedWanxOutput({ artifact }: VerifiedWanxOutputProps) {
-  if (!artifact.provider_output_url) return null;
+  const playbackUrl = artifact.storage_path
+    ? getVideoRenderArtifactContentUrl(artifact.id)
+    : artifact.provider_output_url;
+  if (!playbackUrl) return null;
 
   const usage = asRecord(artifact.metadata.usage);
   const duration = readValue(usage?.duration, artifact.metadata.duration);
@@ -25,7 +29,7 @@ export function VerifiedWanxOutput({ artifact }: VerifiedWanxOutputProps) {
           controls
           playsInline
           preload="metadata"
-          src={artifact.provider_output_url}
+          src={playbackUrl}
         >
           Your browser does not support video playback.
         </video>
@@ -42,6 +46,12 @@ export function VerifiedWanxOutput({ artifact }: VerifiedWanxOutputProps) {
           <small>Read-only artifact playback</small>
         </div>
         <dl>
+          <RenderFact label="Artifact" value={`#${artifact.id}`} />
+          <RenderFact
+            label="Render task"
+            value={`#${artifact.video_render_task_id}`}
+          />
+          <RenderFact label="Status" value="SUCCEEDED" />
           <RenderFact label="Duration" value={formatDuration(duration)} />
           <RenderFact label="Aspect ratio" value={formatValue(aspectRatio)} />
           <RenderFact label="Resolution" value={resolution} />

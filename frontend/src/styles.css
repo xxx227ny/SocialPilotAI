@@ -6,6 +6,256 @@
   text-rendering: optimizeLegibility;
 }
 
+.social-publishing {
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid #d9e0ed;
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.social-publishing__header,
+.youtube-publisher > header,
+.social-account-card,
+.youtube-publish-task {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.social-publishing__header span,
+.youtube-publisher > header span,
+.social-account-card span {
+  color: #63708a;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: .12em;
+}
+
+.social-publishing__header h4,
+.youtube-publisher > header h5 {
+  margin: 4px 0;
+  color: #27324a;
+}
+
+.social-publishing__header p,
+.social-publishing__disabled,
+.social-publishing__empty {
+  margin: 0;
+  color: #6f7a91;
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.social-publishing button {
+  padding: 8px 11px;
+  border: 0;
+  border-radius: 7px;
+  color: #fff;
+  background: #4256c5;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.social-publishing button:disabled {
+  cursor: not-allowed;
+  opacity: .5;
+}
+
+.social-publishing__notice {
+  padding: 9px 11px;
+  border-radius: 7px;
+  font-size: 9px;
+}
+
+.social-publishing__notice.is-success {
+  color: #206044;
+  background: #e3f6eb;
+}
+
+.social-publishing__notice.is-error {
+  color: #8c443b;
+  background: #ffefec;
+}
+
+.social-account-card {
+  margin-top: 14px;
+  padding: 13px;
+  border: 1px solid #dfe4ed;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.social-account-card > div:first-child,
+.youtube-publish-task {
+  display: flex;
+  flex-direction: column;
+}
+
+.social-account-card strong {
+  margin: 3px 0;
+  color: #27324a;
+}
+
+.social-account-card small,
+.youtube-publish-task span {
+  color: #6f7a91;
+  font-size: 8px;
+}
+
+.social-account-card__actions {
+  display: flex;
+  gap: 7px;
+}
+
+.youtube-publisher {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid #dfe4ed;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.youtube-publisher > header strong {
+  color: #315d4b;
+  font-size: 8px;
+}
+
+.youtube-publisher__form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.youtube-publisher__form label,
+.youtube-publisher__form fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: #4a566f;
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.youtube-publisher__form input,
+.youtube-publisher__form select,
+.youtube-publisher__form textarea {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #d8deea;
+  border-radius: 6px;
+  font: inherit;
+}
+
+.youtube-publisher__form textarea {
+  min-height: 78px;
+  resize: vertical;
+}
+
+.youtube-publisher__form fieldset {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+}
+
+.youtube-publisher__form fieldset legend {
+  margin-bottom: 6px;
+}
+
+.youtube-publisher__form fieldset label {
+  flex-direction: row;
+  align-items: center;
+}
+
+.youtube-publisher__form fieldset input {
+  width: auto;
+}
+
+.youtube-publisher__identity {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 8px;
+  color: #45526d;
+  background: #f1f4f9;
+  border-radius: 6px;
+  font-size: 8px;
+}
+
+.youtube-preflight {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 11px;
+  border: 1px solid #dbe2ed;
+  border-radius: 8px;
+  color: #536078;
+  background: #f8fafc;
+  font-size: 8px;
+}
+
+.youtube-preflight.is-ready {
+  border-color: #a9d5be;
+  background: #effaf4;
+}
+
+.youtube-preflight label {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  line-height: 1.5;
+}
+
+.youtube-publish-task {
+  margin-top: 12px;
+  padding: 10px;
+  border-left: 3px solid #5669d4;
+  background: #f1f4fb;
+}
+
+.youtube-publish-task button {
+  align-self: flex-start;
+}
+
+.social-publishing__future {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.social-publishing__future > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px;
+  border: 1px dashed #cfd6e3;
+  border-radius: 8px;
+  color: #788398;
+  font-size: 8px;
+}
+
+@media (max-width: 760px) {
+  .social-publishing__header,
+  .youtube-publisher > header,
+  .social-account-card,
+  .youtube-publish-task {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .youtube-publisher__form,
+  .social-publishing__future {
+    grid-template-columns: 1fr;
+  }
+}
+
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 1120px; min-height: 100vh; }
 button, input { font: inherit; }

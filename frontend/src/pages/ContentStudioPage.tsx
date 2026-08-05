@@ -11,10 +11,12 @@ import {
   selectLatestPlayableArtifact,
 } from "../components/video/liveWanxGeneration";
 import { useDemoSnapshot } from "../hooks/useDemoSnapshot";
+import { usePresentationMode } from "../context/PresentationModeContext";
 import type { VideoRenderArtifact } from "../types/video";
 
 export function ContentStudioPage() {
   const { snapshot, loading, error } = useDemoSnapshot();
+  const { isPresentation } = usePresentationMode();
   const [artifacts, setArtifacts] = useState<VideoRenderArtifact[]>([]);
   const videoProjectId = snapshot?.video_project?.id;
   const liveWanxEnabled = isLiveWanxDemoEnabled(
@@ -52,7 +54,7 @@ export function ContentStudioPage() {
           {playableArtifact && (
             <VerifiedWanxOutput artifact={playableArtifact} />
           )}
-          {liveWanxEnabled && (
+          {liveWanxEnabled && !isPresentation && (
             <LiveWanxGenerationPanel
               videoProjectId={snapshot.video_project.id}
               onArtifactReady={loadArtifacts}

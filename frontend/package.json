@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "test:social": "node scripts/test-social-publishing-state.mjs",
     "test:live-wanx": "node scripts/test-live-wanx.mjs",
+    "test:presentation-artifact": "node scripts/test-presentation-artifact.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

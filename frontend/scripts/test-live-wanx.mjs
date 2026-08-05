@@ -28,6 +28,14 @@ try {
     selectLatestPlayableArtifact([existingArtifact, latestArtifact]).id,
     latestArtifact.id,
   );
+  const storedArtifact = {
+    ...artifact(3, null),
+    storage_path: "competition/acceptance.mp4",
+  };
+  assert.equal(
+    selectLatestPlayableArtifact([existingArtifact, storedArtifact]).id,
+    storedArtifact.id,
+  );
 
   let createCalls = 0;
   let refreshCalls = 0;
@@ -79,7 +87,7 @@ try {
     existingArtifact.id,
   );
 
-  console.log("Live Wanx frontend checks passed: 4 scenarios");
+  console.log("Live Wanx frontend checks passed: 5 scenarios");
 } finally {
   await server.close();
 }

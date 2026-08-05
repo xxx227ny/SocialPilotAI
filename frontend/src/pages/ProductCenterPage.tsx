@@ -5,6 +5,7 @@ import { getProduct, listProducts } from "../api/products";
 import { GrowthCopilotPanel } from "../components/GrowthCopilotPanel";
 import { MarketingTaskConfig } from "../components/product/MarketingTaskConfig";
 import { ProductCreateForm } from "../components/product/ProductCreateForm";
+import { SocialPublishingPanel } from "../components/product/SocialPublishingPanel";
 import { VideoRenderPreflightPanel } from "../components/video/VideoRenderPreflightPanel";
 import type { PlatformCopy } from "../types/copy";
 import type { Product } from "../types/product";
@@ -377,6 +378,8 @@ function ProductDetail({
         product={product}
         videoProjectId={liveVideoProjectId}
       />
+
+      <SocialPublishingPanel productId={product.id} />
     </article>
   );
 }
