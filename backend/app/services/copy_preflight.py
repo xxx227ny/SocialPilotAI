@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings
 from app.core.exceptions import AppError
 from app.models import MarketingStrategy, Product
+from app.providers.live_configuration import effective_qwen_api_key
 from app.repositories.marketing import MarketingRepository
 from app.repositories.strategy import MarketingStrategyRepository
 from app.schemas.copy import (
@@ -125,8 +126,7 @@ class CopyPreflightService:
         )
 
     def _provider_configured(self) -> bool:
-        secret = self.settings.dashscope_api_key
-        return bool(secret and secret.get_secret_value().strip())
+        return bool(effective_qwen_api_key(self.settings))
 
     @staticmethod
     def _input_requirements(

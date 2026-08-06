@@ -13,7 +13,8 @@ from app.providers.base import TextGenerationProvider
 def configured_settings(*, execution_enabled: bool = True) -> Settings:
     return Settings(
         _env_file=None,
-        dashscope_api_key="safe-test-placeholder",
+        qwen_api_key="safe-test-placeholder",
+        dashscope_api_key=None,
         enable_copy_execution=execution_enabled,
     )
 
@@ -122,11 +123,44 @@ def test_copy_preflight_uses_exact_sources_without_provider_or_write(
         assert "brief_aware_exact_strategy_copy_contract" not in data[
             "missing_requirements"
         ]
+        assert "safe-test-placeholder" not in response.text
         assert provider_resolutions == 0
         assert db_session.scalar(select(func.count(CopyMatrix.id))) == 0
     finally:
         app.dependency_overrides.pop(get_settings, None)
         app.dependency_overrides.pop(get_text_generation_provider, None)
+
+
+def test_copy_preflight_accepts_legacy_qwen_key_without_exposing_it(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    product = create_product(client, "Legacy Configuration Product")
+    task = create_task(client, product["id"])
+    strategy = add_strategy(db_session, product["id"], "Valid positioning")
+    legacy_secret = "safe-legacy-placeholder"
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        _env_file=None,
+        qwen_api_key=None,
+        dashscope_api_key=legacy_secret,
+        enable_copy_execution=True,
+    )
+    try:
+        response = client.get(
+            f"/api/v1/marketing-tasks/{task['id']}"
+            f"/strategies/{strategy.id}/copy-preflight"
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["provider_configured"] is True
+        assert data["input_ready"] is True
+        assert data["contract_ready"] is True
+        assert data["ready_for_execution"] is True
+        assert data["missing_requirements"] == []
+        assert legacy_secret not in response.text
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
 
 
 def test_copy_preflight_rejects_cross_product_pair(
