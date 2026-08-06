@@ -1,12 +1,47 @@
+import { useEffect, useState } from "react";
+
+import { getFeedbackContext } from "../api/growth";
 import { DemoContextBar } from "../components/showcase/DemoContextBar";
 import { PerformanceFeedbackLoop } from "../components/growth/PerformanceFeedbackLoop";
 import { WinningCreativePattern } from "../components/growth/WinningCreativePattern";
+import {
+  formatCampaignRecordEvidence,
+  storedRecommendationLabel,
+} from "../components/growth/presentationGrowthEvidence";
+import { usePresentationMode } from "../context/PresentationModeContext";
 import { useDemoSnapshot } from "../hooks/useDemoSnapshot";
 import type { CampaignMetrics, GrowthRecommendation } from "../types/growth";
 import type { PlatformMetrics } from "../types/dashboard";
 
 export function GrowthCopilotPage() {
   const { snapshot, loading, error } = useDemoSnapshot();
+  const { isPresentation } = usePresentationMode();
+  const [campaignIds, setCampaignIds] = useState<number[] | null>(null);
+  const [campaignRecordsFailed, setCampaignRecordsFailed] = useState(false);
+  const productId = snapshot?.product.id;
+  const demoSlug = snapshot?.demo?.slug;
+
+  useEffect(() => {
+    setCampaignIds(null);
+    setCampaignRecordsFailed(false);
+    if (!isPresentation || productId === undefined || demoSlug === undefined) {
+      return;
+    }
+
+    const controller = new AbortController();
+    void getFeedbackContext(productId, controller.signal)
+      .then((context) => {
+        if (context.product_id !== productId) {
+          setCampaignRecordsFailed(true);
+          return;
+        }
+        setCampaignIds(context.campaign_ids);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setCampaignRecordsFailed(true);
+      });
+    return () => controller.abort();
+  }, [demoSlug, isPresentation, productId]);
 
   return (
     <div className="competition-page growth-competition-page">
@@ -19,6 +54,12 @@ export function GrowthCopilotPage() {
         <PageState title="正在读取增长快照" detail="只读取既有指标和建议，不触发分析流程。" />
       ) : snapshot ? (
         <>
+          {isPresentation && snapshot.demo ? (
+            <CampaignRecordEvidence
+              campaignIds={campaignIds}
+              loadFailed={campaignRecordsFailed}
+            />
+          ) : null}
           {snapshot.growth.metrics ? <>
             <OverallMetrics metrics={snapshot.growth.metrics} />
             <PlatformComparison platforms={snapshot.growth.platform_metrics} />
@@ -79,15 +120,50 @@ function PlatformComparison({ platforms }: { platforms: PlatformMetrics[] }) {
 }
 
 function RecommendationPanel({ recommendation }: { recommendation: GrowthRecommendation }) {
+  const storedLabel = storedRecommendationLabel(recommendation);
   return (
     <section className="recommendation-showcase">
       <header><span>OPTIMIZATION SNAPSHOT</span><h2>基于投放数据，系统建议</h2></header>
+      {storedLabel ? (
+        <div className="stored-recommendation-evidence">
+          <strong>{storedLabel}</strong>
+          <span>演示快照 · 非真实广告归因</span>
+          <span>决策建议 · 未自动修改预算 · 不授权广告投放操作</span>
+        </div>
+      ) : null}
       <div className="recommendation-grid">
         <AdviceCard number="01" title="问题发现" items={recommendation.problems} />
         <AdviceCard number="02" title="优化建议" items={recommendation.recommendations} />
         <AdviceCard number="03" title="素材建议" items={recommendation.creative_suggestions} />
       </div>
       <div className="budget-recommendation"><span>预算建议</span><p>{recommendation.budget_suggestion}</p></div>
+    </section>
+  );
+}
+
+function CampaignRecordEvidence({
+  campaignIds,
+  loadFailed,
+}: {
+  campaignIds: number[] | null;
+  loadFailed: boolean;
+}) {
+  const evidence = campaignIds
+    ? formatCampaignRecordEvidence(campaignIds)
+    : null;
+  let detail = "Campaign Records · 正在读取本地记录";
+  if (loadFailed) {
+    detail = "Campaign Records · 本地记录不可用，未展示未经验证的 Campaign 身份";
+  } else if (campaignIds && evidence === null) {
+    detail = "0 Campaign Records · 当前 Demo Snapshot 没有 Campaign 记录";
+  } else if (evidence) {
+    detail = evidence;
+  }
+  return (
+    <section className="campaign-record-evidence" aria-label="Campaign Record Evidence">
+      <span>READ-ONLY CAMPAIGN EVIDENCE</span>
+      <strong>{detail}</strong>
+      <small>仅使用当前 Product 的既有 campaign_ids，不展示或推断 Campaign 名称。</small>
     </section>
   );
 }

@@ -41,6 +41,50 @@ try {
     pathToFileURL(join(outputDir, "selectPresentationDeliveryEvidence.js")).href
   );
 
+  const growthSource = join(
+    root,
+    "src",
+    "components",
+    "growth",
+    "presentationGrowthEvidence.ts",
+  );
+  const growthCompiled = spawnSync(
+    process.execPath,
+    [
+      compiler,
+      growthSource,
+      "--target",
+      "ES2022",
+      "--module",
+      "ES2022",
+      "--moduleResolution",
+      "Bundler",
+      "--outDir",
+      outputDir,
+      "--skipLibCheck",
+    ],
+    { cwd: root, encoding: "utf8" },
+  );
+  assert.equal(
+    growthCompiled.status,
+    0,
+    growthCompiled.stderr || growthCompiled.stdout,
+  );
+  const { formatCampaignRecordEvidence, storedRecommendationLabel } =
+    await import(
+      pathToFileURL(join(outputDir, "presentationGrowthEvidence.js")).href
+    );
+  assert.equal(
+    formatCampaignRecordEvidence([1, 2, 3]),
+    "3 Campaign Records · #1 · #2 · #3",
+  );
+  assert.equal(formatCampaignRecordEvidence([]), null);
+  assert.equal(
+    storedRecommendationLabel({ recommendations: ["stored"] }),
+    "Stored Recommendation · Competition Demo Snapshot",
+  );
+  assert.equal(storedRecommendationLabel(null), null);
+
   const task = (overrides = {}) => ({
     id: 4,
     product_id: 1,
@@ -129,6 +173,26 @@ const app = read("src", "App.tsx");
 assert.match(
   app,
   /isPresentation[\s\S]*Navigate[\s\S]*mode=presentation/,
+);
+
+const growthPage = read("src", "pages", "GrowthCopilotPage.tsx");
+assert.match(
+  growthPage,
+  /isPresentation[\s\S]*getFeedbackContext\(productId, controller\.signal\)/,
+);
+assert.match(growthPage, /context\.product_id !== productId/);
+assert.match(growthPage, /setCampaignIds\(context\.campaign_ids\)/);
+assert.match(growthPage, /0 Campaign Records/);
+assert.match(growthPage, /storedRecommendationLabel\(recommendation\)/);
+assert.match(growthPage, /演示快照 · 非真实广告归因/);
+assert.match(growthPage, /决策建议 · 未自动修改预算 · 不授权广告投放操作/);
+assert.match(
+  growthPage,
+  /snapshot\.growth\.recommendation \? <RecommendationPanel[\s\S]*?暂无优化建议/,
+);
+assert.doesNotMatch(
+  growthPage,
+  /<button|executeGrowthRecommendation|uploadCampaignCsv|getGrowthRecommendationPreflight|connectYouTube|preflightYouTubePublish|publishYouTube/,
 );
 
 console.log(

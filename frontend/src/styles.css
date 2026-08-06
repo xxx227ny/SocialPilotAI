@@ -1053,6 +1053,13 @@ textarea { font: inherit; }
 
 .growth-competition-hero { background: radial-gradient(circle at 84% 15%, #4e65cc4c, transparent 28%), linear-gradient(120deg, #10223c, #172b4e 65%, #263b67); }
 .growth-overview, .growth-platform-section, .recommendation-showcase, .growth-content-loop { margin-top: 18px; padding: 28px 30px; background: #0f1b30; border: 1px solid #ffffff0f; border-radius: 18px; }
+.campaign-record-evidence { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 18px; padding: 15px 18px; background: linear-gradient(100deg, #4c419a2b, #28638d20); border: 1px solid #7166d238; border-radius: 12px; }
+.campaign-record-evidence > span { color: #9187ed; font-size: 9px; font-weight: 850; letter-spacing: 1.1px; }
+.campaign-record-evidence > strong { color: #e0ddff; font-size: 14px; }
+.campaign-record-evidence > small { margin-left: auto; color: #7f8da3; font-size: 10px; }
+.stored-recommendation-evidence { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: -4px 0 18px; padding: 13px 15px; background: #61cda70d; border: 1px solid #61cda72b; border-radius: 10px; }
+.stored-recommendation-evidence strong { width: 100%; color: #7ae0ba; font-size: 14px; }
+.stored-recommendation-evidence span { padding: 5px 8px; color: #b5c3d5; background: #ffffff07; border-radius: 6px; font-size: 11px; }
 .growth-overview > header { display: flex; align-items: flex-end; gap: 14px; }
 .growth-overview > header h2 { margin-bottom: 0; }
 .growth-overview > header p { margin: 0 0 4px auto; color: #7988a1; font-size: 12px; }
