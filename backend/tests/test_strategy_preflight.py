@@ -20,7 +20,8 @@ from app.services.strategy_preflight import StrategyPreflightService
 def configured_settings() -> Settings:
     return Settings(
         _env_file=None,
-        dashscope_api_key="safe-test-placeholder",
+        qwen_api_key="safe-test-placeholder",
+        dashscope_api_key=None,
         qwen_model="qwen-plus",
         enable_strategy_execution=True,
     )
@@ -80,6 +81,7 @@ def test_valid_preflight_is_read_only(
     assert data["preflight_only"] is True
     assert data["execution_will_call_ai"] is True
     assert data["execution_will_create_strategy"] is True
+    assert "safe-test-placeholder" not in response.text
     assert provider_calls == 0
 
     for model in (
@@ -168,6 +170,7 @@ def test_provider_configuration_is_boolean_and_secret_safe(
     task = create_task(client, product_payload)
     app.dependency_overrides[get_settings] = lambda: Settings(
         _env_file=None,
+        qwen_api_key=None,
         dashscope_api_key=None,
         qwen_model="qwen-plus",
         enable_strategy_execution=True,
@@ -192,6 +195,32 @@ def test_provider_configuration_is_boolean_and_secret_safe(
         "authorization",
     ):
         assert forbidden not in serialized
+
+
+def test_legacy_dashscope_key_remains_a_compatible_fallback(
+    client: TestClient,
+    product_payload: dict[str, object],
+) -> None:
+    task = create_task(client, product_payload)
+    legacy_secret = "safe-legacy-placeholder"
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        _env_file=None,
+        qwen_api_key=None,
+        dashscope_api_key=legacy_secret,
+        qwen_model="qwen-plus",
+        enable_strategy_execution=True,
+    )
+
+    response = client.get(
+        f"/api/v1/marketing-tasks/{task['id']}/strategy-preflight"
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["provider_configured"] is True
+    assert data["ready"] is True
+    assert data["missing_requirements"] == []
+    assert legacy_secret not in response.text
 
 
 def test_provider_type_unavailable_is_not_ready(

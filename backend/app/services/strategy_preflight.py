@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings
 from app.core.exceptions import AppError
 from app.models import MarketingBrief, Product
+from app.providers.live_configuration import effective_qwen_api_key
 from app.providers.qwen_provider import QwenProvider
 from app.repositories.marketing import MarketingRepository
 from app.schemas.marketing import SUPPORTED_MARKETING_PLATFORMS
@@ -102,8 +103,7 @@ class StrategyPreflightService:
         )
 
     def _provider_configured(self) -> bool:
-        secret = self.settings.dashscope_api_key
-        return bool(secret and secret.get_secret_value().strip())
+        return bool(effective_qwen_api_key(self.settings))
 
     @staticmethod
     def _missing_requirements(
