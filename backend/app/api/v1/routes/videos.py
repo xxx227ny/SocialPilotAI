@@ -3,14 +3,31 @@ from typing import Annotated
 from fastapi import APIRouter, Body, Depends
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import TextProviderDep
+from app.api.dependencies import VideoProjectTextProviderDep
+from app.core.config import Settings, get_settings
 from app.db.session import get_db
-from app.schemas.video import VideoProjectRequest, VideoProjectSchema
+from app.schemas.video import (
+    InitialVideoProjectExecutionRead,
+    InitialVideoProjectExecutionRequest,
+    InitialVideoProjectPreflightRead,
+    InitialVideoProjectSourceRead,
+    InitialVideoProjectSourceRequest,
+    VideoProjectRequest,
+    VideoProjectSchema,
+)
 from app.services.content_studio_service import ContentStudioService
+from app.services.initial_video_project_generation_service import (
+    InitialVideoProjectGenerationService,
+)
+from app.services.initial_video_project_preflight import (
+    InitialVideoProjectPreflightService,
+    InitialVideoProjectSourceQueryService,
+)
 from app.services.video_render_preflight import VideoProjectQueryService
 
 router = APIRouter(prefix="/products")
 DbSession = Annotated[Session, Depends(get_db)]
+SettingsDep = Annotated[Settings, Depends(get_settings)]
 
 
 @router.post(
@@ -19,12 +36,54 @@ DbSession = Annotated[Session, Depends(get_db)]
 def generate_video_project(
     product_id: int,
     db: DbSession,
-    provider: TextProviderDep,
+    provider: VideoProjectTextProviderDep,
     request: Annotated[VideoProjectRequest, Body()],
 ) -> VideoProjectSchema:
     return ContentStudioService(db, provider).generate_for_product(
         product_id, request
     )
+
+
+@router.get(
+    "/{product_id}/video-projects/source",
+    response_model=InitialVideoProjectSourceRead,
+)
+def get_initial_video_project_source(
+    product_id: int,
+    db: DbSession,
+) -> InitialVideoProjectSourceRead:
+    return InitialVideoProjectSourceQueryService(db).get_for_product(product_id)
+
+
+@router.post(
+    "/{product_id}/video-projects/preflight",
+    response_model=InitialVideoProjectPreflightRead,
+)
+def preflight_initial_video_project(
+    product_id: int,
+    request: InitialVideoProjectSourceRequest,
+    db: DbSession,
+    app_settings: SettingsDep,
+) -> InitialVideoProjectPreflightRead:
+    return InitialVideoProjectPreflightService(db, app_settings).run(
+        product_id, request
+    )
+
+
+@router.post(
+    "/{product_id}/video-projects/execute",
+    response_model=InitialVideoProjectExecutionRead,
+)
+def execute_initial_video_project(
+    product_id: int,
+    request: InitialVideoProjectExecutionRequest,
+    provider: VideoProjectTextProviderDep,
+    db: DbSession,
+    app_settings: SettingsDep,
+) -> InitialVideoProjectExecutionRead:
+    return InitialVideoProjectGenerationService(
+        db, provider, app_settings
+    ).generate(product_id, request)
 
 
 @router.get(

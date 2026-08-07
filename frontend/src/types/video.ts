@@ -29,6 +29,68 @@ export interface VideoProject extends VideoProjectRequest {
   updated_at: string;
 }
 
+export interface InitialVideoProjectSourceRequest {
+  strategy_id: number;
+  copy_matrix_id: number;
+  platform: "TikTok" | "Instagram" | "Facebook";
+  duration_seconds: 15 | 30;
+  aspect_ratio: "9:16";
+}
+
+export interface InitialVideoProjectSource {
+  product_id: number;
+  strategy_id: number;
+  copy_matrix_id: number;
+  selected_by: "latest_valid_copy_matrix";
+  provider_calls: 0;
+  database_writes: 0;
+}
+
+export interface InitialVideoProjectExecutionRequest
+  extends InitialVideoProjectSourceRequest {
+  expected_preflight_digest: string;
+  preflight_expires_at: string;
+  confirm_cost: true;
+}
+
+export interface InitialVideoProjectPreflight
+  extends InitialVideoProjectSourceRequest {
+  product_id: number;
+  input_ready: boolean;
+  provider_configured: boolean;
+  execution_enabled: boolean;
+  contract_ready: boolean;
+  ready_for_execution: boolean;
+  missing_requirements: string[];
+  preflight_digest: string;
+  expires_at: string;
+  preflight_only: true;
+  provider_calls: 0;
+  database_writes: 0;
+  execution_will_call_qwen: true;
+  execution_will_call_wanx: false;
+  execution_will_create_video_project: true;
+  automatic_action_allowed: false;
+  cost_notice: string;
+  association_notice: string;
+}
+
+export interface InitialVideoProjectExecutionResult {
+  version: "initial-video-project-v1";
+  product_id: number;
+  strategy_id: number;
+  copy_matrix_id: number;
+  preflight_digest: string;
+  generated_video_project: VideoProject;
+  reused: boolean;
+  provider_calls: 0 | 1;
+  wanx_calls: 0;
+  render_tasks_created: 0;
+  artifacts_created: 0;
+  automatic_action_allowed: false;
+  association_notice: string;
+}
+
 export interface V2VideoProjectSourceRequest {
   source_context_digest: string;
   source_marketing_strategy_id: number;

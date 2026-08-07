@@ -13,6 +13,7 @@ from pydantic import (
 from app.schemas.growth import GrowthRecommendationConstraints
 
 V2_VIDEO_PROJECT_CONTRACT_VERSION = "v2-video-project-v1"
+INITIAL_VIDEO_PROJECT_CONTRACT_VERSION = "initial-video-project-v1"
 
 
 class VideoProjectRequest(BaseModel):
@@ -84,6 +85,86 @@ class VideoProjectSchema(VideoPlanSchema):
     status: str
     created_at: datetime
     updated_at: datetime
+
+
+class StrictInitialVideoModel(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+
+class InitialVideoProjectSourceRequest(StrictInitialVideoModel):
+    strategy_id: int = Field(gt=0)
+    copy_matrix_id: int = Field(gt=0)
+    platform: Literal["TikTok", "Instagram", "Facebook"]
+    duration_seconds: Literal[15, 30]
+    aspect_ratio: Literal["9:16"] = "9:16"
+
+
+class InitialVideoProjectSourceRead(StrictInitialVideoModel):
+    product_id: int
+    strategy_id: int
+    copy_matrix_id: int
+    selected_by: Literal["latest_valid_copy_matrix"] = (
+        "latest_valid_copy_matrix"
+    )
+    provider_calls: Literal[0] = 0
+    database_writes: Literal[0] = 0
+
+
+class InitialVideoProjectExecutionRequest(InitialVideoProjectSourceRequest):
+    expected_preflight_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    preflight_expires_at: datetime
+    confirm_cost: Literal[True]
+
+    @field_validator("preflight_expires_at")
+    @classmethod
+    def require_timezone(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("preflight_expires_at must include a timezone")
+        return value
+
+
+class InitialVideoProjectPreflightRead(StrictInitialVideoModel):
+    product_id: int
+    strategy_id: int
+    copy_matrix_id: int
+    platform: Literal["TikTok", "Instagram", "Facebook"]
+    duration_seconds: Literal[15, 30]
+    aspect_ratio: Literal["9:16"]
+    input_ready: bool
+    provider_configured: bool
+    execution_enabled: bool
+    contract_ready: bool
+    ready_for_execution: bool
+    missing_requirements: list[str]
+    preflight_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    expires_at: datetime
+    preflight_only: Literal[True] = True
+    provider_calls: Literal[0] = 0
+    database_writes: Literal[0] = 0
+    execution_will_call_qwen: Literal[True] = True
+    execution_will_call_wanx: Literal[False] = False
+    execution_will_create_video_project: Literal[True] = True
+    automatic_action_allowed: Literal[False] = False
+    cost_notice: str
+    association_notice: str
+
+
+class InitialVideoProjectExecutionRead(StrictInitialVideoModel):
+    version: Literal["initial-video-project-v1"] = (
+        "initial-video-project-v1"
+    )
+    product_id: int
+    strategy_id: int
+    copy_matrix_id: int
+    preflight_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    generated_video_project: VideoProjectSchema
+    reused: bool
+    provider_calls: Literal[0, 1]
+    wanx_calls: Literal[0] = 0
+    render_tasks_created: Literal[0] = 0
+    artifacts_created: Literal[0] = 0
+    automatic_action_allowed: Literal[False] = False
+    association_notice: str
 
 
 class StrictV2VideoModel(BaseModel):

@@ -9,6 +9,7 @@
     "test:social": "node scripts/test-social-publishing-state.mjs",
     "test:live-wanx": "node scripts/test-live-wanx.mjs",
     "test:presentation-artifact": "node scripts/test-presentation-artifact.mjs",
+    "test:initial-video": "node scripts/test-initial-video-project.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

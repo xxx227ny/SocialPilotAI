@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_text_generation_provider
+from app.core.config import Settings, get_settings
 from app.main import app
 from app.models import MarketingStrategy
 from app.providers.base import TextGenerationProvider
@@ -20,11 +21,20 @@ class FakeVideoApiProvider(TextGenerationProvider):
         return json.dumps(valid_plan())
 
 
+def video_settings() -> Settings:
+    return Settings(
+        _env_file=None,
+        qwen_api_key="safe-test-placeholder",
+        enable_video_project_execution=True,
+    )
+
+
 def test_video_api_returns_valid_plan_with_source_ids(
     client: TestClient, db_session: Session
 ) -> None:
     product, strategy, copy_matrix = add_video_sources(db_session)
     provider = FakeVideoApiProvider()
+    app.dependency_overrides[get_settings] = video_settings
     app.dependency_overrides[get_text_generation_provider] = lambda: provider
     try:
         response = client.post(
@@ -70,6 +80,7 @@ def test_video_api_requires_copy_matrix(
     )
     db_session.commit()
     provider = FakeVideoApiProvider()
+    app.dependency_overrides[get_settings] = video_settings
     app.dependency_overrides[get_text_generation_provider] = lambda: provider
     try:
         response = client.post(

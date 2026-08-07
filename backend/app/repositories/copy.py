@@ -1,7 +1,7 @@
 from sqlalchemy import insert, select
 from sqlalchemy.orm import Session
 
-from app.models import CopyMatrix
+from app.models import CopyMatrix, MarketingStrategy, Product
 from app.schemas.copy import CopyMatrixSchema, TaskBoundCopyMatrixSchema
 
 
@@ -36,6 +36,31 @@ class CopyMatrixRepository:
             .limit(1)
         )
         return self.session.scalar(statement)
+
+    def get_latest_valid_source_chain(
+        self, product_id: int
+    ) -> tuple[Product, MarketingStrategy, CopyMatrix] | None:
+        """Select one exact Product/Strategy/CopyMatrix chain by latest CopyMatrix."""
+        statement = (
+            select(Product, MarketingStrategy, CopyMatrix)
+            .join(CopyMatrix, CopyMatrix.product_id == Product.id)
+            .join(
+                MarketingStrategy,
+                CopyMatrix.marketing_strategy_id == MarketingStrategy.id,
+            )
+            .where(
+                Product.id == product_id,
+                CopyMatrix.product_id == Product.id,
+                MarketingStrategy.product_id == Product.id,
+                CopyMatrix.marketing_strategy_id == MarketingStrategy.id,
+            )
+            .order_by(CopyMatrix.created_at.desc(), CopyMatrix.id.desc())
+            .limit(1)
+        )
+        row = self.session.execute(statement).one_or_none()
+        if row is None:
+            return None
+        return row[0], row[1], row[2]
 
     def create_for_exact_strategy(
         self,

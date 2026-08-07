@@ -6,6 +6,7 @@ import { GrowthCopilotPanel } from "../components/GrowthCopilotPanel";
 import { MarketingTaskConfig } from "../components/product/MarketingTaskConfig";
 import { ProductCreateForm } from "../components/product/ProductCreateForm";
 import { SocialPublishingPanel } from "../components/product/SocialPublishingPanel";
+import { InitialVideoProjectPanel } from "../components/video/InitialVideoProjectPanel";
 import { VideoRenderPreflightPanel } from "../components/video/VideoRenderPreflightPanel";
 import type { PlatformCopy } from "../types/copy";
 import type { Product } from "../types/product";
@@ -368,6 +369,10 @@ function ProductDetail({
         <p className="strategy-preflight__note">
           Strategy与Copy Matrix操作已迁移到上方的受控流程；普通工作区不再调用旧Product-only Copy入口。
         </p>
+        <InitialVideoProjectPanel
+          product={product}
+          onGenerated={setLiveVideoProjectId}
+        />
         <GrowthCopilotPanel
           productId={product.id}
           onVideoProjectGenerated={setLiveVideoProjectId}

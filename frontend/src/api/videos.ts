@@ -1,5 +1,10 @@
 import { AI_EXECUTION_TIMEOUT_MS, apiClient } from "./client";
 import type {
+  InitialVideoProjectExecutionRequest,
+  InitialVideoProjectExecutionResult,
+  InitialVideoProjectPreflight,
+  InitialVideoProjectSource,
+  InitialVideoProjectSourceRequest,
   LiveRenderTaskResponse,
   VideoProject,
   VideoProjectRequest,
@@ -21,6 +26,43 @@ export async function generateVideoProject(
   const response = await apiClient.post<VideoProject>(
     `/products/${productId}/video-projects`,
     payload,
+  );
+  return response.data;
+}
+
+export async function preflightInitialVideoProject(
+  productId: number,
+  payload: InitialVideoProjectSourceRequest,
+  signal?: AbortSignal,
+): Promise<InitialVideoProjectPreflight> {
+  const response = await apiClient.post<InitialVideoProjectPreflight>(
+    `/products/${productId}/video-projects/preflight`,
+    payload,
+    { signal },
+  );
+  return response.data;
+}
+
+export async function getInitialVideoProjectSource(
+  productId: number,
+  signal?: AbortSignal,
+): Promise<InitialVideoProjectSource> {
+  const response = await apiClient.get<InitialVideoProjectSource>(
+    `/products/${productId}/video-projects/source`,
+    { signal },
+  );
+  return response.data;
+}
+
+export async function executeInitialVideoProject(
+  productId: number,
+  payload: InitialVideoProjectExecutionRequest,
+  signal?: AbortSignal,
+): Promise<InitialVideoProjectExecutionResult> {
+  const response = await apiClient.post<InitialVideoProjectExecutionResult>(
+    `/products/${productId}/video-projects/execute`,
+    payload,
+    { signal, timeout: AI_EXECUTION_TIMEOUT_MS },
   );
   return response.data;
 }

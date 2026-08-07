@@ -96,6 +96,35 @@ CopyExecutionGateDep = Annotated[
 ]
 
 
+def require_video_project_execution_enabled(
+    app_settings: Annotated[Settings, Depends(get_settings)],
+) -> None:
+    if not app_settings.enable_video_project_execution:
+        raise AppError(
+            "VideoProject execution is disabled by the server",
+            status_code=503,
+        )
+    _require_live_qwen_configuration(app_settings)
+
+
+VideoProjectExecutionGateDep = Annotated[
+    None, Depends(require_video_project_execution_enabled)
+]
+
+
+def get_video_project_text_provider(
+    gate: VideoProjectExecutionGateDep,
+    provider: TextProviderDep,
+) -> TextGenerationProvider:
+    del gate
+    return provider
+
+
+VideoProjectTextProviderDep = Annotated[
+    TextGenerationProvider, Depends(get_video_project_text_provider)
+]
+
+
 def require_v2_copy_execution_enabled(
     app_settings: Annotated[Settings, Depends(get_settings)],
 ) -> None:

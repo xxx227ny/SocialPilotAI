@@ -37,6 +37,26 @@ class VideoProjectRepository:
     def get(self, video_project_id: int) -> VideoProject | None:
         return self.session.get(VideoProject, video_project_id)
 
+    def get_by_initial_identity(
+        self,
+        *,
+        product_id: int,
+        marketing_strategy_id: int,
+        copy_matrix_id: int,
+        platform: str,
+        duration_seconds: int,
+        aspect_ratio: str,
+    ) -> VideoProject | None:
+        statement = select(VideoProject).where(
+            VideoProject.product_id == product_id,
+            VideoProject.marketing_strategy_id == marketing_strategy_id,
+            VideoProject.copy_matrix_id == copy_matrix_id,
+            VideoProject.platform == platform,
+            VideoProject.duration_seconds == duration_seconds,
+            VideoProject.aspect_ratio == aspect_ratio,
+        )
+        return self.session.scalar(statement.limit(1))
+
     def create_for_exact_chain(
         self,
         product_id: int,
