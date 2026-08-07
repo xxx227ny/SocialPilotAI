@@ -109,7 +109,73 @@ Qwen Provider / Wanx Provider / YouTube Provider / Artifact Storage
 
 完整状态见[版本与验收状态](docs/version_status.md)。
 
-## 快速启动
+## Windows一键独立运行
+
+首次使用只需完成一次依赖安装和本机配置；以后无需Codex或手工启动两个终端。
+
+### 一次性安装
+
+```powershell
+cd backend
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+
+cd ..\frontend
+npm install
+```
+
+按照下方“本机配置”将需要的变量保存在未提交的 `backend/.env`。不要把任何配置值发到聊天、Issue或截图中。
+
+### 启动
+
+在仓库根目录双击：
+
+```text
+start-socialpilotai.cmd
+```
+
+脚本会自动完成：
+
+- 从仓库自身定位Backend和Frontend，不依赖用户名或启动目录。
+- 使用 `%LOCALAPPDATA%\SocialPilotAI` 作为持久化Runtime。
+- 首次运行初始化正式数据库Schema，但不加载开发种子。
+- 后续运行继续使用原数据库和Artifact，不清空或重建数据。
+- 开启Strategy、Copy Matrix、Initial VideoProject、Wanx Render、账号绑定和YouTube Private发布。
+- 等待Backend与Frontend就绪后打开 <http://127.0.0.1:5173/products>。
+- 启动过程只检查配置，不调用Qwen、Wanx、Google或YouTube。
+
+页面顶部“系统就绪状态”会显示Backend、Qwen、Wanx、Google/YouTube、Database和Artifact Storage是否可用。缺少配置时按照页面中的变量名检查 `backend/.env`，无需修改源码。
+
+### 日常操作
+
+1. 启动后进入Product Center创建或选择商品。
+2. 每次Strategy、Copy Matrix或Video Blueprint调用Qwen前，先运行Preflight并在网页确认费用。
+3. 每次Wanx Render前确认精确VideoProject、费用和Artifact目录状态。
+4. Google OAuth必须由用户主动点击；YouTube发布固定为Private，并需单独Preflight和明确确认。
+5. 页面不会在启动、刷新或恢复历史记录时自动调用Provider、产生费用或上传视频。
+
+### 停止
+
+在仓库根目录双击：
+
+```text
+stop-socialpilotai.cmd
+```
+
+停止脚本只会终止PID文件中同时匹配进程路径和启动时间的Backend与Frontend进程，不会按端口或进程名称停止其他程序。数据库、Artifact和日志会保留。
+
+### 持久化数据位置
+
+| 内容 | 默认位置 |
+| --- | --- |
+| SQLite数据库 | `%LOCALAPPDATA%\SocialPilotAI\data\socialpilot.db` |
+| Artifact | `%LOCALAPPDATA%\SocialPilotAI\artifacts` |
+| 运行日志 | `%LOCALAPPDATA%\SocialPilotAI\logs` |
+| 精确PID记录 | `%LOCALAPPDATA%\SocialPilotAI\socialpilotai.pids.json` |
+
+不要手工编辑数据库或PID文件。需要备份时先运行停止脚本，再复制整个 `%LOCALAPPDATA%\SocialPilotAI` 目录。
+
+## 手动开发启动
 
 ### 后端
 

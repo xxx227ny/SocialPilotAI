@@ -2,6 +2,7 @@ import { NavLink, Outlet } from "react-router-dom";
 
 import { PresentationToolbar } from "../components/dashboard/PresentationToolbar";
 import { PresentationFlowNav } from "../components/showcase/PresentationFlowNav";
+import { SystemReadinessPanel } from "../components/system/SystemReadinessPanel";
 import { usePresentationMode } from "../context/PresentationModeContext";
 
 const navItems = [
@@ -66,6 +67,7 @@ export function AppLayout() {
           <PresentationFlowNav />
           <PresentationToolbar />
         </>}
+        {!isPresentation && <SystemReadinessPanel />}
         <main className="main-content">
           <Outlet />
         </main>

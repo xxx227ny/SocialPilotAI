@@ -9,11 +9,13 @@ from app.api.v1.routes.marketing_tasks import router as marketing_tasks_router
 from app.api.v1.routes.products import router as products_router
 from app.api.v1.routes.social import router as social_router
 from app.api.v1.routes.strategies import router as strategies_router
+from app.api.v1.routes.system import router as system_router
 from app.api.v1.routes.video_renders import router as video_renders_router
 from app.api.v1.routes.videos import router as videos_router
 
 api_router = APIRouter()
 api_router.include_router(health_router, tags=["system"])
+api_router.include_router(system_router, tags=["system"])
 api_router.include_router(products_router, tags=["products"])
 api_router.include_router(social_router, tags=["social-publishing"])
 api_router.include_router(marketing_tasks_router, tags=["marketing-tasks"])

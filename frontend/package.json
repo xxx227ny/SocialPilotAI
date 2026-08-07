@@ -10,6 +10,7 @@
     "test:live-wanx": "node scripts/test-live-wanx.mjs",
     "test:presentation-artifact": "node scripts/test-presentation-artifact.mjs",
     "test:initial-video": "node scripts/test-initial-video-project.mjs",
+    "test:system-readiness": "node scripts/test-system-readiness.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
