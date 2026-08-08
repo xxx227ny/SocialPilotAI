@@ -4,6 +4,7 @@ from app.models.campaign import AdCampaign
 from app.models.copy import CopyMatrix
 from app.models.demo import DemoScenario
 from app.models.marketing import MarketingBrief
+from app.models.presentation_snapshot import PresentationSnapshot
 from app.models.product import Product, ProductAsset
 from app.models.social import OAuthSession, PublishTask, SocialAccount
 from app.models.strategy import MarketingStrategy
@@ -19,6 +20,7 @@ __all__ = [
     "MarketingStrategy",
     "Product",
     "ProductAsset",
+    "PresentationSnapshot",
     "SocialAccount",
     "OAuthSession",
     "PublishTask",

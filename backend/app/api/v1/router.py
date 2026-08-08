@@ -6,6 +6,9 @@ from app.api.v1.routes.dashboard import router as dashboard_router
 from app.api.v1.routes.growth import router as growth_router
 from app.api.v1.routes.health import router as health_router
 from app.api.v1.routes.marketing_tasks import router as marketing_tasks_router
+from app.api.v1.routes.presentation_snapshots import (
+    router as presentation_snapshots_router,
+)
 from app.api.v1.routes.products import router as products_router
 from app.api.v1.routes.social import router as social_router
 from app.api.v1.routes.strategies import router as strategies_router
@@ -19,6 +22,9 @@ api_router.include_router(system_router, tags=["system"])
 api_router.include_router(products_router, tags=["products"])
 api_router.include_router(social_router, tags=["social-publishing"])
 api_router.include_router(marketing_tasks_router, tags=["marketing-tasks"])
+api_router.include_router(
+    presentation_snapshots_router, tags=["presentation-snapshots"]
+)
 api_router.include_router(strategies_router, tags=["marketing-strategies"])
 api_router.include_router(copies_router, tags=["copy-matrix"])
 api_router.include_router(strategy_copy_router, tags=["copy-matrix"])

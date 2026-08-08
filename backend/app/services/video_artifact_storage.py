@@ -181,6 +181,66 @@ class LocalVideoArtifactStorage(VideoArtifactStorage):
             sha256=digest,
         )
 
+    def store_immutable(
+        self,
+        *,
+        task_id: int,
+        content: bytes,
+        content_type: str,
+    ) -> tuple[StoredVideo, bool]:
+        """Atomically create one content-addressed file without replacing it."""
+        normalized_type = _normalize_content_type(content_type)
+        extension = _require_supported_content_type(normalized_type)
+        if not content:
+            raise VideoArtifactError(
+                "invalid_provider_output",
+                "Provider video is empty",
+            )
+        if len(content) > self.max_bytes:
+            raise VideoArtifactError(
+                "artifact_persist_failed",
+                "Provider video exceeds the configured size limit",
+            )
+        digest = hashlib.sha256(content).hexdigest()
+        filename = f"render-task-{task_id}-{digest[:16]}{extension}"
+        self.root.mkdir(parents=True, exist_ok=True)
+        destination = self._safe_path(filename)
+        handle, temporary_name = tempfile.mkstemp(
+            prefix=f".{filename}.",
+            suffix=".tmp",
+            dir=self.root,
+        )
+        created = False
+        try:
+            with os.fdopen(handle, "wb") as temporary:
+                temporary.write(content)
+                temporary.flush()
+                os.fsync(temporary.fileno())
+            try:
+                os.link(temporary_name, destination)
+                created = True
+            except FileExistsError:
+                if (
+                    destination.stat().st_size != len(content)
+                    or _sha256_file(destination) != digest
+                ):
+                    raise VideoArtifactError(
+                        "artifact_persist_failed",
+                        "Existing immutable artifact does not match content",
+                    ) from None
+        finally:
+            with suppress(FileNotFoundError):
+                os.unlink(temporary_name)
+        return (
+            StoredVideo(
+                relative_path=filename,
+                content_type=normalized_type,
+                size_bytes=len(content),
+                sha256=digest,
+            ),
+            created,
+        )
+
     def resolve(self, relative_path: str) -> tuple[Path, str]:
         candidate = self._safe_path(relative_path)
         if not candidate.is_file():
@@ -235,3 +295,11 @@ def _content_type_for_suffix(suffix: str) -> str:
         "invalid_input",
         "Stored artifact type is not supported",
     )
+
+
+def _sha256_file(path: Path) -> str:
+    hasher = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            hasher.update(chunk)
+    return hasher.hexdigest()

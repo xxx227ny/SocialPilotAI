@@ -15,6 +15,7 @@ from app.models import (  # noqa: F401
     MarketingBrief,
     MarketingStrategy,
     OAuthSession,
+    PresentationSnapshot,
     Product,
     ProductAsset,
     PublishTask,

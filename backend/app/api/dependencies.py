@@ -260,6 +260,27 @@ VideoArtifactStorageDep = Annotated[
 ]
 
 
+def get_optional_video_artifact_storage(
+    app_settings: Annotated[Settings, Depends(get_settings)],
+) -> VideoArtifactStorage | None:
+    configured = (app_settings.video_artifact_storage_root or "").strip()
+    if not configured:
+        return None
+    try:
+        return LocalVideoArtifactStorage(
+            Path(configured),
+            app_settings.video_artifact_max_bytes,
+        )
+    except VideoArtifactError:
+        return None
+
+
+OptionalVideoArtifactStorageDep = Annotated[
+    VideoArtifactStorage | None,
+    Depends(get_optional_video_artifact_storage),
+]
+
+
 def require_social_account_binding_enabled(
     app_settings: Annotated[Settings, Depends(get_settings)],
 ) -> None:
