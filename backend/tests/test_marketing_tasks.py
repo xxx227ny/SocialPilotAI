@@ -2,6 +2,12 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.api.dependencies import (
+    get_publishing_youtube_provider,
+    get_text_generation_provider,
+    get_visual_generation_provider,
+)
+from app.main import app
 from app.models import (
     CopyMatrix,
     MarketingBrief,
@@ -150,3 +156,71 @@ def test_create_has_no_generated_downstream_side_effects(
         VideoRenderArtifact,
     ):
         assert db_session.scalar(select(func.count(model.id))) == 0
+
+
+def test_product_scoped_candidates_cover_zero_one_and_many_without_side_effects(
+    client: TestClient,
+    db_session: Session,
+    product_payload: dict[str, object],
+) -> None:
+    product = client.post("/api/v1/products", json=product_payload).json()
+    provider_resolutions = {"qwen": 0, "wanx": 0, "youtube": 0}
+
+    def forbidden_provider(name: str):  # type: ignore[no-untyped-def]
+        def resolve():  # type: ignore[no-untyped-def]
+            provider_resolutions[name] += 1
+            raise AssertionError(f"{name} provider must not be resolved")
+
+        return resolve
+
+    app.dependency_overrides[get_text_generation_provider] = forbidden_provider(
+        "qwen"
+    )
+    app.dependency_overrides[get_visual_generation_provider] = forbidden_provider(
+        "wanx"
+    )
+    app.dependency_overrides[get_publishing_youtube_provider] = forbidden_provider(
+        "youtube"
+    )
+
+    empty = client.get(
+        "/api/v1/marketing-tasks", params={"product_id": product["id"]}
+    )
+    first = client.post(
+        "/api/v1/marketing-tasks", json=marketing_payload(product["id"])
+    ).json()
+    one = client.get(
+        "/api/v1/marketing-tasks", params={"product_id": product["id"]}
+    )
+    second_payload = marketing_payload(product["id"])
+    second_payload["audience"] = "Road trip drivers"
+    second_payload["language"] = "French"
+    second_payload["platforms"] = ["Facebook"]
+    second = client.post(
+        "/api/v1/marketing-tasks", json=second_payload
+    ).json()
+    brief_count_before = db_session.scalar(select(func.count(MarketingBrief.id)))
+    many = client.get(
+        "/api/v1/marketing-tasks", params={"product_id": product["id"]}
+    )
+    brief_count_after = db_session.scalar(select(func.count(MarketingBrief.id)))
+
+    assert empty.status_code == 200
+    assert empty.json() == []
+    assert [item["id"] for item in one.json()] == [first["id"]]
+    assert [item["id"] for item in many.json()] == [first["id"], second["id"]]
+    assert many.json()[1]["audience"].endswith("Road trip drivers")
+    assert many.json()[1]["language"] == "French"
+    assert many.json()[1]["platforms"] == ["Facebook"]
+    assert many.json()[1]["created_at"]
+    assert brief_count_before == brief_count_after == 2
+    assert provider_resolutions == {"qwen": 0, "wanx": 0, "youtube": 0}
+
+
+def test_product_scoped_candidates_reject_missing_product(client: TestClient) -> None:
+    response = client.get(
+        "/api/v1/marketing-tasks", params={"product_id": 999999}
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["message"] == "Product not found"

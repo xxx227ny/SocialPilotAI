@@ -1,159 +1,162 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 
+import { loadPresentationSnapshotOnce } from "../api/presentationSnapshots";
+import { SnapshotCopySlide } from "../components/presentation/SnapshotCopySlide";
+import { SnapshotGrowthSlide } from "../components/presentation/SnapshotGrowthSlide";
+import { SnapshotOverviewSlide } from "../components/presentation/SnapshotOverviewSlide";
+import { SnapshotVideoSlide } from "../components/presentation/SnapshotVideoSlide";
 import {
-  getPresentationSnapshot,
-  getPresentationSnapshotArtifactContentUrl,
-} from "../api/presentationSnapshots";
+  readSnapshotPresentationView,
+} from "../components/presentation/snapshotPresentationPayload";
 import type { SnapshotPresentationRoute } from "../components/presentation/snapshotPresentationState";
-import type {
-  PresentationSnapshot,
-  PresentationSnapshotSection,
-} from "../types/presentationSnapshot";
+import type { PresentationSnapshot } from "../types/presentationSnapshot";
 
-const SECTION_LABELS: Record<PresentationSnapshotSection, string> = {
-  marketing_brief: "MarketingBrief",
-  marketing_strategy: "Strategy",
-  copy_matrix: "CopyMatrix",
-  video_project: "VideoProject",
-  render_task: "RenderTask",
-  artifact: "Artifact",
-  publish_task: "PublishTask",
-  campaigns: "Campaigns",
-};
+const SLIDES = [
+  { pathname: "/", number: "01", label: "Overview" },
+  { pathname: "/copy-matrix", number: "02", label: "Copy Matrix" },
+  { pathname: "/content-studio", number: "03", label: "Video Blueprint" },
+  { pathname: "/growth-copilot", number: "04", label: "Growth Copilot" },
+] as const;
 
 export function SnapshotPresentationPage({
   route,
 }: {
   route: Exclude<SnapshotPresentationRoute, { kind: "legacy" }>;
 }) {
+  const location = useLocation();
+  const snapshotId = route.kind === "snapshot" ? route.snapshotId : null;
   const [snapshot, setSnapshot] = useState<PresentationSnapshot | null>(null);
-  const [loading, setLoading] = useState(route.kind === "snapshot");
-  const [error, setError] = useState(
-    route.kind === "invalid" ? route.message : "",
-  );
+  const routeError = route.kind === "invalid" ? route.message : "";
+  const [loading, setLoading] = useState(snapshotId !== null);
+  const [error, setError] = useState(routeError);
 
   useEffect(() => {
-    if (route.kind !== "snapshot") return;
-    const controller = new AbortController();
+    if (snapshotId === null) {
+      setLoading(false);
+      setSnapshot(null);
+      setError(routeError);
+      return;
+    }
+    let active = true;
     setLoading(true);
     setSnapshot(null);
     setError("");
-    void getPresentationSnapshot(route.snapshotId, controller.signal)
+    void loadPresentationSnapshotOnce(snapshotId)
       .then((result) => {
-        if (result.id !== route.snapshotId) {
+        if (!active) return;
+        if (result.id !== snapshotId) {
           throw new Error("Snapshot identity mismatch");
         }
         setSnapshot(result);
       })
       .catch(() => {
-        if (!controller.signal.aborted) {
+        if (active) {
           setError("无法加载指定的演示快照；不会回退到其他快照或最新数据。");
         }
       })
       .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
+        if (active) setLoading(false);
       });
-    return () => controller.abort();
-  }, [route]);
-
-  const sections = useMemo(() => {
-    if (!snapshot) return { included: [], missing: [] };
-    const keys = Object.keys(SECTION_LABELS) as PresentationSnapshotSection[];
-    return {
-      included: keys.filter(
-        (section) => !snapshot.missing_sections.includes(section),
-      ),
-      missing: snapshot.missing_sections,
+    return () => {
+      active = false;
     };
-  }, [snapshot]);
+  }, [routeError, snapshotId]);
+
+  const view = useMemo(
+    () => snapshot ? readSnapshotPresentationView(snapshot) : null,
+    [snapshot],
+  );
+  const currentSlide = SLIDES.find(
+    (slide) => slide.pathname === location.pathname,
+  );
 
   return (
-    <main className="snapshot-presentation-shell">
+    <div className="snapshot-presentation-shell">
       <header className="snapshot-presentation-header">
         <div>
           <span>SocialPilot AI · Immutable Presentation Snapshot</span>
           <h1>只读演示快照</h1>
-          <p>仅加载URL中指定的不可变快照，不读取latest或当前业务记录。</p>
+          <p>四页内容仅来自URL指定的单一不可变Snapshot payload。</p>
         </div>
         <strong>0 AI Calls · 0 Provider Calls · Read Only</strong>
       </header>
 
+      {snapshotId !== null ? (
+        <nav className="snapshot-presentation-nav" aria-label="Snapshot Presentation">
+          {SLIDES.map((slide) => (
+            <Link
+              className={slide.pathname === location.pathname ? "is-active" : ""}
+              key={slide.pathname}
+              to={{
+                pathname: slide.pathname,
+                search: `?mode=presentation&snapshot_id=${snapshotId}`,
+              }}
+            >
+              <span>{slide.number}</span>
+              <strong>{slide.label}</strong>
+            </Link>
+          ))}
+        </nav>
+      ) : null}
+
+      {snapshot ? <SnapshotIdentity snapshot={snapshot} /> : null}
+
       {loading ? (
-        <SnapshotState title="正在读取指定快照" detail="只发起一次精确Snapshot GET。" />
-      ) : error || !snapshot ? (
-        <SnapshotState
-          error
-          title="无法进入快照演示"
-          detail={error || "未提供可验证的Snapshot。"}
-        />
+        <SnapshotState title="正在读取指定快照" detail="仅请求一次精确Snapshot GET。" />
+      ) : error || !snapshot || !view ? (
+        <SnapshotState error title="无法进入快照演示" detail={error || "未提供可验证的Snapshot。"} />
+      ) : !currentSlide ? (
+        <SnapshotState error title="未知演示页面" detail="当前路径不属于该Snapshot的四页只读演示；不会回退到其他页面数据。" />
       ) : (
-        <>
-          <section className="snapshot-presentation-summary">
-            <div><small>Snapshot</small><strong>#{snapshot.id}</strong></div>
-            <div><small>Digest</small><code>{digestSummary(snapshot.digest)}</code></div>
-            <div><small>创建时间</small><strong>{formatDateTime(snapshot.created_at)}</strong></div>
-            <div><small>Schema</small><strong>v{snapshot.schema_version}</strong></div>
-          </section>
-
-          <section className="snapshot-presentation-sections">
-            <SnapshotSectionList
-              title="包含项"
-              values={sections.included.map((section) => SECTION_LABELS[section])}
+        <main className="snapshot-presentation-stage">
+          {currentSlide.pathname === "/" ? <SnapshotOverviewSlide snapshot={snapshot} view={view} /> : null}
+          {currentSlide.pathname === "/copy-matrix" ? (
+            <SnapshotCopySlide
+              copies={view.copies}
+              strategyId={view.strategy?.id ?? null}
+              copyMatrixId={view.copyMatrixId}
             />
-            <SnapshotSectionList
-              title="缺失项"
-              values={sections.missing.map((section) => SECTION_LABELS[section])}
-            />
-          </section>
-
-          {snapshot.artifact_snapshot_path && snapshot.artifact_sha256 ? (
-            <section className="snapshot-presentation-media">
-              <div>
-                <span>SNAPSHOT ARTIFACT</span>
-                <h2>不可变媒体副本</h2>
-                <p>播放前由后端校验安全路径、文件大小和SHA-256；不会读取原始可变Artifact代替。</p>
-              </div>
-              <video
-                controls
-                playsInline
-                preload="metadata"
-                src={getPresentationSnapshotArtifactContentUrl(snapshot.id)}
-              >
-                Your browser does not support video playback.
-              </video>
-            </section>
-          ) : (
-            <SnapshotState
-              title="快照未包含媒体"
-              detail="该快照如实记录Artifact缺失，不会回退到其他媒体。"
-            />
-          )}
-        </>
+          ) : null}
+          {currentSlide.pathname === "/content-studio" ? <SnapshotVideoSlide snapshot={snapshot} view={view} /> : null}
+          {currentSlide.pathname === "/growth-copilot" ? <SnapshotGrowthSlide view={view} /> : null}
+        </main>
       )}
-    </main>
+    </div>
   );
 }
 
-function SnapshotSectionList({ title, values }: { title: string; values: string[] }) {
+function SnapshotIdentity({ snapshot }: { snapshot: PresentationSnapshot }) {
+  const included = [
+    ["Product", true],
+    ["Brief", !snapshot.missing_sections.includes("marketing_brief")],
+    ["Strategy", !snapshot.missing_sections.includes("marketing_strategy")],
+    ["Copy", !snapshot.missing_sections.includes("copy_matrix")],
+    ["Video", !snapshot.missing_sections.includes("video_project")],
+    ["Render", !snapshot.missing_sections.includes("render_task")],
+    ["Artifact", !snapshot.missing_sections.includes("artifact")],
+    ["Delivery", !snapshot.missing_sections.includes("publish_task")],
+    ["Campaigns", !snapshot.missing_sections.includes("campaigns")],
+  ] as const;
   return (
-    <article>
-      <h2>{title}</h2>
-      <div>
-        {values.length > 0
-          ? values.map((value) => <span key={value}>{value}</span>)
-          : <span>无</span>}
+    <section className="snapshot-presentation-identity">
+      <div><small>Snapshot</small><strong>#{snapshot.id}</strong></div>
+      <div><small>Digest</small><code>{digestSummary(snapshot.digest)}</code></div>
+      <div><small>创建时间</small><strong>{formatDateTime(snapshot.created_at)}</strong></div>
+      <div><small>Schema</small><strong>v{snapshot.schema_version}</strong></div>
+      <div className="snapshot-presentation-identity__coverage">
+        {included.map(([label, available]) => (
+          <span className={available ? "is-present" : "is-missing"} key={label}>
+            {label} · {available ? "包含" : "缺失"}
+          </span>
+        ))}
       </div>
-    </article>
+    </section>
   );
 }
 
 function SnapshotState({ title, detail, error = false }: { title: string; detail: string; error?: boolean }) {
-  return (
-    <section className={`snapshot-presentation-state${error ? " snapshot-presentation-state--error" : ""}`}>
-      <strong>{title}</strong>
-      <p>{detail}</p>
-    </section>
-  );
+  return <main><section className={`snapshot-presentation-state${error ? " snapshot-presentation-state--error" : ""}`}><strong>{title}</strong><p>{detail}</p></section></main>;
 }
 
 function digestSummary(digest: string): string {
@@ -164,8 +167,5 @@ function formatDateTime(value: string): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? "时间未知"
-    : new Intl.DateTimeFormat("zh-CN", {
-        dateStyle: "medium",
-        timeStyle: "short",
-      }).format(date);
+    : new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(date);
 }

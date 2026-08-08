@@ -36,6 +36,13 @@ def create_marketing_task(
     return MarketingService(db).create(data)
 
 
+@router.get("", response_model=list[MarketingTaskRead])
+def list_marketing_tasks(
+    product_id: int, db: DbSession
+) -> list[MarketingTaskRead]:
+    return MarketingService(db).list_for_product(product_id)
+
+
 @router.get("/latest", response_model=MarketingTaskRead | None)
 def get_latest_marketing_task(
     product_id: int, db: DbSession

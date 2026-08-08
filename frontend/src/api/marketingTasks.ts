@@ -15,6 +15,17 @@ export async function createMarketingTask(
   );
   return response.data;
 }
+export async function listMarketingTasks(
+  productId: number,
+  signal?: AbortSignal,
+): Promise<MarketingTask[]> {
+  const response = await apiClient.get<MarketingTask[]>(
+    "/marketing-tasks",
+    { params: { product_id: productId }, signal },
+  );
+  return response.data;
+}
+
 
 export async function getMarketingTask(
   taskId: number,

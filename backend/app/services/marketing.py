@@ -46,6 +46,15 @@ class MarketingService:
         )
         return self._to_read(self.repository.create(persisted_data), target_markets)
 
+    def list_for_product(self, product_id: int) -> list[MarketingTaskRead]:
+        product = self.session.get(Product, product_id)
+        if product is None:
+            raise AppError("Product not found", status_code=404)
+        return [
+            self._to_read(task, product.target_markets)
+            for task in self.repository.list_for_product(product_id)
+        ]
+
     def get(self, task_id: int) -> MarketingTaskRead:
         task = self.repository.get(task_id)
         if task is None:

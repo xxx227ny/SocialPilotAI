@@ -19,6 +19,14 @@ class MarketingRepository:
     def get(self, task_id: int) -> MarketingBrief | None:
         return self.session.get(MarketingBrief, task_id)
 
+    def list_for_product(self, product_id: int) -> list[MarketingBrief]:
+        statement = (
+            select(MarketingBrief)
+            .where(MarketingBrief.product_id == product_id)
+            .order_by(MarketingBrief.id.asc())
+        )
+        return list(self.session.scalars(statement))
+
     def get_latest_for_product(self, product_id: int) -> MarketingBrief | None:
         statement = (
             select(MarketingBrief)

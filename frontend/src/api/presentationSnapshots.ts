@@ -5,6 +5,11 @@ import type {
   PresentationSnapshotCreateResult,
 } from "../types/presentationSnapshot";
 
+const presentationSnapshotLoads = new Map<
+  number,
+  Promise<PresentationSnapshot>
+>();
+
 export async function createPresentationSnapshot(
   productId: number,
   data: PresentationSnapshotCreateRequest,
@@ -27,6 +32,16 @@ export async function getPresentationSnapshot(
     { signal },
   );
   return response.data;
+}
+
+export function loadPresentationSnapshotOnce(
+  snapshotId: number,
+): Promise<PresentationSnapshot> {
+  const existing = presentationSnapshotLoads.get(snapshotId);
+  if (existing) return existing;
+  const request = getPresentationSnapshot(snapshotId);
+  presentationSnapshotLoads.set(snapshotId, request);
+  return request;
 }
 
 export function getPresentationSnapshotArtifactContentUrl(

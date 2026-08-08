@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { getApiErrorMessage } from "../../api/client";
 import { getFeedbackContext } from "../../api/growth";
+import { listMarketingTasks } from "../../api/marketingTasks";
 import {
   createPresentationSnapshot,
   listPresentationSnapshots,
@@ -13,9 +14,11 @@ import type {
   PresentationSnapshotCreateRequest,
   PresentationSnapshotSection,
 } from "../../types/presentationSnapshot";
+import type { MarketingTask } from "../../types/marketing";
 import type { PublishTask } from "../../types/social";
 import { snapshotPresentationUrl } from "../presentation/snapshotPresentationState";
 import {
+  autoSelectedMarketingBriefId,
   autoSelectedArtifactId,
   buildPresentationArtifactSources,
   buildPresentationSnapshotRequest,
@@ -39,6 +42,8 @@ const SECTION_LABELS: Record<PresentationSnapshotSection, string> = {
 };
 
 export function PresentationSnapshotPanel({ productId }: { productId: number }) {
+  const [briefs, setBriefs] = useState<MarketingTask[]>([]);
+  const [selectedBriefId, setSelectedBriefId] = useState<number | null>(null);
   const [sources, setSources] = useState<PresentationArtifactSource[]>([]);
   const [publishTasks, setPublishTasks] = useState<PublishTask[]>([]);
   const [campaignIds, setCampaignIds] = useState<number[]>([]);
@@ -73,6 +78,8 @@ export function PresentationSnapshotPanel({ productId }: { productId: number }) 
   }, [productId]);
 
   useEffect(() => {
+    setBriefs([]);
+    setSelectedBriefId(null);
     const controller = new AbortController();
     setSources([]);
     setPublishTasks([]);
@@ -87,10 +94,11 @@ export function PresentationSnapshotPanel({ productId }: { productId: number }) 
 
     void Promise.all([
       listPublishArtifacts(productId, controller.signal),
+      listMarketingTasks(productId, controller.signal),
       listPublishTasks(productId, controller.signal),
       getFeedbackContext(productId, controller.signal),
     ])
-      .then(async ([artifacts, tasks, feedback]) => {
+      .then(async ([artifacts, briefCandidates, tasks, feedback]) => {
         const videoProjectIds = [
           ...new Set(artifacts.map((artifact) => artifact.video_project_id)),
         ];
@@ -109,6 +117,8 @@ export function PresentationSnapshotPanel({ productId }: { productId: number }) 
         setPublishTasks(tasks);
         setCampaignIds(feedback.campaign_ids);
         setSelectedArtifactId(autoSelectedArtifactId(exactSources));
+        setBriefs(briefCandidates);
+        setSelectedBriefId(autoSelectedMarketingBriefId(briefCandidates));
         setSourceState("ready");
       })
       .catch((error: unknown) => {
@@ -128,6 +138,10 @@ export function PresentationSnapshotPanel({ productId }: { productId: number }) 
       sources.find((source) => source.artifact_id === selectedArtifactId) ?? null,
     [selectedArtifactId, sources],
   );
+  const selectedBrief = useMemo(
+    () => briefs.find((brief) => brief.id === selectedBriefId) ?? null,
+    [briefs, selectedBriefId],
+  );
   const matchingTasks = useMemo(
     () =>
       selectedArtifactId === null
@@ -145,22 +159,37 @@ export function PresentationSnapshotPanel({ productId }: { productId: number }) 
     setSaveError("");
   }, [matchingTasks]);
 
+  useEffect(() => {
+    setCurrentSnapshot(null);
+    setSaveOutcome(null);
+    setSaveError("");
+  }, [selectedBriefId]);
+
   const resolvedPublishTaskId =
     matchingTasks.length === 1
       ? matchingTasks[0].id
       : selectedPublishTaskId;
   const publishIdentityReady =
     matchingTasks.length <= 1 || resolvedPublishTaskId !== null;
+  const briefIdentityReady = briefs.length <= 1 || selectedBriefId !== null;
   const request = useMemo<PresentationSnapshotCreateRequest | null>(
     () =>
-      selectedSource && publishIdentityReady
+      selectedSource && publishIdentityReady && briefIdentityReady
         ? buildPresentationSnapshotRequest(
             selectedSource,
             resolvedPublishTaskId,
             campaignIds,
+            selectedBriefId,
           )
         : null,
-    [campaignIds, publishIdentityReady, resolvedPublishTaskId, selectedSource],
+    [
+      briefIdentityReady,
+      campaignIds,
+      publishIdentityReady,
+      resolvedPublishTaskId,
+      selectedBriefId,
+      selectedSource,
+    ],
   );
   const sameSourceHistory = useMemo(
     () => (request ? findSameSourcePresentationSnapshot(history, request) : null),
@@ -221,6 +250,67 @@ export function PresentationSnapshotPanel({ productId }: { productId: number }) 
         </p>
       ) : (
         <div className="presentation-snapshot-panel__source">
+          {briefs.length === 0 ? (
+            <p className="presentation-snapshot-panel__notice">
+              {"MarketingBrief\uff1a\u7f3a\u5931"}
+            </p>
+          ) : (
+            <div className="presentation-snapshot-panel__briefs">
+              <label>
+                {"MarketingBrief \u5019\u9009"}
+                <select
+                  value={selectedBriefId ?? ""}
+                  onChange={(event) =>
+                    setSelectedBriefId(
+                      event.target.value ? Number(event.target.value) : null,
+                    )
+                  }
+                >
+                  <option value="">
+                    {briefs.length > 1
+                      ? "\u8bf7\u9009\u62e9\u7cbe\u786e MarketingBrief"
+                      : "\u8bf7\u9009\u62e9 MarketingBrief"}
+                  </option>
+                  {briefs.map((brief) => (
+                    <option key={brief.id} value={brief.id}>
+                      MarketingBrief #{brief.id} · {brief.language} ·{" "}
+                      {brief.platforms.join(" / ")}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {briefs.length > 1 && selectedBriefId === null ? (
+                <small>
+                  Multiple MarketingBrief records require explicit selection;
+                  latest is not used.
+                </small>
+              ) : null}
+              {selectedBrief ? (
+                <dl className="presentation-snapshot-panel__brief-details">
+                  <div>
+                    <dt>Brief ID</dt>
+                    <dd>#{selectedBrief.id}</dd>
+                  </div>
+                  <div>
+                    <dt>Audience</dt>
+                    <dd>{selectedBrief.audience}</dd>
+                  </div>
+                  <div>
+                    <dt>Language</dt>
+                    <dd>{selectedBrief.language}</dd>
+                  </div>
+                  <div>
+                    <dt>Platforms</dt>
+                    <dd>{selectedBrief.platforms.join(" · ")}</dd>
+                  </div>
+                  <div>
+                    <dt>Created</dt>
+                    <dd>{formatDateTime(selectedBrief.created_at)}</dd>
+                  </div>
+                </dl>
+              ) : null}
+            </div>
+          )}
           <label>
             已验证 Artifact
             <select
@@ -248,7 +338,11 @@ export function PresentationSnapshotPanel({ productId }: { productId: number }) 
           {selectedSource ? (
             <div className="presentation-snapshot-panel__identity">
               <Identity label="Product" value={productId} />
-              <Identity label="MarketingBrief" missing />
+              <Identity
+                label="MarketingBrief"
+                value={selectedBrief?.id}
+                missing={!selectedBrief}
+              />
               <Identity label="Strategy" value={selectedSource.marketing_strategy_id} />
               <Identity label="CopyMatrix" value={selectedSource.copy_matrix_id} />
               <Identity label="VideoProject" value={selectedSource.video_project_id} />

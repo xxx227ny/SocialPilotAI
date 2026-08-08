@@ -2,6 +2,7 @@ import type {
   PresentationSnapshot,
   PresentationSnapshotCreateRequest,
 } from "../../types/presentationSnapshot";
+import type { MarketingTask } from "../../types/marketing";
 import type { PublishArtifactCandidate, PublishTask } from "../../types/social";
 import type { VideoProject } from "../../types/video";
 
@@ -30,6 +31,12 @@ export function buildPresentationArtifactSources(
     .sort((left, right) => left.artifact_id - right.artifact_id);
 }
 
+export function autoSelectedMarketingBriefId(
+  briefs: MarketingTask[],
+): number | null {
+  return briefs.length === 1 ? briefs[0].id : null;
+}
+
 export function autoSelectedArtifactId(
   sources: PresentationArtifactSource[],
 ): number | null {
@@ -52,9 +59,10 @@ export function buildPresentationSnapshotRequest(
   source: PresentationArtifactSource,
   publishTaskId: number | null,
   campaignIds: number[],
+  marketingBriefId: number | null = null,
 ): PresentationSnapshotCreateRequest {
   return {
-    marketing_brief_id: null,
+    marketing_brief_id: marketingBriefId,
     marketing_strategy_id: source.marketing_strategy_id,
     copy_matrix_id: source.copy_matrix_id,
     video_project_id: source.video_project_id,

@@ -27,6 +27,9 @@ export function parseSnapshotPresentationRoute(
   return { kind: "snapshot", snapshotId };
 }
 
-export function snapshotPresentationUrl(snapshotId: number): string {
-  return `/?mode=presentation&snapshot_id=${snapshotId}`;
+export function snapshotPresentationUrl(
+  snapshotId: number,
+  pathname = "/",
+): string {
+  return `${pathname}?mode=presentation&snapshot_id=${snapshotId}`;
 }

@@ -10,7 +10,7 @@ from threading import Barrier, Lock
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, func, select
+from sqlalchemy import create_engine, delete, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.api.dependencies import (
@@ -298,6 +298,7 @@ def test_snapshot_deep_copy_survives_source_changes_and_rejects_update(
     source["product"].name = "Changed Product"
     source["product"].selling_points = ["Changed"]
     source["copy"].copies = copies("Changed")
+    source["brief"].audience = "Changed Brief"
     source["campaign"].clicks = 1
     source["publish"].status = "FAILED"
     db_session.commit()
@@ -311,9 +312,11 @@ def test_snapshot_deep_copy_survives_source_changes_and_rejects_update(
     assert recovered.json()["snapshot_payload"]["product"]["name"] == (
         "Portable Blender"
     )
-    assert recovered.json()["snapshot_payload"]["publish_task"]["status"] == (
-        "SUCCEEDED"
+    assert original_payload["marketing_brief"] is not None
+    assert recovered.json()["snapshot_payload"]["marketing_brief"] == (
+        original_payload["marketing_brief"]
     )
+
 
     install_safe_dependencies(client, source["storage"])
     newer = client.post(
@@ -330,6 +333,60 @@ def test_snapshot_deep_copy_survives_source_changes_and_rejects_update(
     with pytest.raises(ValueError, match="immutable"):
         db_session.commit()
     db_session.rollback()
+
+
+def test_snapshot_payload_and_media_survive_source_record_deletion(
+    client: TestClient,
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    source = seed_exact_chain(db_session, tmp_path)
+    provider_resolutions = install_safe_dependencies(client, source["storage"])
+    app.dependency_overrides[get_video_artifact_storage] = lambda: source[
+        "storage"
+    ]
+    created = client.post(
+        f"/api/v1/products/{source['product'].id}/presentation-snapshots",
+        json=exact_request(source),
+    ).json()["snapshot"]
+    frozen_payload = created["snapshot_payload"]
+
+    for model in (
+        PublishTask,
+        SocialAccount,
+        AdCampaign,
+        VideoRenderArtifact,
+        VideoRenderTask,
+        VideoProject,
+        CopyMatrix,
+        MarketingBrief,
+        MarketingStrategy,
+        Product,
+    ):
+        db_session.execute(delete(model))
+    db_session.commit()
+
+    recovered = client.get(
+        f"/api/v1/presentation-snapshots/{created['id']}"
+    )
+    media = client.get(snapshot_content_path(created["id"]))
+
+    assert recovered.status_code == 200
+    assert recovered.json()["snapshot_payload"] == frozen_payload
+    assert recovered.json()["snapshot_payload"]["product"]["name"] == (
+        "Portable Blender"
+    )
+    assert media.status_code == 200
+    assert media.content == ARTIFACT_CONTENT
+    assert db_session.get(PresentationSnapshot, created["id"]) is not None
+    assert provider_resolutions == {"qwen": 0, "wanx": 0, "youtube": 0}
+    assert recovered.json()["snapshot_payload"]["publish_task"]["status"] == (
+        "SUCCEEDED"
+    )
+    assert recovered.json()["snapshot_payload"]["marketing_brief"]["audience"] == (
+        frozen_payload["marketing_brief"]["audience"]
+    )
+
 
 
 def test_snapshot_delete_is_rejected_as_immutable(
@@ -473,6 +530,75 @@ def test_missing_sections_remain_missing_and_never_use_latest(
     assert snapshot["artifact_sha256"] is None
     assert snapshot["artifact_snapshot_path"] is None
     assert len(list(tmp_path.glob("*.mp4"))) == 1
+
+
+
+def test_brief_identity_rejects_missing_or_other_product_without_snapshot_write(
+    client: TestClient,
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    source = seed_exact_chain(db_session, tmp_path)
+    install_safe_dependencies(client, source["storage"])
+    other_product = Product(
+        name="Other Product",
+        category="Other Category",
+        description="A separate product used for identity validation",
+        selling_points=["Separate"],
+        target_markets=["US"],
+    )
+    db_session.add(other_product)
+    db_session.flush()
+    other_brief = MarketingBrief(
+        product_id=other_product.id,
+        audience="Other audience",
+        language="English",
+        platforms=["TikTok"],
+        tone="Clear",
+        objective="Awareness",
+    )
+    db_session.add(other_brief)
+    db_session.commit()
+
+    wrong_product_request = exact_request(source)
+    wrong_product_request["marketing_brief_id"] = other_brief.id
+    wrong_product = client.post(
+        f"/api/v1/products/{source['product'].id}/presentation-snapshots",
+        json=wrong_product_request,
+    )
+    missing_request = exact_request(source)
+    missing_request["marketing_brief_id"] = 999999
+    missing = client.post(
+        f"/api/v1/products/{source['product'].id}/presentation-snapshots",
+        json=missing_request,
+    )
+
+    assert wrong_product.status_code == 409
+    assert "MarketingBrief" in wrong_product.json()["error"]["message"]
+    assert missing.status_code == 404
+    assert missing.json()["error"]["message"] == "MarketingBrief not found"
+    assert db_session.scalar(select(func.count(PresentationSnapshot.id))) == 0
+    assert len(list(tmp_path.glob("*.mp4"))) == 1
+
+
+def test_snapshot_contains_exact_selected_brief(
+    client: TestClient,
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    source = seed_exact_chain(db_session, tmp_path)
+    install_safe_dependencies(client, source["storage"])
+    response = client.post(
+        f"/api/v1/products/{source['product'].id}/presentation-snapshots",
+        json=exact_request(source),
+    )
+
+    assert response.status_code == 200
+    snapshot = response.json()["snapshot"]
+    assert snapshot["marketing_brief_id"] == source["brief"].id
+    frozen_brief = snapshot["snapshot_payload"]["marketing_brief"]
+    assert frozen_brief["id"] == source["brief"].id
+    assert frozen_brief["audience"] == source["brief"].audience
 
 
 def test_mismatched_exact_identity_is_rejected_without_snapshot_write(
