@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.api.dependencies import (
     get_optional_video_artifact_storage,
     get_text_generation_provider,
+    get_video_artifact_storage,
     get_visual_generation_provider,
     get_youtube_provider,
 )
@@ -42,6 +43,10 @@ from app.repositories.presentation_snapshot import (
 from app.services.video_artifact_storage import LocalVideoArtifactStorage
 
 ARTIFACT_CONTENT = b"fake-mp4-presentation-snapshot-content"
+
+
+def snapshot_content_path(snapshot_id: int) -> str:
+    return f"/api/v1/presentation-snapshots/{snapshot_id}/artifact/content"
 
 
 def test_full_snapshot_is_provider_free_exact_and_idempotent(
@@ -133,6 +138,94 @@ def test_full_snapshot_is_provider_free_exact_and_idempotent(
         "wanx": 0,
         "youtube": 0,
     }
+
+
+def test_snapshot_artifact_content_is_exact_read_only_and_supports_ranges(
+    client: TestClient,
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    source = seed_exact_chain(db_session, tmp_path)
+    provider_resolutions = install_safe_dependencies(client, source["storage"])
+    app.dependency_overrides[get_video_artifact_storage] = lambda: source[
+        "storage"
+    ]
+    created = client.post(
+        f"/api/v1/products/{source['product'].id}/presentation-snapshots",
+        json=exact_request(source),
+    ).json()["snapshot"]
+    snapshot_path, _ = source["storage"].resolve(
+        created["artifact_snapshot_path"]
+    )
+    source["source_path"].write_bytes(b"changed-original-artifact")
+    before = source_counts(db_session)
+    snapshot_count = db_session.scalar(
+        select(func.count(PresentationSnapshot.id))
+    )
+
+    full = client.get(snapshot_content_path(created["id"]))
+    ranged = client.get(
+        snapshot_content_path(created["id"]), headers={"Range": "bytes=5-12"}
+    )
+    head = client.head(snapshot_content_path(created["id"]))
+    invalid_range = client.get(
+        snapshot_content_path(created["id"]), headers={"Range": "bytes=999-"}
+    )
+
+    assert snapshot_path != source["source_path"]
+    assert full.status_code == 200
+    assert full.content == ARTIFACT_CONTENT
+    assert full.headers["accept-ranges"] == "bytes"
+    assert full.headers["content-length"] == str(len(ARTIFACT_CONTENT))
+    assert full.headers["content-type"] == "video/mp4"
+    assert ranged.status_code == 206
+    assert ranged.content == ARTIFACT_CONTENT[5:13]
+    assert ranged.headers["content-range"] == (
+        f"bytes 5-12/{len(ARTIFACT_CONTENT)}"
+    )
+    assert head.status_code == 200
+    assert head.content == b""
+    assert invalid_range.status_code == 416
+    assert invalid_range.headers["content-range"] == (
+        f"bytes */{len(ARTIFACT_CONTENT)}"
+    )
+    assert source_counts(db_session) == before
+    assert db_session.scalar(select(func.count(PresentationSnapshot.id))) == (
+        snapshot_count
+    )
+    assert provider_resolutions == {"qwen": 0, "wanx": 0, "youtube": 0}
+
+
+def test_snapshot_artifact_never_falls_back_and_verifies_snapshot_copy(
+    client: TestClient,
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    source = seed_exact_chain(db_session, tmp_path)
+    provider_resolutions = install_safe_dependencies(client, source["storage"])
+    app.dependency_overrides[get_video_artifact_storage] = lambda: source[
+        "storage"
+    ]
+    created = client.post(
+        f"/api/v1/products/{source['product'].id}/presentation-snapshots",
+        json=exact_request(source),
+    ).json()["snapshot"]
+    snapshot_path, _ = source["storage"].resolve(
+        created["artifact_snapshot_path"]
+    )
+    endpoint = snapshot_content_path(created["id"])
+
+    snapshot_path.write_bytes(ARTIFACT_CONTENT + b"tampered")
+    mismatch = client.get(endpoint)
+    assert mismatch.status_code == 409
+    assert str(tmp_path).casefold() not in mismatch.text.casefold()
+
+    snapshot_path.unlink()
+    missing = client.get(endpoint)
+    assert missing.status_code == 404
+    assert source["source_path"].is_file()
+    assert client.get(snapshot_content_path(999_999)).status_code == 404
+    assert provider_resolutions == {"qwen": 0, "wanx": 0, "youtube": 0}
 
 
 def test_campaign_order_is_canonical_and_reuses_snapshot(

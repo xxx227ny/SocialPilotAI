@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { usePresentationMode } from "./context/PresentationModeContext";
 import { AppLayout } from "./layouts/AppLayout";
@@ -7,8 +7,15 @@ import { ContentStudioPage } from "./pages/ContentStudioPage";
 import { CopyMatrixPage } from "./pages/CopyMatrixPage";
 import { GrowthCopilotPage } from "./pages/GrowthCopilotPage";
 import { ProductCenterPage } from "./pages/ProductCenterPage";
+import { SnapshotPresentationPage } from "./pages/SnapshotPresentationPage";
+import { parseSnapshotPresentationRoute } from "./components/presentation/snapshotPresentationState";
 
 export default function App() {
+  const location = useLocation();
+  const snapshotRoute = parseSnapshotPresentationRoute(location.search);
+  if (snapshotRoute.kind !== "legacy") {
+    return <SnapshotPresentationPage route={snapshotRoute} />;
+  }
   return (
     <Routes>
       <Route element={<AppLayout />}>

@@ -17,6 +17,9 @@ try {
   const state = await server.ssrLoadModule(
     "/src/components/product/presentationSnapshotState.ts",
   );
+  const presentationState = await server.ssrLoadModule(
+    "/src/components/presentation/snapshotPresentationState.ts",
+  );
   const artifact = {
     artifact_id: 10,
     render_task_id: 9,
@@ -138,7 +141,47 @@ try {
   assert.match(api, /apiClient\.get<PresentationSnapshot\[]>/);
   assert.doesNotMatch(api, /preflight|refresh|provider/i);
 
-  console.log("Presentation Snapshot frontend checks passed: 35 checks");
+  assert.deepEqual(
+    presentationState.parseSnapshotPresentationRoute("?mode=presentation"),
+    { kind: "legacy" },
+  );
+  assert.deepEqual(
+    presentationState.parseSnapshotPresentationRoute(
+      "?mode=presentation&snapshot_id=12",
+    ),
+    { kind: "snapshot", snapshotId: 12 },
+  );
+  for (const invalid of ["", "0", "-1", "abc", "1.5", "999999999999999999999"]) {
+    assert.equal(
+      presentationState.parseSnapshotPresentationRoute(
+        `?mode=presentation&snapshot_id=${invalid}`,
+      ).kind,
+      "invalid",
+    );
+  }
+  assert.equal(
+    presentationState.snapshotPresentationUrl(12),
+    "/?mode=presentation&snapshot_id=12",
+  );
+  assert.match(panel, /href=\{snapshotPresentationUrl\(snapshot\.id\)\}/);
+  assert.match(panel, /进入演示/);
+
+  const app = read("src", "App.tsx");
+  const snapshotPage = read("src", "pages", "SnapshotPresentationPage.tsx");
+  assert.match(app, /parseSnapshotPresentationRoute\(location\.search\)/);
+  assert.match(app, /snapshotRoute\.kind !== "legacy"/);
+  assert.match(app, /<SnapshotPresentationPage route=\{snapshotRoute\} \/>/);
+  assert.match(snapshotPage, /getPresentationSnapshot\(route\.snapshotId/);
+  assert.match(snapshotPage, /result\.id !== route\.snapshotId/);
+  assert.match(snapshotPage, /getPresentationSnapshotArtifactContentUrl\(snapshot\.id\)/);
+  assert.match(snapshotPage, /不会回退到其他快照或最新数据/);
+  assert.doesNotMatch(
+    snapshotPage,
+    /getDemoSnapshot|listProducts|listPublishTasks|getVideoProject|getFeedbackContext|createPresentationSnapshot|preflight|refresh|oauth|upload/i,
+  );
+  assert.doesNotMatch(snapshotPage, /<button/);
+
+  console.log("Presentation Snapshot frontend checks passed: 58 checks");
 } finally {
   await server.close();
 }

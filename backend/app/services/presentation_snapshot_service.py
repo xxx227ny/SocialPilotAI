@@ -5,6 +5,7 @@ import json
 import threading
 from dataclasses import dataclass
 from datetime import date, datetime
+from pathlib import Path
 
 from sqlalchemy.orm import Session
 
@@ -31,7 +32,10 @@ from app.schemas.presentation_snapshot import (
     PresentationSnapshotRead,
 )
 from app.services.metrics_service import MetricsService
-from app.services.video_artifact_storage import VideoArtifactStorage
+from app.services.video_artifact_storage import (
+    VideoArtifactError,
+    VideoArtifactStorage,
+)
 from app.services.video_render_operation_service import VideoArtifactAccessService
 
 SNAPSHOT_SCHEMA_VERSION = 1
@@ -52,6 +56,14 @@ SECTION_NAMES = (
 class ArtifactSnapshotCopy:
     relative_path: str
     created: bool
+
+
+@dataclass(frozen=True, slots=True)
+class VerifiedPresentationSnapshotArtifact:
+    path: Path
+    content_type: str
+    size_bytes: int
+    sha256: str
 
 
 class PresentationSnapshotService:
@@ -167,6 +179,62 @@ class PresentationSnapshotService:
             PresentationSnapshotRead.model_validate(snapshot)
             for snapshot in self.repository.list_by_product(product_id)
         ]
+
+    def resolve_artifact(
+        self, snapshot_id: int
+    ) -> VerifiedPresentationSnapshotArtifact:
+        snapshot = self.repository.get(snapshot_id)
+        if snapshot is None:
+            raise AppError("Presentation snapshot not found", 404)
+        if (
+            self.artifact_storage is None
+            or snapshot.artifact_snapshot_path is None
+            or snapshot.artifact_sha256 is None
+        ):
+            raise AppError(
+                "Presentation snapshot artifact is unavailable", 404
+            )
+        artifact_data = snapshot.snapshot_payload.get("artifact")
+        if not isinstance(artifact_data, dict):
+            raise AppError(
+                "Presentation snapshot artifact is unavailable", 404
+            )
+        expected_size = artifact_data.get("size_bytes")
+        expected_content_type = artifact_data.get("content_type")
+        expected_payload_hash = artifact_data.get("sha256")
+        if (
+            not isinstance(expected_size, int)
+            or expected_size < 1
+            or not isinstance(expected_content_type, str)
+            or expected_payload_hash != snapshot.artifact_sha256
+        ):
+            raise AppError(
+                "Presentation snapshot artifact metadata is invalid", 409
+            )
+        try:
+            path, content_type = self.artifact_storage.resolve(
+                snapshot.artifact_snapshot_path
+            )
+        except VideoArtifactError as exc:
+            raise AppError(
+                "Presentation snapshot artifact is unavailable", 404
+            ) from exc
+        actual_size = path.stat().st_size
+        actual_sha256 = self._file_digest(path)
+        if (
+            actual_size != expected_size
+            or actual_sha256 != snapshot.artifact_sha256
+            or content_type != expected_content_type
+        ):
+            raise AppError(
+                "Presentation snapshot artifact verification failed", 409
+            )
+        return VerifiedPresentationSnapshotArtifact(
+            path=path,
+            content_type=content_type,
+            size_bytes=actual_size,
+            sha256=actual_sha256,
+        )
 
     def _validate_exact_chain(
         self,

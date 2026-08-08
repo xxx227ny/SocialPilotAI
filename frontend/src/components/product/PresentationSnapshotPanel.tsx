@@ -14,6 +14,7 @@ import type {
   PresentationSnapshotSection,
 } from "../../types/presentationSnapshot";
 import type { PublishTask } from "../../types/social";
+import { snapshotPresentationUrl } from "../presentation/snapshotPresentationState";
 import {
   autoSelectedArtifactId,
   buildPresentationArtifactSources,
@@ -378,6 +379,14 @@ function SnapshotRecord({
       </p>
       <p>包含项：{included.length > 0 ? included.join(" · ") : "无"}</p>
       <p>缺失项：{missing.length > 0 ? missing.join(" · ") : "无"}</p>
+      {compact ? (
+        <a
+          className="presentation-snapshot-record__enter"
+          href={snapshotPresentationUrl(snapshot.id)}
+        >
+          进入演示
+        </a>
+      ) : null}
     </article>
   );
 }
