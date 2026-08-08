@@ -4,10 +4,12 @@ import { getApiErrorMessage } from "../api/client";
 import { getProduct, listProducts } from "../api/products";
 import { GrowthCopilotPanel } from "../components/GrowthCopilotPanel";
 import { MarketingTaskConfig } from "../components/product/MarketingTaskConfig";
+import { PresentationSnapshotPanel } from "../components/product/PresentationSnapshotPanel";
 import { ProductCreateForm } from "../components/product/ProductCreateForm";
 import { SocialPublishingPanel } from "../components/product/SocialPublishingPanel";
 import { InitialVideoProjectPanel } from "../components/video/InitialVideoProjectPanel";
 import { VideoRenderPreflightPanel } from "../components/video/VideoRenderPreflightPanel";
+import { usePresentationMode } from "../context/PresentationModeContext";
 import type { PlatformCopy } from "../types/copy";
 import type { Product } from "../types/product";
 
@@ -16,6 +18,7 @@ type DetailState = "idle" | "loading" | "ready" | "error";
 type PlatformName = PlatformCopy["platform"];
 
 export function ProductCenterPage() {
+  const { isPresentation } = usePresentationMode();
   const [products, setProducts] = useState<Product[]>([]);
   const [listState, setListState] = useState<ListState>("loading");
   const [listError, setListError] = useState("");
@@ -250,6 +253,7 @@ export function ProductCenterPage() {
                     updatePlatformDraft(selectedProduct.id, platforms)
                   }
                   onProductUpdated={handleProductUpdated}
+                  isPresentation={isPresentation}
                 />
               ) : null}
             </div>
@@ -292,11 +296,13 @@ function ProductDetail({
   selectedPlatforms,
   onPlatformsChange,
   onProductUpdated,
+  isPresentation,
 }: {
   product: Product;
   selectedPlatforms: PlatformName[];
   onPlatformsChange: (platforms: PlatformName[]) => void;
   onProductUpdated: (product: Product) => void;
+  isPresentation: boolean;
 }) {
   const [liveVideoProjectId, setLiveVideoProjectId] = useState<
     number | undefined
@@ -385,6 +391,8 @@ function ProductDetail({
       />
 
       <SocialPublishingPanel productId={product.id} />
+
+      {!isPresentation ? <PresentationSnapshotPanel productId={product.id} /> : null}
     </article>
   );
 }

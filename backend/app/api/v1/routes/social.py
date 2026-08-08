@@ -135,10 +135,8 @@ def list_youtube_publish_artifacts(
     product_id: int,
     db: DbSession,
     settings: SettingsDep,
-    gate: YouTubePublishingGateDep,
     storage: VideoArtifactStorageDep,
 ) -> list[PublishArtifactCandidateRead]:
-    del gate
     return YouTubePublishingService(db, settings, None, storage).list_candidates(
         product_id
     )

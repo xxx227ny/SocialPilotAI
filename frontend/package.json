@@ -11,6 +11,7 @@
     "test:presentation-artifact": "node scripts/test-presentation-artifact.mjs",
     "test:initial-video": "node scripts/test-initial-video-project.mjs",
     "test:system-readiness": "node scripts/test-system-readiness.mjs",
+    "test:presentation-snapshot": "node scripts/test-presentation-snapshot.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

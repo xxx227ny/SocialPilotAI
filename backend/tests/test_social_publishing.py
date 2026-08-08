@@ -9,7 +9,7 @@ import httpx
 import pytest
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
+from sqlalchemy import event, func, select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_video_artifact_storage, get_youtube_provider
@@ -263,6 +263,139 @@ def test_gates_default_off_before_provider_resolution(
     assert connect.status_code == 503
     assert publish.status_code == 503
     assert resolutions == 0
+
+
+def test_artifact_candidates_are_local_read_only_when_publishing_gate_is_off(
+    client: TestClient,
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    provider_resolutions = 0
+
+    def forbidden_provider() -> FakeYouTubeProvider:
+        nonlocal provider_resolutions
+        provider_resolutions += 1
+        raise AssertionError("Read-only candidate GET resolved YouTube Provider")
+
+    settings = enabled_settings(tmp_path).model_copy(
+        update={"enable_youtube_publishing": False}
+    )
+    storage = LocalVideoArtifactStorage(tmp_path, 1_000_000)
+    app.dependency_overrides[get_settings] = lambda: settings
+    app.dependency_overrides[get_youtube_provider] = forbidden_provider
+    app.dependency_overrides[get_video_artifact_storage] = lambda: storage
+    product_id, artifact_id = create_publishable_artifact(db_session, storage)
+    artifact = db_session.get(VideoRenderArtifact, artifact_id)
+    assert artifact is not None
+    task = artifact.video_render_task
+    project = task.video_project
+    write_statements: list[str] = []
+
+    def record_writes(
+        connection: object,
+        cursor: object,
+        statement: str,
+        parameters: object,
+        context: object,
+        executemany: bool,
+    ) -> None:
+        del connection, cursor, parameters, context, executemany
+        operation = statement.lstrip().split(None, 1)[0].upper()
+        if operation in {"INSERT", "UPDATE", "DELETE", "REPLACE"}:
+            write_statements.append(statement)
+
+    bind = db_session.get_bind()
+    event.listen(bind, "before_cursor_execute", record_writes)
+    try:
+        candidates = client.get(
+            f"/api/v1/products/{product_id}/publishing/youtube/artifacts"
+        )
+        wrong_product = client.get(
+            "/api/v1/products/999999/publishing/youtube/artifacts"
+        )
+        preflight = client.post(
+            f"/api/v1/products/{product_id}/publishing/youtube/preflight",
+            json=metadata(1, artifact_id),
+        )
+        publish = client.post(
+            f"/api/v1/products/{product_id}/publishing/youtube",
+            json=metadata(1, artifact_id)
+            | {
+                "preflight_digest": "0" * 64,
+                "preflight_expires_at": (
+                    datetime.now(UTC) + timedelta(minutes=5)
+                ).isoformat(),
+                "idempotency_key": "closed-gate-local-candidate-test",
+                "confirm_upload": True,
+            },
+        )
+    finally:
+        event.remove(bind, "before_cursor_execute", record_writes)
+
+    assert candidates.status_code == 200
+    assert candidates.json() == [
+        {
+            "artifact_id": artifact.id,
+            "render_task_id": task.id,
+            "video_project_id": project.id,
+            "copy_matrix_id": project.copy_matrix_id,
+            "content_type": "video/mp4",
+            "size_bytes": len(b"fake-video-content"),
+            "sha256": artifact.artifact_metadata["sha256"],
+            "created_at": artifact.created_at.isoformat(),
+        }
+    ]
+    assert wrong_product.status_code == 404
+    assert preflight.status_code == 503
+    assert publish.status_code == 503
+    assert provider_resolutions == 0
+    assert write_statements == []
+    assert db_session.scalar(select(func.count()).select_from(PublishTask)) == 0
+
+
+@pytest.mark.parametrize(
+    "invalid_case",
+    ["wrong_product", "missing_file", "unsafe_path"],
+)
+def test_invalid_artifacts_are_not_local_candidates(
+    invalid_case: str,
+    client: TestClient,
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    provider_resolutions = 0
+
+    def forbidden_provider() -> FakeYouTubeProvider:
+        nonlocal provider_resolutions
+        provider_resolutions += 1
+        raise AssertionError("Invalid candidate GET resolved YouTube Provider")
+
+    settings = enabled_settings(tmp_path).model_copy(
+        update={"enable_youtube_publishing": False}
+    )
+    storage = LocalVideoArtifactStorage(tmp_path, 1_000_000)
+    app.dependency_overrides[get_settings] = lambda: settings
+    app.dependency_overrides[get_youtube_provider] = forbidden_provider
+    app.dependency_overrides[get_video_artifact_storage] = lambda: storage
+    product_id, artifact_id = create_publishable_artifact(db_session, storage)
+    artifact = db_session.get(VideoRenderArtifact, artifact_id)
+    assert artifact is not None
+    request_product_id = product_id
+
+    if invalid_case == "wrong_product":
+        request_product_id = create_video_project(db_session).product_id
+    elif invalid_case == "missing_file":
+        storage.resolve(artifact.storage_path or "")[0].unlink()
+    elif invalid_case == "unsafe_path":
+        artifact.storage_path = "../outside.mp4"
+        db_session.commit()
+    response = client.get(
+        f"/api/v1/products/{request_product_id}/publishing/youtube/artifacts"
+    )
+
+    assert response.status_code == 200
+    assert response.json() == []
+    assert provider_resolutions == 0
 
 
 def test_oauth_state_is_one_time_and_tokens_are_encrypted(
