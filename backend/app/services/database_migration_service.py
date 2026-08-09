@@ -23,7 +23,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from alembic import command
 
 PRE_X2_REVISION = "0001_pre_x2_runtime"
-HEAD_REVISION = "0002_x2_presentation_snapshots"
+X2_REVISION = "0002_x2_presentation_snapshots"
+HEAD_REVISION = "0003_brand_kit_versions"
 UNVERSIONED = "unversioned"
 MANIFEST_VERSION = 1
 ALEMBIC_INI = Path(__file__).resolve().parents[2] / "alembic.ini"
@@ -113,6 +114,8 @@ def _run_alembic(path: Path, action: str, revision: str) -> None:
             config = _alembic_config(connection)
             if action == "upgrade":
                 command.upgrade(config, revision)
+            elif action == "downgrade":
+                command.downgrade(config, revision)
             elif action == "stamp":
                 command.stamp(config, revision)
             else:
@@ -231,9 +234,9 @@ def schema_fingerprint(path: Path) -> str:
     return hashlib.sha256(encoded).hexdigest().upper()
 
 
-@lru_cache(maxsize=2)
+@lru_cache(maxsize=3)
 def expected_schema_fingerprint(revision: str) -> str:
-    if revision not in {PRE_X2_REVISION, HEAD_REVISION}:
+    if revision not in {PRE_X2_REVISION, X2_REVISION, HEAD_REVISION}:
         raise ValueError(f"Unknown expected revision: {revision}")
     with tempfile.TemporaryDirectory(prefix="socialpilot-schema-fingerprint-") as raw:
         reference = Path(raw) / "reference.db"
@@ -498,6 +501,8 @@ def _classify_unversioned_schema(path: Path) -> str:
     fingerprint = schema_fingerprint(path)
     if fingerprint == expected_schema_fingerprint(PRE_X2_REVISION):
         return "pre_x2_runtime"
+    if fingerprint == expected_schema_fingerprint(X2_REVISION):
+        return "x2_runtime"
     if fingerprint == expected_schema_fingerprint(HEAD_REVISION):
         return "unversioned_head"
     raise IncompatibleSchemaError(
@@ -574,7 +579,7 @@ def get_database_migration_status(database_path: Path) -> DatabaseMigrationStatu
                 upgrade_required=True,
                 message="Known unversioned database requires a safe migration.",
             )
-        if revision not in {PRE_X2_REVISION, HEAD_REVISION}:
+        if revision not in {PRE_X2_REVISION, X2_REVISION, HEAD_REVISION}:
             raise IncompatibleSchemaError("Unsupported Alembic revision")
         if schema_fingerprint(database) != expected_schema_fingerprint(revision):
             raise IncompatibleSchemaError(
@@ -590,7 +595,7 @@ def get_database_migration_status(database_path: Path) -> DatabaseMigrationStatu
                 message="Database is at the verified Alembic head revision.",
             )
         return DatabaseMigrationStatus(
-            state="pre_x2_runtime",
+            state=("pre_x2_runtime" if revision == PRE_X2_REVISION else "x2_runtime"),
             revision=revision,
             head_revision=HEAD_REVISION,
             ready=False,
@@ -633,16 +638,16 @@ def _upgrade_sqlite_database_unlocked(
             revision = _current_revision(database)
             if revision is None:
                 schema_state = _classify_unversioned_schema(database)
-                stamp_revision = (
-                    PRE_X2_REVISION
-                    if schema_state == "pre_x2_runtime"
-                    else HEAD_REVISION
-                )
+                stamp_revision = {
+                    "pre_x2_runtime": PRE_X2_REVISION,
+                    "x2_runtime": X2_REVISION,
+                    "unversioned_head": HEAD_REVISION,
+                }[schema_state]
                 _run_alembic(database, "stamp", stamp_revision)
                 if stamp_revision != HEAD_REVISION:
                     _run_alembic(database, "upgrade", HEAD_REVISION)
             else:
-                if revision not in {PRE_X2_REVISION, HEAD_REVISION}:
+                if revision not in {PRE_X2_REVISION, X2_REVISION, HEAD_REVISION}:
                     raise IncompatibleSchemaError(
                         f"Database has unsupported Alembic revision: {revision}"
                     )

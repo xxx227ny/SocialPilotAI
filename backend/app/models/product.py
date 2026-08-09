@@ -9,6 +9,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 from app.db.base import Base
 
 if TYPE_CHECKING:
+    from app.models.brand_kit import BrandKitVersion
     from app.models.campaign import AdCampaign
     from app.models.copy import CopyMatrix
     from app.models.marketing import MarketingBrief
@@ -36,6 +37,13 @@ class Product(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
+    )
+    brand_kit_version_id: Mapped[int | None] = mapped_column(
+        ForeignKey("brand_kit_versions.id", ondelete="RESTRICT"), index=True
+    )
+
+    brand_kit_version: Mapped[BrandKitVersion | None] = relationship(
+        back_populates="products"
     )
 
     assets: Mapped[list[ProductAsset]] = relationship(

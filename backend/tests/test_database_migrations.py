@@ -8,23 +8,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from sqlalchemy import create_engine, inspect, select
-from sqlalchemy.orm import Session
+from sqlalchemy import create_engine, inspect
 
 import app.models  # noqa: F401
 import app.services.database_migration_service as migration_service
 from app.db.base import Base
-from app.models import (
-    CopyMatrix,
-    MarketingBrief,
-    MarketingStrategy,
-    Product,
-    PublishTask,
-    SocialAccount,
-    VideoProject,
-    VideoRenderArtifact,
-    VideoRenderTask,
-)
 from app.services.database_migration_service import (
     HEAD_REVISION,
     BackupVerificationError,
@@ -39,11 +27,6 @@ from app.services.database_migration_service import (
     upgrade_sqlite_database,
 )
 
-PRE_X2_TABLES = [
-    table
-    for table in Base.metadata.sorted_tables
-    if table.name != "presentation_snapshots"
-]
 BUSINESS_TABLES = [
     "products",
     "marketing_briefs",
@@ -62,136 +45,77 @@ def sqlite_url(path: Path) -> str:
 
 
 def create_legacy_runtime(path: Path) -> None:
-    engine = create_engine(sqlite_url(path))
-    Base.metadata.create_all(engine, tables=PRE_X2_TABLES)
-    with Session(engine) as session:
-        product = Product(
-            name="Migration Evidence Product",
-            category="Test",
-            description="Preserve this exact content",
-            selling_points=["Stable"],
-            target_markets=["US"],
+    migration_service._run_alembic(  # noqa: SLF001
+        path, "upgrade", migration_service.PRE_X2_REVISION
+    )
+    now = datetime.now(UTC).isoformat()
+    copies = json.dumps(
+        [
+            {
+                "platform": platform,
+                "hook": f"{platform} hook",
+                "caption": "Stable caption",
+                "hashtags": ["Stable"],
+                "cta": "Learn more",
+            }
+            for platform in ("TikTok", "Instagram", "Facebook")
+        ]
+    )
+    connection = sqlite3.connect(path)
+    try:
+        connection.executescript(
+            f"""
+            DROP TABLE alembic_version;
+            INSERT INTO products VALUES
+              (1,'Migration Evidence Product','Test','Preserve this exact content',
+               '["Stable"]','["US"]','{now}','{now}');
+            INSERT INTO marketing_briefs VALUES
+              (1,1,'Migration audience','English','["TikTok"]','Clear',
+               'Awareness','{now}');
+            INSERT INTO marketing_strategies VALUES
+              (1,1,'Migration-safe positioning','["Stable insight"]',
+               '["Stable angle"]','["Stable risk"]','["Stable evidence"]','{now}');
+            INSERT INTO copy_matrices VALUES (1,1,1,'{copies}','{now}');
+            INSERT INTO video_projects VALUES
+              (1,1,1,1,'TikTok','Stable video','Stable concept',15,'9:16',
+               '[{{"sequence":1,"duration_seconds":15}}]','Learn more','planned',
+               '{now}','{now}');
+            INSERT INTO video_render_tasks VALUES
+              (1,1,1,'SUCCEEDED','fake','fake-task','Stable prompt',15,'9:16',
+               '720p','migration-render-1',NULL,NULL,'{now}','{now}');
+            INSERT INTO video_render_artifacts VALUES
+              (1,1,NULL,'artifacts/stable.mp4',
+               '{{"sha256":"{'A' * 64}","size_bytes":1234}}',NULL,'{now}','{now}');
+            INSERT INTO social_accounts VALUES
+              (1,1,'youtube','migration-channel','Migration Channel','["upload"]',
+               'encrypted-test-value','encrypted-test-value','{now}','CONNECTED',
+               'test-key','{now}','{now}',NULL);
+            INSERT INTO publish_tasks VALUES
+              (1,1,1,1,'youtube','migration-publish-1','{'B' * 64}','{'C' * 64}',
+               'Stable private delivery','Stable description','["Stable"]','private',
+               0,1,0,'SUCCEEDED','migration-video',NULL,NULL,0,'{now}','{now}',
+               NULL,NULL);
+            """
         )
-        session.add(product)
-        session.flush()
-        brief = MarketingBrief(
-            product_id=product.id,
-            audience="Migration audience",
-            language="English",
-            platforms=["TikTok"],
-            tone="Clear",
-            objective="Awareness",
-        )
-        strategy = MarketingStrategy(
-            product_id=product.id,
-            positioning="Migration-safe positioning",
-            audience_insights=["Stable insight"],
-            angles=["Stable angle"],
-            risks=["Stable risk"],
-            evidence=["Stable evidence"],
-        )
-        session.add_all([brief, strategy])
-        session.flush()
-        copy = CopyMatrix(
-            product_id=product.id,
-            marketing_strategy_id=strategy.id,
-            copies=[
-                {
-                    "platform": platform,
-                    "hook": f"{platform} hook",
-                    "caption": "Stable caption",
-                    "hashtags": ["Stable"],
-                    "cta": "Learn more",
-                }
-                for platform in ("TikTok", "Instagram", "Facebook")
-            ],
-        )
-        session.add(copy)
-        session.flush()
-        video = VideoProject(
-            product_id=product.id,
-            marketing_strategy_id=strategy.id,
-            copy_matrix_id=copy.id,
-            platform="TikTok",
-            title="Stable video",
-            concept="Stable concept",
-            duration_seconds=15,
-            aspect_ratio="9:16",
-            scenes=[{"sequence": 1, "duration_seconds": 15}],
-            cta="Learn more",
-            status="planned",
-        )
-        session.add(video)
-        session.flush()
-        render = VideoRenderTask(
-            video_project_id=video.id,
-            scene_sequence=1,
-            status="SUCCEEDED",
-            provider_name="fake",
-            provider_task_id="fake-task",
-            render_prompt="Stable prompt",
-            duration_seconds=15,
-            aspect_ratio="9:16",
-            resolution="720p",
-            idempotency_key="migration-render-1",
-        )
-        session.add(render)
-        session.flush()
-        artifact = VideoRenderArtifact(
-            video_render_task_id=render.id,
-            storage_path="artifacts/stable.mp4",
-            artifact_metadata={"sha256": "A" * 64, "size_bytes": 1234},
-        )
-        session.add(artifact)
-        session.flush()
-        account = SocialAccount(
-            product_id=product.id,
-            platform="youtube",
-            provider_account_id="migration-channel",
-            display_name="Migration Channel",
-            scopes=["upload"],
-            access_token_ciphertext="encrypted-test-value",
-            refresh_token_ciphertext="encrypted-test-value",
-            token_expires_at=datetime.now(UTC),
-            connection_status="CONNECTED",
-            encryption_key_id="test-key",
-        )
-        session.add(account)
-        session.flush()
-        session.add(
-            PublishTask(
-                product_id=product.id,
-                social_account_id=account.id,
-                artifact_id=artifact.id,
-                platform="youtube",
-                idempotency_key="migration-publish-1",
-                request_digest="B" * 64,
-                preflight_digest="C" * 64,
-                title="Stable private delivery",
-                description="Stable description",
-                tags=["Stable"],
-                privacy_status="private",
-                made_for_kids=False,
-                synthetic_media=True,
-                notify_subscribers=False,
-                status="SUCCEEDED",
-                provider_video_id="migration-video",
-                uncertain=False,
-            )
-        )
-        session.commit()
-    engine.dispose()
+        connection.commit()
+    finally:
+        connection.close()
 
 
 def business_snapshot(path: Path) -> str:
-    engine = create_engine(sqlite_url(path))
     payload: dict[str, list[dict[str, object]]] = {}
-    with engine.connect() as connection:
+    connection = sqlite3.connect(path)
+    connection.row_factory = sqlite3.Row
+    try:
         for table_name in BUSINESS_TABLES:
-            table = Base.metadata.tables[table_name]
-            rows = connection.execute(select(table).order_by(table.c.id)).mappings()
-            payload[table_name] = [dict(row) for row in rows]
-    engine.dispose()
+            rows = connection.execute(f'SELECT * FROM "{table_name}" ORDER BY id')
+            payload[table_name] = []
+            for row in rows:
+                record = dict(row)
+                record.pop("brand_kit_version_id", None)
+                payload[table_name].append(record)
+    finally:
+        connection.close()
     return json.dumps(payload, sort_keys=True, default=str, ensure_ascii=True)
 
 

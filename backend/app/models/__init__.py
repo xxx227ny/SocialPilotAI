@@ -1,5 +1,6 @@
 """SQLAlchemy business models."""
 
+from app.models.brand_kit import BrandKit, BrandKitVersion
 from app.models.campaign import AdCampaign
 from app.models.copy import CopyMatrix
 from app.models.demo import DemoScenario
@@ -14,6 +15,8 @@ from app.models.video_render_artifact import VideoRenderArtifact
 
 __all__ = [
     "AdCampaign",
+    "BrandKit",
+    "BrandKitVersion",
     "CopyMatrix",
     "DemoScenario",
     "MarketingBrief",

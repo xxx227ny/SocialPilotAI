@@ -162,6 +162,7 @@ class ProductRead(ProductBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    brand_kit_version_id: int | None = None
     created_at: datetime
     updated_at: datetime
     assets: list[ProductAssetRead] = Field(default_factory=list)
