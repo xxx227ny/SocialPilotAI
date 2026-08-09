@@ -25,7 +25,8 @@ from alembic import command
 PRE_X2_REVISION = "0001_pre_x2_runtime"
 X2_REVISION = "0002_x2_presentation_snapshots"
 BRAND_KIT_REVISION = "0003_brand_kit_versions"
-HEAD_REVISION = "0004_execution_queue"
+EXECUTION_QUEUE_REVISION = "0004_execution_queue"
+HEAD_REVISION = "0005_qwen_strategy_job_result"
 UNVERSIONED = "unversioned"
 MANIFEST_VERSION = 1
 ALEMBIC_INI = Path(__file__).resolve().parents[2] / "alembic.ini"
@@ -235,12 +236,13 @@ def schema_fingerprint(path: Path) -> str:
     return hashlib.sha256(encoded).hexdigest().upper()
 
 
-@lru_cache(maxsize=4)
+@lru_cache(maxsize=5)
 def expected_schema_fingerprint(revision: str) -> str:
     if revision not in {
         PRE_X2_REVISION,
         X2_REVISION,
         BRAND_KIT_REVISION,
+        EXECUTION_QUEUE_REVISION,
         HEAD_REVISION,
     }:
         raise ValueError(f"Unknown expected revision: {revision}")
@@ -511,6 +513,8 @@ def _classify_unversioned_schema(path: Path) -> str:
         return "x2_runtime"
     if fingerprint == expected_schema_fingerprint(BRAND_KIT_REVISION):
         return "brand_kit_runtime"
+    if fingerprint == expected_schema_fingerprint(EXECUTION_QUEUE_REVISION):
+        return "execution_queue_runtime"
     if fingerprint == expected_schema_fingerprint(HEAD_REVISION):
         return "unversioned_head"
     raise IncompatibleSchemaError(
@@ -591,6 +595,7 @@ def get_database_migration_status(database_path: Path) -> DatabaseMigrationStatu
             PRE_X2_REVISION,
             X2_REVISION,
             BRAND_KIT_REVISION,
+            EXECUTION_QUEUE_REVISION,
             HEAD_REVISION,
         }:
             raise IncompatibleSchemaError("Unsupported Alembic revision")
@@ -611,6 +616,7 @@ def get_database_migration_status(database_path: Path) -> DatabaseMigrationStatu
             PRE_X2_REVISION: "pre_x2_runtime",
             X2_REVISION: "x2_runtime",
             BRAND_KIT_REVISION: "brand_kit_runtime",
+            EXECUTION_QUEUE_REVISION: "execution_queue_runtime",
         }
         return DatabaseMigrationStatus(
             state=state_by_revision[revision],
@@ -660,6 +666,7 @@ def _upgrade_sqlite_database_unlocked(
                     "pre_x2_runtime": PRE_X2_REVISION,
                     "x2_runtime": X2_REVISION,
                     "brand_kit_runtime": BRAND_KIT_REVISION,
+                    "execution_queue_runtime": EXECUTION_QUEUE_REVISION,
                     "unversioned_head": HEAD_REVISION,
                 }[schema_state]
                 _run_alembic(database, "stamp", stamp_revision)
@@ -670,6 +677,7 @@ def _upgrade_sqlite_database_unlocked(
                     PRE_X2_REVISION,
                     X2_REVISION,
                     BRAND_KIT_REVISION,
+                    EXECUTION_QUEUE_REVISION,
                     HEAD_REVISION,
                 }:
                     raise IncompatibleSchemaError(

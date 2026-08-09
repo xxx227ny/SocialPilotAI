@@ -94,6 +94,8 @@ class HandlerResult:
     safe_error_details: dict[str, object] = field(default_factory=dict)
     provider_name: str | None = None
     provider_operation_id: str | None = None
+    result_entity_type: str | None = None
+    result_entity_id: int | None = None
 
     def __post_init__(self) -> None:
         reject_sensitive_keys(self.safe_error_details)
@@ -105,6 +107,17 @@ class HandlerResult:
             1 <= len(self.provider_operation_id) <= 255
         ):
             raise ValueError("Provider operation identity is invalid")
+        if (self.result_entity_type is None) != (self.result_entity_id is None):
+            raise ValueError("Result entity type and ID must be supplied together")
+        if self.result_entity_type is not None and not (
+            1 <= len(self.result_entity_type) <= 80
+            and re.fullmatch(r"[a-z0-9_.-]+", self.result_entity_type)
+            and self.result_entity_id is not None
+            and self.result_entity_id > 0
+        ):
+            raise ValueError("Result entity reference is invalid")
+        if self.status != HandlerStatus.SUCCEEDED and self.result_entity_type:
+            raise ValueError("Only successful Handler results may reference an entity")
         if self.status == HandlerStatus.SUCCEEDED:
             if self.safe_error_code is not None:
                 raise ValueError("Successful Handler result cannot have an error code")
@@ -120,11 +133,15 @@ class HandlerResult:
         *,
         provider_name: str | None = None,
         provider_operation_id: str | None = None,
+        result_entity_type: str | None = None,
+        result_entity_id: int | None = None,
     ) -> HandlerResult:
         return cls(
             status=HandlerStatus.SUCCEEDED,
             provider_name=provider_name,
             provider_operation_id=provider_operation_id,
+            result_entity_type=result_entity_type,
+            result_entity_id=result_entity_id,
         )
 
     @classmethod

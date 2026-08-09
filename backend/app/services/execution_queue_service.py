@@ -212,6 +212,8 @@ class ExecutionQueueService:
         self._set_provider_call_count(attempt, data.provider_call_count)
         job.provider_name = data.provider_name
         job.provider_operation_id = data.provider_operation_id
+        job.result_entity_type = data.result_entity_type
+        job.result_entity_id = data.result_entity_id
         if data.provider_operation_id is not None and job.submitted_at is None:
             job.submitted_at = now
         job.status = "SUCCEEDED"

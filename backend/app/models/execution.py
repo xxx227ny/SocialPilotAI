@@ -67,6 +67,12 @@ class ExecutionJob(Base):
             "AND lease_expires_at IS NULL)",
             name="ck_execution_jobs_lease_state",
         ),
+        CheckConstraint(
+            "((result_entity_type IS NULL AND result_entity_id IS NULL) OR "
+            "(result_entity_type IS NOT NULL AND result_entity_id IS NOT NULL "
+            "AND result_entity_id > 0 AND status = 'SUCCEEDED'))",
+            name="ck_execution_jobs_result_reference",
+        ),
         UniqueConstraint("idempotency_key", name="uq_execution_jobs_idempotency"),
         Index(
             "uq_execution_jobs_running_concurrency_key",
@@ -139,6 +145,10 @@ class ExecutionJob(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
     )
+    result_entity_type: Mapped[str | None] = mapped_column(
+        String(80), nullable=True
+    )
+    result_entity_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     attempts: Mapped[list[ExecutionAttempt]] = relationship(
         back_populates="execution_job",

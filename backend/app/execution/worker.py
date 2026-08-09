@@ -221,6 +221,8 @@ class ExecutionWorker:
                             provider_name=result.provider_name,
                             provider_operation_id=result.provider_operation_id,
                             provider_call_count=provider_call_count,
+                            result_entity_type=result.result_entity_type,
+                            result_entity_id=result.result_entity_id,
                         ),
                     )
                     return WorkerRunResult(WorkerRunStatus.SUCCEEDED, job_id)

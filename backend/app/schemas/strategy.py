@@ -71,6 +71,7 @@ class StrategyPreflightRead(BaseModel):
     model_label: str
     provider_configured: bool
     execution_enabled: bool
+    preflight_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     preflight_only: bool = True
     execution_will_call_ai: bool = True
     execution_will_create_strategy: bool = True

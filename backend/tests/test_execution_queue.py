@@ -719,6 +719,61 @@ def test_read_only_status_recognizes_0003_as_upgradeable(tmp_path: Path) -> None
     assert migration_service.sha256_file(database) == before
 
 
+def test_0004_upgrade_adds_safe_result_reference_and_preserves_job(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "execution-queue-runtime.db"
+    migration_service._run_alembic(  # noqa: SLF001
+        database, "upgrade", migration_service.EXECUTION_QUEUE_REVISION
+    )
+    now = utc_now().isoformat()
+    connection = sqlite3.connect(database)
+    try:
+        connection.execute(
+            """INSERT INTO execution_jobs
+            (id,job_type,source_type,source_id,input_digest,idempotency_key,
+             input_payload,priority,concurrency_key,estimated_cost,currency,
+             cost_confirmed,status,attempt_count,max_attempts,
+             lease_owner_digest,lease_expires_at,provider_name,
+             provider_operation_id,submitted_at,completed_at,safe_error_code,
+             safe_error_details,uncertain,created_at,updated_at)
+            VALUES (1,'legacy.safe','product',1,?,?,?,0,NULL,0,'USD',0,
+                    'FAILED',1,2,NULL,NULL,NULL,NULL,NULL,?,
+                    'LEGACY_SAFE_FAILURE',NULL,0,?,?)""",
+            ("a" * 64, "legacy-safe-idempotency", "{}", now, now, now),
+        )
+        connection.commit()
+        before = connection.execute(
+            "SELECT id,job_type,status,safe_error_code FROM execution_jobs"
+        ).fetchall()
+    finally:
+        connection.close()
+
+    status = migration_service.get_database_migration_status(database)
+    assert status.state == "execution_queue_runtime"
+    result = migration_service.upgrade_sqlite_database(
+        database, tmp_path / "backups-0005"
+    )
+
+    assert result.previous_revision == migration_service.EXECUTION_QUEUE_REVISION
+    assert result.current_revision == migration_service.HEAD_REVISION
+    connection = sqlite3.connect(database)
+    try:
+        assert connection.execute(
+            "SELECT id,job_type,status,safe_error_code FROM execution_jobs"
+        ).fetchall() == before
+        assert connection.execute(
+            "SELECT result_entity_type,result_entity_id FROM execution_jobs"
+        ).fetchone() == (None, None)
+        table_sql = connection.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' "
+            "AND name='execution_jobs'"
+        ).fetchone()[0]
+        assert "ck_execution_jobs_result_reference" in table_sql
+    finally:
+        connection.close()
+
+
 def test_queue_routes_resolve_no_provider_dependencies(
     client: TestClient,
 ) -> None:

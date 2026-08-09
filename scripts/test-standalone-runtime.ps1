@@ -91,7 +91,7 @@ try {
     Assert-True ($readiness.provider_calls -eq 0) "Startup readiness resolved a Provider"
     Assert-True ($readiness.database_writes -eq 0) "Readiness wrote to the database"
     Assert-True ($readiness.database.revision_status -eq "head") "Fresh startup did not reach Alembic head"
-    Assert-True ($readiness.database.revision -eq "0004_execution_queue") "Fresh startup reported the wrong revision"
+    Assert-True ($readiness.database.revision -eq "0005_qwen_strategy_job_result") "Fresh startup reported the wrong revision"
     Assert-True ($readiness.execution_worker.ready) "Execution Worker readiness was not healthy"
     Assert-True ($readiness.execution_worker.status -eq "healthy") "Execution Worker status was not healthy"
     $emptyJobsBefore = Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/execution-jobs" -TimeoutSec 5

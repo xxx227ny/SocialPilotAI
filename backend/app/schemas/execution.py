@@ -5,7 +5,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 _SENSITIVE_KEY_PARTS = (
     "token",
@@ -92,6 +92,8 @@ class ExecutionJobRead(BaseModel):
     lease_active: bool
     provider_name: str | None
     provider_operation_id: str | None
+    result_entity_type: str | None
+    result_entity_id: int | None
     submitted_at: datetime | None
     completed_at: datetime | None
     safe_error_code: str | None
@@ -137,6 +139,16 @@ class ExecutionJobCompleteRequest(BaseModel):
         default=None, min_length=1, max_length=255
     )
     provider_call_count: int = Field(default=0, ge=0)
+    result_entity_type: str | None = Field(
+        default=None, min_length=1, max_length=80, pattern=r"^[a-z0-9_.-]+$"
+    )
+    result_entity_id: int | None = Field(default=None, gt=0)
+
+    @model_validator(mode="after")
+    def validate_result_reference_pair(self) -> ExecutionJobCompleteRequest:
+        if (self.result_entity_type is None) != (self.result_entity_id is None):
+            raise ValueError("Result entity type and ID must be supplied together")
+        return self
 
 
 class ExecutionJobFailRequest(BaseModel):

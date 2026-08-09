@@ -1,3 +1,6 @@
+import hashlib
+import json
+
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
@@ -74,6 +77,11 @@ class StrategyPreflightService:
             and self.settings.enable_strategy_execution
         )
         audience = TARGET_MARKET_AUDIENCE_PATTERN.sub("", audience_value).strip()
+        preflight_digest = self.compute_digest(
+            product=product,
+            task=task,
+            model_label=self.settings.qwen_model,
+        )
 
         return StrategyPreflightRead(
             task_id=task.id,
@@ -99,8 +107,29 @@ class StrategyPreflightService:
             model_label=self.settings.qwen_model,
             provider_configured=provider_configured,
             execution_enabled=self.settings.enable_strategy_execution,
+            preflight_digest=preflight_digest,
             cost_notice=COST_NOTICE,
         )
+
+    @staticmethod
+    def compute_digest(
+        *, product: Product, task: MarketingBrief, model_label: str
+    ) -> str:
+        payload = {
+            "schema": "qwen.strategy.generate.v1",
+            "product": MarketingStrategyService.prepare_product_input(product),
+            "marketing_brief": MarketingStrategyService.prepare_marketing_brief_input(
+                product, task
+            )["marketing_brief"],
+            "model": model_label,
+        }
+        encoded = json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
 
     def _provider_configured(self) -> bool:
         return bool(effective_qwen_api_key(self.settings))
