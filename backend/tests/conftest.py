@@ -14,6 +14,8 @@ from app.models import (  # noqa: F401
     BrandKit,
     BrandKitVersion,
     CopyMatrix,
+    ExecutionAttempt,
+    ExecutionJob,
     MarketingBrief,
     MarketingStrategy,
     OAuthSession,

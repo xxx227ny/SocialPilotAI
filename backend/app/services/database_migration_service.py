@@ -24,7 +24,8 @@ from alembic import command
 
 PRE_X2_REVISION = "0001_pre_x2_runtime"
 X2_REVISION = "0002_x2_presentation_snapshots"
-HEAD_REVISION = "0003_brand_kit_versions"
+BRAND_KIT_REVISION = "0003_brand_kit_versions"
+HEAD_REVISION = "0004_execution_queue"
 UNVERSIONED = "unversioned"
 MANIFEST_VERSION = 1
 ALEMBIC_INI = Path(__file__).resolve().parents[2] / "alembic.ini"
@@ -234,9 +235,14 @@ def schema_fingerprint(path: Path) -> str:
     return hashlib.sha256(encoded).hexdigest().upper()
 
 
-@lru_cache(maxsize=3)
+@lru_cache(maxsize=4)
 def expected_schema_fingerprint(revision: str) -> str:
-    if revision not in {PRE_X2_REVISION, X2_REVISION, HEAD_REVISION}:
+    if revision not in {
+        PRE_X2_REVISION,
+        X2_REVISION,
+        BRAND_KIT_REVISION,
+        HEAD_REVISION,
+    }:
         raise ValueError(f"Unknown expected revision: {revision}")
     with tempfile.TemporaryDirectory(prefix="socialpilot-schema-fingerprint-") as raw:
         reference = Path(raw) / "reference.db"
@@ -503,6 +509,8 @@ def _classify_unversioned_schema(path: Path) -> str:
         return "pre_x2_runtime"
     if fingerprint == expected_schema_fingerprint(X2_REVISION):
         return "x2_runtime"
+    if fingerprint == expected_schema_fingerprint(BRAND_KIT_REVISION):
+        return "brand_kit_runtime"
     if fingerprint == expected_schema_fingerprint(HEAD_REVISION):
         return "unversioned_head"
     raise IncompatibleSchemaError(
@@ -579,7 +587,12 @@ def get_database_migration_status(database_path: Path) -> DatabaseMigrationStatu
                 upgrade_required=True,
                 message="Known unversioned database requires a safe migration.",
             )
-        if revision not in {PRE_X2_REVISION, X2_REVISION, HEAD_REVISION}:
+        if revision not in {
+            PRE_X2_REVISION,
+            X2_REVISION,
+            BRAND_KIT_REVISION,
+            HEAD_REVISION,
+        }:
             raise IncompatibleSchemaError("Unsupported Alembic revision")
         if schema_fingerprint(database) != expected_schema_fingerprint(revision):
             raise IncompatibleSchemaError(
@@ -594,13 +607,18 @@ def get_database_migration_status(database_path: Path) -> DatabaseMigrationStatu
                 upgrade_required=False,
                 message="Database is at the verified Alembic head revision.",
             )
+        state_by_revision = {
+            PRE_X2_REVISION: "pre_x2_runtime",
+            X2_REVISION: "x2_runtime",
+            BRAND_KIT_REVISION: "brand_kit_runtime",
+        }
         return DatabaseMigrationStatus(
-            state=("pre_x2_runtime" if revision == PRE_X2_REVISION else "x2_runtime"),
+            state=state_by_revision[revision],
             revision=revision,
             head_revision=HEAD_REVISION,
             ready=False,
             upgrade_required=True,
-            message="Known pre-X2 database requires a safe migration.",
+            message="Known prior database revision requires a safe migration.",
         )
     except (MigrationSafetyError, OSError, sqlite3.DatabaseError, SQLAlchemyError):
         return DatabaseMigrationStatus(
@@ -641,13 +659,19 @@ def _upgrade_sqlite_database_unlocked(
                 stamp_revision = {
                     "pre_x2_runtime": PRE_X2_REVISION,
                     "x2_runtime": X2_REVISION,
+                    "brand_kit_runtime": BRAND_KIT_REVISION,
                     "unversioned_head": HEAD_REVISION,
                 }[schema_state]
                 _run_alembic(database, "stamp", stamp_revision)
                 if stamp_revision != HEAD_REVISION:
                     _run_alembic(database, "upgrade", HEAD_REVISION)
             else:
-                if revision not in {PRE_X2_REVISION, X2_REVISION, HEAD_REVISION}:
+                if revision not in {
+                    PRE_X2_REVISION,
+                    X2_REVISION,
+                    BRAND_KIT_REVISION,
+                    HEAD_REVISION,
+                }:
                     raise IncompatibleSchemaError(
                         f"Database has unsupported Alembic revision: {revision}"
                     )

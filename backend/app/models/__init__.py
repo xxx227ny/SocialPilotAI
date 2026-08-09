@@ -4,6 +4,7 @@ from app.models.brand_kit import BrandKit, BrandKitVersion
 from app.models.campaign import AdCampaign
 from app.models.copy import CopyMatrix
 from app.models.demo import DemoScenario
+from app.models.execution import ExecutionAttempt, ExecutionJob
 from app.models.marketing import MarketingBrief
 from app.models.presentation_snapshot import PresentationSnapshot
 from app.models.product import Product, ProductAsset
@@ -19,6 +20,8 @@ __all__ = [
     "BrandKitVersion",
     "CopyMatrix",
     "DemoScenario",
+    "ExecutionAttempt",
+    "ExecutionJob",
     "MarketingBrief",
     "MarketingStrategy",
     "Product",

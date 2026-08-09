@@ -4,6 +4,7 @@ from app.api.v1.routes.brand_kits import router as brand_kits_router
 from app.api.v1.routes.copies import router as copies_router
 from app.api.v1.routes.copies import strategy_copy_router
 from app.api.v1.routes.dashboard import router as dashboard_router
+from app.api.v1.routes.execution_jobs import router as execution_jobs_router
 from app.api.v1.routes.growth import router as growth_router
 from app.api.v1.routes.health import router as health_router
 from app.api.v1.routes.marketing_tasks import router as marketing_tasks_router
@@ -22,6 +23,7 @@ api_router.include_router(health_router, tags=["system"])
 api_router.include_router(system_router, tags=["system"])
 api_router.include_router(products_router, tags=["products"])
 api_router.include_router(brand_kits_router, tags=["brand-kits"])
+api_router.include_router(execution_jobs_router, tags=["execution-jobs"])
 api_router.include_router(social_router, tags=["social-publishing"])
 api_router.include_router(marketing_tasks_router, tags=["marketing-tasks"])
 api_router.include_router(
