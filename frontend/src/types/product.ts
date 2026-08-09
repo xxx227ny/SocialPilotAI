@@ -9,6 +9,7 @@ export interface ProductAsset {
 
 export interface Product {
   id: number;
+  brand_kit_version_id: number | null;
   name: string;
   category: string | null;
   description: string | null;

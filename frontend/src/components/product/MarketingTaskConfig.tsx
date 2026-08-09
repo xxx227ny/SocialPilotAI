@@ -27,6 +27,7 @@ interface MarketingTaskConfigProps {
   selectedPlatforms: PlatformName[];
   onPlatformsChange: (platforms: PlatformName[]) => void;
   onProductUpdated: (product: Product) => void;
+  onTaskChanged?: (task: MarketingTask) => void;
 }
 
 const MARKET_OPTIONS = [
@@ -100,6 +101,7 @@ export function MarketingTaskConfig({
   selectedPlatforms,
   onPlatformsChange,
   onProductUpdated,
+  onTaskChanged,
 }: MarketingTaskConfigProps) {
   const [markets, setMarkets] = useState<string[]>(product.target_markets);
   const [saveState, setSaveState] = useState<SaveState>("synced");
@@ -163,6 +165,7 @@ export function MarketingTaskConfig({
           return;
         }
         setSavedTask(task);
+        onTaskChanged?.(task);
         platformsChangeRef.current(task.platforms);
         setTaskState("ready");
       })
@@ -337,6 +340,7 @@ export function MarketingTaskConfig({
         return;
       }
       setSavedTask(task);
+      onTaskChanged?.(task);
       platformsChangeRef.current(task.platforms);
       setTaskState("ready");
     } catch (error) {
@@ -358,6 +362,7 @@ export function MarketingTaskConfig({
         }
         if (latest !== null && latest.id !== previousTaskId) {
           setSavedTask(latest);
+          onTaskChanged?.(latest);
           platformsChangeRef.current(latest.platforms);
           setTaskState("ready");
           return;

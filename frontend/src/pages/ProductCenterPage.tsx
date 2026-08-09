@@ -4,6 +4,7 @@ import { getApiErrorMessage } from "../api/client";
 import { getProduct, listProducts } from "../api/products";
 import { GrowthCopilotPanel } from "../components/GrowthCopilotPanel";
 import { MarketingTaskConfig } from "../components/product/MarketingTaskConfig";
+import { BrandKitOnboardingPanel } from "../components/product/BrandKitOnboardingPanel";
 import { PresentationSnapshotPanel } from "../components/product/PresentationSnapshotPanel";
 import { ProductCreateForm } from "../components/product/ProductCreateForm";
 import { SocialPublishingPanel } from "../components/product/SocialPublishingPanel";
@@ -28,6 +29,7 @@ export function ProductCenterPage() {
   const [detailError, setDetailError] = useState("");
   const [detailRetryKey, setDetailRetryKey] = useState(0);
   const [newlyCreatedId, setNewlyCreatedId] = useState<number | null>(null);
+  const [briefRevision, setBriefRevision] = useState(0);
   const [platformDrafts, setPlatformDrafts] = useState<
     Record<number, PlatformName[]>
   >({});
@@ -128,6 +130,10 @@ export function ProductCenterPage() {
     setPlatformDrafts((current) => ({ ...current, [productId]: platforms }));
   }
 
+  const handleBriefChanged = useCallback(() => {
+    setBriefRevision((current) => current + 1);
+  }, []);
+
   return (
     <div className="product-center">
       <header className="page-heading">
@@ -141,6 +147,15 @@ export function ProductCenterPage() {
           <span>已录入商品</span>
         </div>
       </header>
+
+      {!isPresentation && (
+        <BrandKitOnboardingPanel
+          products={products}
+          selectedProduct={selectedProduct}
+          briefRevision={briefRevision}
+          onProductUpdated={handleProductUpdated}
+        />
+      )}
 
       <div className="product-layout">
         <ProductCreateForm onCreated={handleProductCreated} />
@@ -253,6 +268,7 @@ export function ProductCenterPage() {
                     updatePlatformDraft(selectedProduct.id, platforms)
                   }
                   onProductUpdated={handleProductUpdated}
+                  onBriefChanged={handleBriefChanged}
                   isPresentation={isPresentation}
                 />
               ) : null}
@@ -296,12 +312,14 @@ function ProductDetail({
   selectedPlatforms,
   onPlatformsChange,
   onProductUpdated,
+  onBriefChanged,
   isPresentation,
 }: {
   product: Product;
   selectedPlatforms: PlatformName[];
   onPlatformsChange: (platforms: PlatformName[]) => void;
   onProductUpdated: (product: Product) => void;
+  onBriefChanged: () => void;
   isPresentation: boolean;
 }) {
   const [liveVideoProjectId, setLiveVideoProjectId] = useState<
@@ -369,6 +387,7 @@ function ProductDetail({
         selectedPlatforms={selectedPlatforms}
         onPlatformsChange={onPlatformsChange}
         onProductUpdated={onProductUpdated}
+        onTaskChanged={onBriefChanged}
       />
 
       <section className="product-detail-card__existing-workflow">
