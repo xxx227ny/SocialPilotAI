@@ -89,6 +89,33 @@ def test_healthy_second_start_keeps_services_and_can_open_product_center() -> No
     )
 
 
+def test_launcher_migrates_before_starting_services_and_preserves_failures(
+) -> None:
+    script = read("scripts/start-socialpilotai.ps1")
+    status = script.index("Get-DatabaseMigrationStatus -Python")
+    upgrade = script.index("Invoke-SafeDatabaseUpgrade -Python")
+    verified_head = script.index(
+        'Write-Host "Database migration completed at the verified Alembic head."'
+    )
+    backend_start = script.index("$backend = Start-Process")
+    frontend_start = script.index("$frontend = Start-Process")
+    assert status < upgrade < verified_head < backend_start < frontend_start
+    assert '"backups\\database-migrations"' in script
+    assert "unknown lock was preserved" in script
+    assert "No services were started" in script
+    assert "Normalize-ProcessPathEnvironment" in script
+    assert "Get-Process -Name" not in script
+
+
+def test_production_lifespan_does_not_create_schema_with_metadata() -> None:
+    main = read("backend/app/main.py")
+    initialization = read("backend/app/db/init_db.py")
+    production = main + initialization
+    assert "create_all" not in production
+    assert "init_db()" not in production
+    assert "seed_development_data()" in main
+
+
 def test_cmd_wrappers_only_delegate_to_repository_scripts() -> None:
     start = read("start-socialpilotai.cmd")
     stop = read("stop-socialpilotai.cmd")

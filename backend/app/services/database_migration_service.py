@@ -18,6 +18,7 @@ from uuid import uuid4
 from alembic.config import Config
 from alembic.migration import MigrationContext
 from sqlalchemy import Connection, create_engine, inspect
+from sqlalchemy.exc import SQLAlchemyError
 
 from alembic import command
 
@@ -75,6 +76,16 @@ class MigrationResult:
     schema_state: str
     backup_manifest_path: Path | None
     restored_after_failure: bool = False
+
+
+@dataclass(frozen=True)
+class DatabaseMigrationStatus:
+    state: str
+    revision: str | None
+    head_revision: str
+    ready: bool
+    upgrade_required: bool
+    message: str
 
 
 def sha256_file(path: Path) -> str:
@@ -507,6 +518,94 @@ def _user_table_count(path: Path) -> int:
             )
     finally:
         engine.dispose()
+
+
+def get_database_migration_status(database_path: Path) -> DatabaseMigrationStatus:
+    """Classify a SQLite database without creating locks, backups, or DB writes."""
+    database = database_path.resolve()
+    if migration_lock_path(database).exists():
+        return DatabaseMigrationStatus(
+            state="locked",
+            revision=None,
+            head_revision=HEAD_REVISION,
+            ready=False,
+            upgrade_required=False,
+            message="Another database migration or restore is in progress.",
+        )
+    if not database.exists():
+        return DatabaseMigrationStatus(
+            state="missing",
+            revision=None,
+            head_revision=HEAD_REVISION,
+            ready=False,
+            upgrade_required=True,
+            message="Database does not exist and requires initialization.",
+        )
+    if database.stat().st_size == 0:
+        return DatabaseMigrationStatus(
+            state="empty",
+            revision=None,
+            head_revision=HEAD_REVISION,
+            ready=False,
+            upgrade_required=True,
+            message="Database is empty and requires initialization.",
+        )
+
+    try:
+        if _user_table_count(database) == 0:
+            return DatabaseMigrationStatus(
+                state="empty",
+                revision=None,
+                head_revision=HEAD_REVISION,
+                ready=False,
+                upgrade_required=True,
+                message=(
+                    "Database has no application tables and requires initialization."
+                ),
+            )
+        revision = _current_revision(database)
+        if revision is None:
+            schema_state = _classify_unversioned_schema(database)
+            return DatabaseMigrationStatus(
+                state=schema_state,
+                revision=None,
+                head_revision=HEAD_REVISION,
+                ready=False,
+                upgrade_required=True,
+                message="Known unversioned database requires a safe migration.",
+            )
+        if revision not in {PRE_X2_REVISION, HEAD_REVISION}:
+            raise IncompatibleSchemaError("Unsupported Alembic revision")
+        if schema_fingerprint(database) != expected_schema_fingerprint(revision):
+            raise IncompatibleSchemaError(
+                "Database schema does not match its Alembic revision"
+            )
+        if revision == HEAD_REVISION:
+            return DatabaseMigrationStatus(
+                state="head",
+                revision=revision,
+                head_revision=HEAD_REVISION,
+                ready=True,
+                upgrade_required=False,
+                message="Database is at the verified Alembic head revision.",
+            )
+        return DatabaseMigrationStatus(
+            state="pre_x2_runtime",
+            revision=revision,
+            head_revision=HEAD_REVISION,
+            ready=False,
+            upgrade_required=True,
+            message="Known pre-X2 database requires a safe migration.",
+        )
+    except (MigrationSafetyError, OSError, sqlite3.DatabaseError, SQLAlchemyError):
+        return DatabaseMigrationStatus(
+            state="incompatible",
+            revision=None,
+            head_revision=HEAD_REVISION,
+            ready=False,
+            upgrade_required=False,
+            message="Database schema is incompatible with the known migration chain.",
+        )
 
 
 def _upgrade_sqlite_database_unlocked(

@@ -11,7 +11,12 @@ from app.providers.live_configuration import (
     qwen_provider_configured,
     wanx_provider_configured,
 )
-from app.schemas.system import SystemComponentRead, SystemReadinessRead
+from app.schemas.system import (
+    DatabaseSystemComponentRead,
+    SystemComponentRead,
+    SystemReadinessRead,
+)
+from app.services.database_migration_service import HEAD_REVISION
 from app.services.social_security import TokenCipher
 
 
@@ -41,7 +46,7 @@ class SystemReadinessService:
             and self.settings.enable_social_account_binding
             and self.settings.enable_youtube_publishing
         )
-        database_ready = self._database_ready()
+        database_ready, revision_status, revision = self._database_readiness()
         artifact_ready = self._artifact_storage_ready()
 
         return SystemReadinessRead(
@@ -83,13 +88,19 @@ class SystemReadinessService:
                     )
                 ),
             ),
-            database=SystemComponentRead(
+            database=DatabaseSystemComponentRead(
                 ready=database_ready,
                 message=(
-                    "持久化数据库可用。"
+                    "数据库可用，且已验证为Alembic head。"
                     if database_ready
-                    else "数据库不可用：请停止服务后检查本机Runtime目录权限。"
+                    else (
+                        "数据库需要安全迁移：请停止服务后运行start-socialpilotai.cmd。"
+                        if revision_status == "upgrade_required"
+                        else "数据库Revision无法安全验证，请查看本机Runtime日志。"
+                    )
                 ),
+                revision_status=revision_status,
+                revision=revision,
             ),
             artifact_storage=SystemComponentRead(
                 ready=artifact_ready,
@@ -101,11 +112,21 @@ class SystemReadinessService:
             ),
         )
 
-    def _database_ready(self) -> bool:
+    def _database_readiness(self) -> tuple[bool, str, str | None]:
         try:
-            return self.session.scalar(text("SELECT 1")) == 1
+            if self.session.scalar(text("SELECT 1")) != 1:
+                return False, "unavailable", None
         except SQLAlchemyError:
-            return False
+            return False, "unavailable", None
+        try:
+            revision = self.session.scalar(
+                text("SELECT version_num FROM alembic_version")
+            )
+        except SQLAlchemyError:
+            return False, "upgrade_required", None
+        if revision == HEAD_REVISION:
+            return True, "head", revision
+        return False, "upgrade_required", revision
 
     def _artifact_storage_ready(self) -> bool:
         configured = self._text(self.settings.video_artifact_storage_root)

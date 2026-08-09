@@ -75,6 +75,14 @@ export function SystemReadinessPanel() {
                 <div>
                   <strong>{component.label}</strong>
                   <small>{item ? (ready ? "已就绪" : "需要配置") : "检查中"}</small>
+                  {component.key === "database" && readiness?.database && (
+                    <small>
+                      Revision: {readiness.database.revision_status}
+                      {readiness.database.revision
+                        ? ` · ${readiness.database.revision}`
+                        : ""}
+                    </small>
+                  )}
                   {item && <p>{item.message}</p>}
                 </div>
               </article>

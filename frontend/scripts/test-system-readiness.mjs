@@ -30,5 +30,8 @@ assert.doesNotMatch(types, /api_key|client_secret|access_token|refresh_token/i);
 assert.match(types, /provider_calls: 0/);
 assert.match(types, /database_writes: 0/);
 assert.match(types, /automatic_actions: false/);
+assert.match(types, /revision_status: "head" \| "upgrade_required" \| "unavailable"/);
+assert.match(types, /revision: string \| null/);
+assert.match(component, /Revision:/);
 
 console.log("System readiness frontend checks passed: safe labels, local guidance, Presentation isolation, no secret fields");

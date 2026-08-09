@@ -7,12 +7,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
-from app.db.init_db import init_db, seed_development_data
+from app.db.init_db import seed_development_data
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    init_db()
     seed_development_data()
     yield
 

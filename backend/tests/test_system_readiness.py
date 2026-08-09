@@ -2,7 +2,7 @@ import json
 
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import (
@@ -13,6 +13,16 @@ from app.api.dependencies import (
 from app.core.config import Settings, get_settings
 from app.main import app
 from app.models import Product
+from app.services.database_migration_service import HEAD_REVISION
+
+
+def mark_database_at_head(session: Session) -> None:
+    session.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32))"))
+    session.execute(
+        text("INSERT INTO alembic_version (version_num) VALUES (:revision)"),
+        {"revision": HEAD_REVISION},
+    )
+    session.commit()
 
 
 def ready_settings(artifact_root: str) -> Settings:
@@ -54,6 +64,7 @@ def test_readiness_is_provider_free_read_only_and_secret_safe(
     app.dependency_overrides[get_text_generation_provider] = forbidden_provider
     app.dependency_overrides[get_visual_generation_provider] = forbidden_provider
     app.dependency_overrides[get_youtube_provider] = forbidden_provider
+    mark_database_at_head(db_session)
     before = db_session.scalar(select(func.count(Product.id)))
 
     response = client.get("/api/v1/system/readiness")
@@ -77,6 +88,8 @@ def test_readiness_is_provider_free_read_only_and_secret_safe(
     assert body["automatic_actions"] is False
     assert provider_resolutions == 0
     assert before == after == 0
+    assert body["database"]["revision_status"] == "head"
+    assert body["database"]["revision"] == HEAD_REVISION
     serialized = json.dumps(body)
     for secret in (
         "fake-qwen-readiness-key",
@@ -90,6 +103,7 @@ def test_readiness_is_provider_free_read_only_and_secret_safe(
 
 def test_readiness_explains_missing_local_configuration(
     client: TestClient,
+    db_session: Session,
     tmp_path,
 ) -> None:
     missing_artifacts = tmp_path / "missing-artifacts"
@@ -103,6 +117,7 @@ def test_readiness_explains_missing_local_configuration(
         enable_social_account_binding=True,
         enable_youtube_publishing=True,
     )
+    mark_database_at_head(db_session)
 
     response = client.get("/api/v1/system/readiness")
 
@@ -116,3 +131,23 @@ def test_readiness_explains_missing_local_configuration(
     assert "WANX_API_KEY" in body["wanx"]["message"]
     assert body["google_youtube"]["ready"] is False
     assert body["artifact_storage"]["ready"] is False
+
+
+def test_readiness_reports_unversioned_database_without_path_or_write(
+    client: TestClient,
+    db_session: Session,
+    tmp_path,
+) -> None:
+    app.dependency_overrides[get_settings] = lambda: ready_settings(str(tmp_path))
+    before = db_session.scalar(select(func.count(Product.id)))
+
+    response = client.get("/api/v1/system/readiness")
+
+    after = db_session.scalar(select(func.count(Product.id)))
+    assert response.status_code == 200
+    database = response.json()["database"]
+    assert database["ready"] is False
+    assert database["revision_status"] == "upgrade_required"
+    assert database["revision"] is None
+    assert "Runtime" not in database["message"]
+    assert before == after == 0

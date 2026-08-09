@@ -2,6 +2,7 @@
 param(
     [string]$RuntimeRoot = (Join-Path $env:LOCALAPPDATA "SocialPilotAI"),
     [switch]$NoBrowser,
+    [switch]$DisableDotenv,
     [ValidateRange(10, 300)]
     [int]$StartupTimeoutSeconds = 90
 )
@@ -75,6 +76,19 @@ function Open-ProductCenter {
     Start-Process "http://127.0.0.1:5173/products"
 }
 
+function Normalize-ProcessPathEnvironment {
+    $pathKeys = @(
+        [Environment]::GetEnvironmentVariables().Keys |
+            Where-Object { $_ -ieq "path" }
+    )
+    if ($pathKeys.Count -le 1) {
+        return
+    }
+    $selectedPath = [Environment]::GetEnvironmentVariable("Path", "Process")
+    [Environment]::SetEnvironmentVariable("PATH", $null, "Process")
+    [Environment]::SetEnvironmentVariable("Path", $selectedPath, "Process")
+}
+
 function Assert-PortAvailable {
     param([Parameter(Mandatory = $true)][int]$Port)
 
@@ -104,6 +118,51 @@ function Wait-HttpReady {
     throw "Timed out waiting for $Uri"
 }
 
+function Get-DatabaseMigrationStatus {
+    param(
+        [Parameter(Mandatory = $true)][string]$Python,
+        [Parameter(Mandatory = $true)][string]$Backend,
+        [Parameter(Mandatory = $true)][string]$Database
+    )
+
+    Push-Location $Backend
+    try {
+        $statusOutput = & $Python -m app.cli.database_migrations status --database $Database
+        if ($LASTEXITCODE -ne 0) {
+            throw "Database safety status could not be determined. No services were started."
+        }
+    }
+    finally {
+        Pop-Location
+    }
+    try {
+        return ($statusOutput -join "`n") | ConvertFrom-Json
+    }
+    catch {
+        throw "Database safety status was invalid. No services were started."
+    }
+}
+
+function Invoke-SafeDatabaseUpgrade {
+    param(
+        [Parameter(Mandatory = $true)][string]$Python,
+        [Parameter(Mandatory = $true)][string]$Backend,
+        [Parameter(Mandatory = $true)][string]$Database,
+        [Parameter(Mandatory = $true)][string]$BackupDirectory
+    )
+
+    Push-Location $Backend
+    try {
+        & $Python -m app.cli.database_migrations upgrade --database $Database --backup-dir $BackupDirectory
+        if ($LASTEXITCODE -ne 0) {
+            throw "Database migration failed safely. No services were started; verified backups and manifests were preserved."
+        }
+    }
+    finally {
+        Pop-Location
+    }
+}
+
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $backendRoot = Join-Path $repositoryRoot "backend"
 $frontendRoot = Join-Path $repositoryRoot "frontend"
@@ -119,6 +178,7 @@ if ($null -eq $nodeCommand -or -not (Test-Path -LiteralPath $viteScript -PathTyp
 }
 $nodePath = [System.IO.Path]::GetFullPath($nodeCommand.Source)
 $quotedViteScript = '"' + $viteScript + '"'
+Normalize-ProcessPathEnvironment
 
 $runtimePath = [System.IO.Path]::GetFullPath($RuntimeRoot)
 $dataPath = Join-Path $runtimePath "data"
@@ -126,6 +186,7 @@ $artifactPath = Join-Path $runtimePath "artifacts"
 $logPath = Join-Path $runtimePath "logs"
 $pidPath = Join-Path $runtimePath "socialpilotai.pids.json"
 $databasePath = Join-Path $dataPath "socialpilot.db"
+$migrationBackupPath = Join-Path $runtimePath "backups\database-migrations"
 
 New-Item -ItemType Directory -Path $dataPath -Force | Out-Null
 New-Item -ItemType Directory -Path $artifactPath -Force | Out-Null
@@ -179,6 +240,26 @@ if (Test-Path -LiteralPath $pidPath -PathType Leaf) {
 Assert-PortAvailable 8000
 Assert-PortAvailable 5173
 
+$migrationStatus = Get-DatabaseMigrationStatus -Python $pythonPath -Backend $backendRoot -Database $databasePath
+if ($migrationStatus.state -eq "head" -and $migrationStatus.ready) {
+    Write-Host "Database migration status: verified Alembic head."
+}
+elseif ($migrationStatus.upgrade_required) {
+    Write-Host "Database migration is required. Creating a verified backup when applicable."
+    Invoke-SafeDatabaseUpgrade -Python $pythonPath -Backend $backendRoot -Database $databasePath -BackupDirectory $migrationBackupPath
+    $migrationStatus = Get-DatabaseMigrationStatus -Python $pythonPath -Backend $backendRoot -Database $databasePath
+    if ($migrationStatus.state -ne "head" -or -not $migrationStatus.ready) {
+        throw "Database did not reach the verified Alembic head. No services were started."
+    }
+    Write-Host "Database migration completed at the verified Alembic head."
+}
+elseif ($migrationStatus.state -eq "locked") {
+    throw "Database migration is locked by another operation. No services were started; the unknown lock was preserved."
+}
+else {
+    throw "Database schema is not compatible with this SocialPilotAI version. No services were started; existing data was preserved."
+}
+
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $backendOut = Join-Path $logPath "backend-$timestamp.stdout.log"
 $backendErr = Join-Path $logPath "backend-$timestamp.stderr.log"
@@ -188,7 +269,7 @@ $sqlitePath = $databasePath.Replace("\", "/")
 
 # The standalone process loads backend/.env internally. Explicit process values
 # select the persistent runtime and keep startup free of development seed data.
-$env:SOCIALPILOT_DISABLE_DOTENV = "0"
+$env:SOCIALPILOT_DISABLE_DOTENV = if ($DisableDotenv) { "1" } else { "0" }
 $env:APP_ENVIRONMENT = "standalone"
 $env:DATABASE_URL = "sqlite:///$sqlitePath"
 $env:VIDEO_ARTIFACT_STORAGE_ROOT = $artifactPath

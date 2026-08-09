@@ -32,6 +32,7 @@ from app.services.database_migration_service import (
     IncompatibleSchemaError,
     MigrationExecutionError,
     MigrationLockError,
+    get_database_migration_status,
     migration_lock_path,
     restore_backup,
     sha256_file,
@@ -516,3 +517,86 @@ def test_failed_operation_releases_lock_for_next_upgrade(
         == HEAD_REVISION
     )
     assert not migration_lock_path(database).exists()
+
+
+def test_read_only_status_classifies_supported_database_states(tmp_path: Path) -> None:
+    missing = tmp_path / "missing.db"
+    assert get_database_migration_status(missing).state == "missing"
+    assert not missing.exists()
+
+    empty = tmp_path / "empty.db"
+    empty.touch()
+    empty_hash = sha256_file(empty)
+    assert get_database_migration_status(empty).state == "empty"
+    assert sha256_file(empty) == empty_hash
+
+    legacy = tmp_path / "legacy.db"
+    create_legacy_runtime(legacy)
+    legacy_hash = sha256_file(legacy)
+    legacy_status = get_database_migration_status(legacy)
+    assert legacy_status.state == "pre_x2_runtime"
+    assert legacy_status.upgrade_required is True
+    assert sha256_file(legacy) == legacy_hash
+
+    unversioned_head = tmp_path / "unversioned-head.db"
+    engine = create_engine(sqlite_url(unversioned_head))
+    Base.metadata.create_all(engine)
+    engine.dispose()
+    assert (
+        get_database_migration_status(unversioned_head).state
+        == "unversioned_head"
+    )
+
+
+def test_head_status_is_read_only_and_creates_no_backup(tmp_path: Path) -> None:
+    database = tmp_path / "head-status.db"
+    backups = tmp_path / "backups"
+    upgrade_sqlite_database(database, backups)
+    before_hash = sha256_file(database)
+    before_backups = list(backups.glob("*")) if backups.exists() else []
+
+    status = get_database_migration_status(database)
+
+    assert status.state == "head"
+    assert status.ready is True
+    assert status.upgrade_required is False
+    assert status.revision == HEAD_REVISION
+    assert sha256_file(database) == before_hash
+    assert (list(backups.glob("*")) if backups.exists() else []) == before_backups
+
+
+def test_status_reports_incompatible_schema_and_preserves_database(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "status-incompatible.db"
+    create_legacy_runtime(database)
+    connection = sqlite3.connect(database)
+    connection.execute("ALTER TABLE products ADD COLUMN unknown_status_column TEXT")
+    connection.commit()
+    connection.close()
+    before_hash = sha256_file(database)
+
+    status = get_database_migration_status(database)
+
+    assert status.state == "incompatible"
+    assert status.ready is False
+    assert status.upgrade_required is False
+    assert sha256_file(database) == before_hash
+
+
+def test_status_reports_lock_conflict_without_deleting_unknown_lock(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "status-locked.db"
+    create_legacy_runtime(database)
+    lock = migration_lock_path(database)
+    lock.write_text('{"token":"unknown-owner"}', encoding="utf-8")
+    before_hash = sha256_file(database)
+
+    status = get_database_migration_status(database)
+
+    assert status.state == "locked"
+    assert status.ready is False
+    assert status.upgrade_required is False
+    assert lock.read_text(encoding="utf-8") == '{"token":"unknown-owner"}'
+    assert sha256_file(database) == before_hash

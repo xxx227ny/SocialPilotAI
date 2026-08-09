@@ -10,6 +10,11 @@ class SystemComponentRead(BaseModel):
     message: str
 
 
+class DatabaseSystemComponentRead(SystemComponentRead):
+    revision_status: Literal["head", "upgrade_required", "unavailable"]
+    revision: str | None = None
+
+
 class SystemReadinessRead(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -17,7 +22,7 @@ class SystemReadinessRead(BaseModel):
     qwen: SystemComponentRead
     wanx: SystemComponentRead
     google_youtube: SystemComponentRead
-    database: SystemComponentRead
+    database: DatabaseSystemComponentRead
     artifact_storage: SystemComponentRead
     provider_calls: Literal[0] = 0
     database_writes: Literal[0] = 0

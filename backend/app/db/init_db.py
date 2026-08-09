@@ -1,17 +1,10 @@
 from sqlalchemy import select
 
 from app.core.config import settings
-from app.db.base import Base
-from app.db.session import SessionLocal, engine
+from app.db.session import SessionLocal
 from app.models import Product
 
 DEMO_PRODUCT_NAME = "Portable Blender"
-
-
-def init_db() -> None:
-    """Create missing tables without changing existing tables."""
-    Base.metadata.create_all(bind=engine)
-
 
 def seed_development_data() -> None:
     """Insert idempotent demo data only in the development environment."""

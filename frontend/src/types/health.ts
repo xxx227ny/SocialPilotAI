@@ -9,12 +9,17 @@ export interface SystemReadinessItem {
   message: string;
 }
 
+export interface DatabaseReadinessItem extends SystemReadinessItem {
+  revision_status: "head" | "upgrade_required" | "unavailable";
+  revision: string | null;
+}
+
 export interface SystemReadinessResponse {
   backend: SystemReadinessItem;
   qwen: SystemReadinessItem;
   wanx: SystemReadinessItem;
   google_youtube: SystemReadinessItem;
-  database: SystemReadinessItem;
+  database: DatabaseReadinessItem;
   artifact_storage: SystemReadinessItem;
   provider_calls: 0;
   database_writes: 0;
