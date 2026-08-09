@@ -146,6 +146,7 @@ class ExecutionJobFailRequest(BaseModel):
     provider_call_count: int = Field(default=0, ge=0)
     external_submission_possible: bool = False
 
+
 class ExecutionJobUnknownRequest(ExecutionJobFailRequest):
     external_submission_possible: Literal[True] = True
     provider_name: str | None = Field(default=None, min_length=1, max_length=80)
