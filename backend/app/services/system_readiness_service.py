@@ -1,5 +1,10 @@
+import json
 import os
+import sys
+from ctypes import byref, wintypes
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal
 
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -13,11 +18,58 @@ from app.providers.live_configuration import (
 )
 from app.schemas.system import (
     DatabaseSystemComponentRead,
+    ExecutionWorkerSystemComponentRead,
     SystemComponentRead,
     SystemReadinessRead,
 )
 from app.services.database_migration_service import HEAD_REVISION
 from app.services.social_security import TokenCipher
+
+WorkerProcessState = Literal["running", "missing", "unknown"]
+
+
+def _windows_process_state(pid: int) -> WorkerProcessState:
+    import ctypes
+
+    process_query_limited_information = 0x1000
+    still_active = 259
+    error_invalid_parameter = 87
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.GetExitCodeProcess.argtypes = [wintypes.HANDLE, wintypes.LPDWORD]
+    kernel32.GetExitCodeProcess.restype = wintypes.BOOL
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.CloseHandle.restype = wintypes.BOOL
+    handle = kernel32.OpenProcess(process_query_limited_information, False, pid)
+    if not handle:
+        return (
+            "missing"
+            if ctypes.get_last_error() == error_invalid_parameter
+            else "unknown"
+        )
+    try:
+        exit_code = wintypes.DWORD()
+        if not kernel32.GetExitCodeProcess(handle, byref(exit_code)):
+            return "unknown"
+        return "running" if exit_code.value == still_active else "missing"
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def _process_state(pid: int) -> WorkerProcessState:
+    if sys.platform == "win32":
+        try:
+            return _windows_process_state(pid)
+        except (OSError, RuntimeError, TypeError, ValueError):
+            return "unknown"
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return "missing"
+    except (PermissionError, OSError):
+        return "unknown"
+    return "running"
 
 
 class SystemReadinessService:
@@ -48,6 +100,9 @@ class SystemReadinessService:
         )
         database_ready, revision_status, revision = self._database_readiness()
         artifact_ready = self._artifact_storage_ready()
+        worker_ready, worker_status, worker_reason = (
+            self._execution_worker_readiness()
+        )
 
         return SystemReadinessRead(
             backend=SystemComponentRead(
@@ -110,7 +165,56 @@ class SystemReadinessService:
                     else "Artifact目录不可用：请检查本机Runtime目录权限。"
                 ),
             ),
+            execution_worker=ExecutionWorkerSystemComponentRead(
+                ready=worker_ready,
+                status=worker_status,
+                message=(
+                    "Execution Worker is running and its local heartbeat is current."
+                    if worker_reason == "healthy"
+                    else (
+                        "Execution Worker heartbeat is stale; restart "
+                        "SocialPilotAI safely."
+                        if worker_reason == "stale"
+                        else (
+                            "Execution Worker identity could not be safely confirmed; "
+                            "restart SocialPilotAI safely."
+                            if worker_reason == "unknown"
+                            else (
+                                "Execution Worker is not running; start "
+                                "SocialPilotAI again."
+                            )
+                        )
+                    )
+                ),
+            ),
         )
+
+    def _execution_worker_readiness(self) -> tuple[bool, str, str]:
+        configured = self._text(self.settings.execution_worker_status_file)
+        if not configured:
+            return False, "not_running", "missing"
+        path = Path(configured)
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            if payload.get("state") != "healthy":
+                return False, "not_running", "missing"
+            updated = datetime.fromisoformat(str(payload["updated_at_utc"]))
+            if updated.tzinfo is None:
+                return False, "stale", "stale"
+            age = (datetime.now(UTC) - updated.astimezone(UTC)).total_seconds()
+            if age < -5 or age > self.settings.execution_worker_stale_seconds:
+                return False, "stale", "stale"
+            pid = int(payload["pid"])
+            if pid <= 0:
+                return False, "not_running", "missing"
+        except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+            return False, "not_running", "missing"
+        process_state = _process_state(pid)
+        if process_state == "missing":
+            return False, "not_running", "missing"
+        if process_state == "unknown":
+            return False, "not_running", "unknown"
+        return True, "healthy", "healthy"
 
     def _database_readiness(self) -> tuple[bool, str, str | None]:
         try:

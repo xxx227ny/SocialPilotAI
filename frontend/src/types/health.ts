@@ -14,6 +14,10 @@ export interface DatabaseReadinessItem extends SystemReadinessItem {
   revision: string | null;
 }
 
+export interface ExecutionWorkerReadinessItem extends SystemReadinessItem {
+  status: "healthy" | "not_running" | "stale";
+}
+
 export interface SystemReadinessResponse {
   backend: SystemReadinessItem;
   qwen: SystemReadinessItem;
@@ -21,6 +25,7 @@ export interface SystemReadinessResponse {
   google_youtube: SystemReadinessItem;
   database: DatabaseReadinessItem;
   artifact_storage: SystemReadinessItem;
+  execution_worker: ExecutionWorkerReadinessItem;
   provider_calls: 0;
   database_writes: 0;
   automatic_actions: false;

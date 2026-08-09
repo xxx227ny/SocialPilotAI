@@ -35,6 +35,13 @@ function Get-VerifiedProcess {
     return $process
 }
 
+function Get-OptionalRecord {
+    param($Document, [Parameter(Mandatory = $true)][string]$Name)
+    $property = $Document.PSObject.Properties[$Name]
+    if ($null -eq $property) { return $null }
+    return $property.Value
+}
+
 $runtimePath = [System.IO.Path]::GetFullPath($RuntimeRoot)
 $pidPath = Join-Path $runtimePath "socialpilotai.pids.json"
 if (-not (Test-Path -LiteralPath $pidPath -PathType Leaf)) {
@@ -44,18 +51,31 @@ if (-not (Test-Path -LiteralPath $pidPath -PathType Leaf)) {
 
 $document = Get-Content -LiteralPath $pidPath -Raw -Encoding UTF8 | ConvertFrom-Json
 $targets = @(
-    [pscustomobject]@{ name = "frontend"; record = $document.frontend },
-    [pscustomobject]@{ name = "backend"; record = $document.backend }
+    [pscustomobject]@{ name = "worker"; record = (Get-OptionalRecord $document "worker") },
+    [pscustomobject]@{ name = "frontend"; record = (Get-OptionalRecord $document "frontend") },
+    [pscustomobject]@{ name = "backend"; record = (Get-OptionalRecord $document "backend") }
 )
 $verified = @()
 foreach ($target in $targets) {
+    if ($null -eq $target.record) { continue }
     $process = Get-VerifiedProcess $target.record
     if ($null -ne $process) {
-        $verified += [pscustomobject]@{ name = $target.name; process = $process }
+        $verified += [pscustomobject]@{
+            name = $target.name
+            process = $process
+            record = $target.record
+        }
     }
 }
 
 foreach ($target in $verified) {
+    if ($target.name -eq "worker") {
+        $stopFileProperty = $target.record.PSObject.Properties["stop_file"]
+        if ($null -ne $stopFileProperty) {
+            Set-Content -LiteralPath ([string]$stopFileProperty.Value) -Value "stop" -Encoding ASCII
+            continue
+        }
+    }
     Stop-Process -Id $target.process.Id -ErrorAction Stop
 }
 foreach ($target in $verified) {

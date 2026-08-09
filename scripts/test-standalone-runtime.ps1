@@ -79,6 +79,10 @@ try {
     Assert-True (Test-Path -LiteralPath $pidPath -PathType Leaf) "PID file was not created"
     Assert-True (Test-Path -LiteralPath $databasePath -PathType Leaf) "Database was not initialized"
     Assert-True (Test-Path -LiteralPath (Join-Path $runtimeRoot "artifacts") -PathType Container) "Artifact directory was not created"
+    $firstProcesses = Read-PidDocument $pidPath
+    Assert-True ($null -ne (Get-Process -Id ([int]$firstProcesses.backend.pid) -ErrorAction SilentlyContinue)) "Backend did not start"
+    Assert-True ($null -ne (Get-Process -Id ([int]$firstProcesses.frontend.pid) -ErrorAction SilentlyContinue)) "Frontend did not start"
+    Assert-True ($null -ne (Get-Process -Id ([int]$firstProcesses.worker.pid) -ErrorAction SilentlyContinue)) "Execution Worker did not start"
 
     $products = Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/products" -TimeoutSec 5
     $productCount = if ($null -eq $products) { 0 } else { @($products).Count }
@@ -87,7 +91,13 @@ try {
     Assert-True ($readiness.provider_calls -eq 0) "Startup readiness resolved a Provider"
     Assert-True ($readiness.database_writes -eq 0) "Readiness wrote to the database"
     Assert-True ($readiness.database.revision_status -eq "head") "Fresh startup did not reach Alembic head"
-    Assert-True ($readiness.database.revision -eq "0002_x2_presentation_snapshots") "Fresh startup reported the wrong revision"
+    Assert-True ($readiness.database.revision -eq "0004_execution_queue") "Fresh startup reported the wrong revision"
+    Assert-True ($readiness.execution_worker.ready) "Execution Worker readiness was not healthy"
+    Assert-True ($readiness.execution_worker.status -eq "healthy") "Execution Worker status was not healthy"
+    $emptyJobsBefore = Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/execution-jobs" -TimeoutSec 5
+    Start-Sleep -Seconds 3
+    $emptyJobsAfter = Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/execution-jobs" -TimeoutSec 5
+    Assert-True (@($emptyJobsBefore).Count -eq 0 -and @($emptyJobsAfter).Count -eq 0) "Idle startup wrote ExecutionJob business data"
     $initialBackupPath = Join-Path $runtimeRoot "backups\database-migrations"
     Assert-True (@(Get-ChildItem -LiteralPath $initialBackupPath -File -ErrorAction SilentlyContinue).Count -eq 0) "Fresh startup created an unnecessary backup"
 
@@ -96,6 +106,28 @@ try {
     $healthyAfter = Read-PidDocument $pidPath
     Assert-True ($healthyAfter.backend.pid -eq $healthyBefore.backend.pid) "Healthy second start replaced the backend"
     Assert-True ($healthyAfter.frontend.pid -eq $healthyBefore.frontend.pid) "Healthy second start replaced the frontend"
+    Assert-True ($healthyAfter.worker.pid -eq $healthyBefore.worker.pid) "Healthy second start replaced the Worker"
+
+    $workerMissingBefore = Read-PidDocument $pidPath
+    Stop-Process -Id ([int]$workerMissingBefore.worker.pid) -Force -ErrorAction Stop
+    Wait-Process -Id ([int]$workerMissingBefore.worker.pid) -Timeout 5 -ErrorAction SilentlyContinue
+    & $startScript -RuntimeRoot $runtimeRoot -NoBrowser -DisableDotenv -StartupTimeoutSeconds 60
+    $workerMissingAfter = Read-PidDocument $pidPath
+    Assert-True ($workerMissingAfter.backend.pid -eq $workerMissingBefore.backend.pid) "Worker recovery replaced healthy Backend"
+    Assert-True ($workerMissingAfter.frontend.pid -eq $workerMissingBefore.frontend.pid) "Worker recovery replaced healthy Frontend"
+    Assert-True ($workerMissingAfter.worker.pid -ne $workerMissingBefore.worker.pid) "Missing Worker was not recovered"
+
+    $workerUnhealthyBefore = Read-PidDocument $pidPath
+    $workerStatusPath = Join-Path $runtimeRoot "execution-worker.status.json"
+    $staleWorkerStatus = Get-Content -LiteralPath $workerStatusPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $staleWorkerStatus.updated_at_utc = (Get-Date).ToUniversalTime().AddMinutes(-5).ToString("o")
+    $staleWorkerStatus | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $workerStatusPath -Encoding UTF8
+    & $startScript -RuntimeRoot $runtimeRoot -NoBrowser -DisableDotenv -StartupTimeoutSeconds 60
+    $workerUnhealthyAfter = Read-PidDocument $pidPath
+    Assert-ProcessExited ([int]$workerUnhealthyBefore.worker.pid) "Unhealthy Worker was not stopped"
+    Assert-True ($workerUnhealthyAfter.backend.pid -eq $workerUnhealthyBefore.backend.pid) "Unhealthy Worker recovery replaced Backend"
+    Assert-True ($workerUnhealthyAfter.frontend.pid -eq $workerUnhealthyBefore.frontend.pid) "Unhealthy Worker recovery replaced Frontend"
+    Assert-True ($workerUnhealthyAfter.worker.pid -ne $workerUnhealthyBefore.worker.pid) "Unhealthy Worker was not replaced"
 
     $payload = @{
         name = "Standalone Persistence Check"
@@ -107,7 +139,11 @@ try {
     $created = Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/api/v1/products" -ContentType "application/json" -Body $payload -TimeoutSec 5
     Assert-True ($created.name -eq "Standalone Persistence Check") "Persistence marker was not created"
 
+    $beforeFirstStop = Read-PidDocument $pidPath
     & $stopScript -RuntimeRoot $runtimeRoot
+    Assert-ProcessExited ([int]$beforeFirstStop.backend.pid) "Stop left Backend running"
+    Assert-ProcessExited ([int]$beforeFirstStop.frontend.pid) "Stop left Frontend running"
+    Assert-ProcessExited ([int]$beforeFirstStop.worker.pid) "Stop left Worker running"
     $headHashBefore = (Get-FileHash -LiteralPath $databasePath -Algorithm SHA256).Hash
     $headBackupsBefore = @(Get-ChildItem -LiteralPath $initialBackupPath -File -ErrorAction SilentlyContinue).Count
     & $startScript -RuntimeRoot $runtimeRoot -NoBrowser -DisableDotenv -StartupTimeoutSeconds 60
@@ -123,6 +159,7 @@ try {
     Wait-Process -Id ([int]$backendOnlyBefore.frontend.pid) -Timeout 5 -ErrorAction SilentlyContinue
     & $startScript -RuntimeRoot $runtimeRoot -NoBrowser -DisableDotenv -StartupTimeoutSeconds 60
     Assert-ProcessExited ([int]$backendOnlyBefore.backend.pid) "Backend residue was not stopped before restart"
+    Assert-ProcessExited ([int]$backendOnlyBefore.worker.pid) "Backend residue recovery did not stop Worker"
     $afterBackendResidue = Read-PidDocument $pidPath
     Assert-True ($afterBackendResidue.backend.pid -ne $backendOnlyBefore.backend.pid) "Backend residue was reused"
     Assert-True ($null -ne (Get-Process -Id $unrelated.Id -ErrorAction SilentlyContinue)) "Backend-residue recovery stopped an unrelated process"
@@ -132,6 +169,7 @@ try {
     Wait-Process -Id ([int]$frontendOnlyBefore.backend.pid) -Timeout 5 -ErrorAction SilentlyContinue
     & $startScript -RuntimeRoot $runtimeRoot -NoBrowser -DisableDotenv -StartupTimeoutSeconds 60
     Assert-ProcessExited ([int]$frontendOnlyBefore.frontend.pid) "Frontend residue was not stopped before restart"
+    Assert-ProcessExited ([int]$frontendOnlyBefore.worker.pid) "Frontend residue recovery did not stop Worker"
     $afterFrontendResidue = Read-PidDocument $pidPath
     Assert-True ($afterFrontendResidue.frontend.pid -ne $frontendOnlyBefore.frontend.pid) "Frontend residue was reused"
     Assert-True ($null -ne (Get-Process -Id $unrelated.Id -ErrorAction SilentlyContinue)) "Frontend-residue recovery stopped an unrelated process"
@@ -187,7 +225,7 @@ try {
     Assert-True ($productCountAfterRestart -eq 1) "Second startup did not preserve the database"
     Assert-True ($productsAfterRestart[0].name -eq "Standalone Persistence Check") "Second startup replaced persisted data"
 
-    $logs = Get-Content -Path (Join-Path $runtimeRoot "logs\backend-*.stdout.log") -ErrorAction Stop
+    $logs = Get-Content -Path (Join-Path $runtimeRoot "logs\*.stdout.log") -ErrorAction Stop
     $providerOperations = @($logs | Select-String -Pattern "/execute", "render-execution", "live-render", "social-accounts/youtube/connect", "/publish")
     Assert-True ($providerOperations.Count -eq 0) "Startup issued a Provider operation request"
 

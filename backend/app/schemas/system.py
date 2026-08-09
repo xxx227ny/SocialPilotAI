@@ -15,6 +15,10 @@ class DatabaseSystemComponentRead(SystemComponentRead):
     revision: str | None = None
 
 
+class ExecutionWorkerSystemComponentRead(SystemComponentRead):
+    status: Literal["healthy", "not_running", "stale"]
+
+
 class SystemReadinessRead(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -24,6 +28,7 @@ class SystemReadinessRead(BaseModel):
     google_youtube: SystemComponentRead
     database: DatabaseSystemComponentRead
     artifact_storage: SystemComponentRead
+    execution_worker: ExecutionWorkerSystemComponentRead
     provider_calls: Literal[0] = 0
     database_writes: Literal[0] = 0
     automatic_actions: Literal[False] = False

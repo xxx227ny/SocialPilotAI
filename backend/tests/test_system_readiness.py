@@ -1,5 +1,11 @@
+import ctypes
 import json
+import os
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from types import SimpleNamespace
 
+import pytest
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select, text
@@ -13,6 +19,7 @@ from app.api.dependencies import (
 from app.core.config import Settings, get_settings
 from app.main import app
 from app.models import Product
+from app.services import system_readiness_service as readiness_module
 from app.services.database_migration_service import HEAD_REVISION
 
 
@@ -26,6 +33,18 @@ def mark_database_at_head(session: Session) -> None:
 
 
 def ready_settings(artifact_root: str) -> Settings:
+    worker_status = Path(artifact_root) / "worker-status.json"
+    worker_status.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "state": "healthy",
+                "pid": os.getpid(),
+                "updated_at_utc": datetime.now(UTC).isoformat(),
+            }
+        ),
+        encoding="utf-8",
+    )
     return Settings(
         _env_file=None,
         qwen_api_key="fake-qwen-readiness-key",
@@ -38,6 +57,7 @@ def ready_settings(artifact_root: str) -> Settings:
         ),
         social_token_encryption_key=Fernet.generate_key().decode("ascii"),
         video_artifact_storage_root=artifact_root,
+        execution_worker_status_file=str(worker_status),
         enable_strategy_execution=True,
         enable_copy_execution=True,
         enable_video_project_execution=True,
@@ -81,6 +101,7 @@ def test_readiness_is_provider_free_read_only_and_secret_safe(
             "google_youtube",
             "database",
             "artifact_storage",
+            "execution_worker",
         )
     )
     assert body["provider_calls"] == 0
@@ -131,6 +152,8 @@ def test_readiness_explains_missing_local_configuration(
     assert "WANX_API_KEY" in body["wanx"]["message"]
     assert body["google_youtube"]["ready"] is False
     assert body["artifact_storage"]["ready"] is False
+    assert body["execution_worker"]["ready"] is False
+    assert body["execution_worker"]["status"] == "not_running"
 
 
 def test_readiness_reports_unversioned_database_without_path_or_write(
@@ -151,3 +174,119 @@ def test_readiness_reports_unversioned_database_without_path_or_write(
     assert database["revision"] is None
     assert "Runtime" not in database["message"]
     assert before == after == 0
+
+
+def test_readiness_reports_stale_worker_without_exposing_identity(
+    client: TestClient,
+    db_session: Session,
+    tmp_path,
+) -> None:
+    settings = ready_settings(str(tmp_path))
+    worker_status = Path(settings.execution_worker_status_file or "")
+    worker_status.write_text(
+        json.dumps(
+            {
+                "state": "healthy",
+                "pid": 98765,
+                "worker_path": "must-not-leak",
+                "updated_at_utc": (
+                    datetime.now(UTC) - timedelta(minutes=2)
+                ).isoformat(),
+            }
+        ),
+        encoding="utf-8",
+    )
+    app.dependency_overrides[get_settings] = lambda: settings
+    mark_database_at_head(db_session)
+
+    response = client.get("/api/v1/system/readiness")
+
+    assert response.status_code == 200
+    worker = response.json()["execution_worker"]
+    assert worker == {
+        "ready": False,
+        "message": "Execution Worker heartbeat is stale; restart SocialPilotAI safely.",
+        "status": "stale",
+    }
+    serialized = json.dumps(response.json())
+    assert "98765" not in serialized
+    assert "must-not-leak" not in serialized
+
+
+class FakeWin32Function:
+    def __init__(self, callback):
+        self.callback = callback
+        self.argtypes = None
+        self.restype = None
+
+    def __call__(self, *args):
+        return self.callback(*args)
+
+
+def test_windows_process_check_uses_open_process_and_closes_handle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    closed: list[int] = []
+
+    def get_exit_code(_handle, exit_code) -> int:
+        exit_code._obj.value = 259
+        return 1
+
+    kernel32 = SimpleNamespace(
+        OpenProcess=FakeWin32Function(lambda *_args: 41),
+        GetExitCodeProcess=FakeWin32Function(get_exit_code),
+        CloseHandle=FakeWin32Function(lambda handle: closed.append(handle) or 1),
+    )
+    monkeypatch.setattr(
+        ctypes, "WinDLL", lambda *_args, **_kwargs: kernel32, raising=False
+    )
+
+    assert readiness_module._windows_process_state(1234) == "running"
+    assert closed == [41]
+
+
+def test_windows_process_branch_never_calls_os_kill(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(readiness_module.sys, "platform", "win32")
+    monkeypatch.setattr(
+        readiness_module, "_windows_process_state", lambda _pid: "running"
+    )
+    monkeypatch.setattr(
+        readiness_module.os,
+        "kill",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("os.kill called")),
+    )
+
+    assert readiness_module._process_state(1234) == "running"
+
+
+@pytest.mark.parametrize(
+    ("process_state", "message_fragment"),
+    [
+        ("missing", "is not running"),
+        ("unknown", "could not be safely confirmed"),
+    ],
+)
+def test_readiness_safely_reports_missing_or_unconfirmed_windows_worker(
+    client: TestClient,
+    db_session: Session,
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    process_state: str,
+    message_fragment: str,
+) -> None:
+    settings = ready_settings(str(tmp_path))
+    app.dependency_overrides[get_settings] = lambda: settings
+    monkeypatch.setattr(
+        readiness_module, "_process_state", lambda _pid: process_state
+    )
+    mark_database_at_head(db_session)
+
+    response = client.get("/api/v1/system/readiness")
+
+    assert response.status_code == 200
+    worker = response.json()["execution_worker"]
+    assert worker["ready"] is False
+    assert worker["status"] == "not_running"
+    assert message_fragment in worker["message"]

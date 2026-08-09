@@ -10,7 +10,8 @@ type ComponentKey =
   | "wanx"
   | "google_youtube"
   | "database"
-  | "artifact_storage";
+  | "artifact_storage"
+  | "execution_worker";
 
 const COMPONENTS: Array<{ key: ComponentKey; label: string }> = [
   { key: "backend", label: "Backend" },
@@ -19,6 +20,7 @@ const COMPONENTS: Array<{ key: ComponentKey; label: string }> = [
   { key: "google_youtube", label: "Google / YouTube" },
   { key: "database", label: "Database" },
   { key: "artifact_storage", label: "Artifact Storage" },
+  { key: "execution_worker", label: "Execution Worker" },
 ];
 
 export function SystemReadinessPanel() {

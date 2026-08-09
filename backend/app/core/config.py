@@ -60,6 +60,8 @@ class Settings(BaseSettings):
     wanx_timeout: float = Field(default=30, gt=0, le=300)
     enable_live_wanx_demo: bool = False
     video_artifact_storage_root: str | None = None
+    execution_worker_status_file: str | None = None
+    execution_worker_stale_seconds: int = Field(default=15, ge=5, le=300)
     video_artifact_max_bytes: int = Field(
         default=50_000_000, gt=0, le=500_000_000
     )

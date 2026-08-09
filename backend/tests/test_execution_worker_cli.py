@@ -1,0 +1,108 @@
+import hashlib
+import json
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+from app.services.database_migration_service import HEAD_REVISION, _run_alembic
+
+
+def file_hash(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def wait_for_state(path: Path, expected: str, timeout: float = 8) -> dict:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if path.is_file():
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            if payload.get("state") == expected:
+                return payload
+        time.sleep(0.05)
+    raise AssertionError(f"Worker did not report {expected}")
+
+
+def test_worker_cli_idles_updates_status_and_stops_without_database_write(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "worker.db"
+    status = tmp_path / "worker.status.json"
+    stop = tmp_path / "worker.stop"
+    _run_alembic(database, "upgrade", HEAD_REVISION)
+    before_hash = file_hash(database)
+    environment = os.environ.copy()
+    environment["SOCIALPILOT_DISABLE_DOTENV"] = "1"
+
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "app.cli.execution_worker",
+            "--database",
+            str(database),
+            "--status-file",
+            str(status),
+            "--stop-file",
+            str(stop),
+            "--instance-id",
+            "test-worker-instance-0001",
+            "--poll-seconds",
+            "0.25",
+        ],
+        cwd=Path(__file__).resolve().parents[1],
+        env=environment,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        first = wait_for_state(status, "healthy")
+        time.sleep(0.4)
+        second = wait_for_state(status, "healthy")
+        assert second["updated_at_utc"] >= first["updated_at_utc"]
+        stop.write_text("stop", encoding="ascii")
+        stdout, stderr = process.communicate(timeout=8)
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
+
+    assert process.returncode == 0, f"stdout={stdout!r} stderr={stderr!r}"
+    stopped = wait_for_state(status, "stopped")
+    assert isinstance(stopped["pid"], int) and stopped["pid"] > 0
+    assert not stop.exists()
+    assert file_hash(database) == before_hash
+    output = f"{stdout}\n{stderr}".casefold()
+    for forbidden in ("token", "secret", "authorization", "cookie", "payload"):
+        assert forbidden not in output
+
+
+def test_worker_cli_refuses_database_before_head(tmp_path: Path) -> None:
+    database = tmp_path / "unversioned.db"
+    database.touch()
+    status = tmp_path / "status.json"
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "app.cli.execution_worker",
+            "--database",
+            str(database),
+            "--status-file",
+            str(status),
+            "--stop-file",
+            str(tmp_path / "stop"),
+            "--instance-id",
+            "test-worker-instance-0002",
+        ],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        text=True,
+        timeout=8,
+        check=False,
+    )
+
+    assert result.returncode == 2
+    assert not status.exists()

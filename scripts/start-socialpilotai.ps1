@@ -40,10 +40,18 @@ function Get-VerifiedRecordedProcess {
 }
 
 function Stop-VerifiedRecordedProcesses {
-    param([Parameter(Mandatory = $true)][array]$Targets)
+    param(
+        [Parameter(Mandatory = $true)][array]$Targets,
+        [string]$WorkerStopFile
+    )
 
     foreach ($target in $Targets) {
-        Stop-Process -Id $target.process.Id -ErrorAction Stop
+        if ($target.name -eq "worker" -and $WorkerStopFile) {
+            Set-Content -LiteralPath $WorkerStopFile -Value "stop" -Encoding ASCII
+        }
+        else {
+            Stop-Process -Id $target.process.Id -ErrorAction Stop
+        }
     }
     foreach ($target in $Targets) {
         try {
@@ -60,16 +68,65 @@ function Stop-VerifiedRecordedProcesses {
     }
 }
 
+function Get-OptionalRecord {
+    param($Document, [Parameter(Mandatory = $true)][string]$Name)
+    $property = $Document.PSObject.Properties[$Name]
+    if ($null -eq $property) { return $null }
+    return $property.Value
+}
+
+function Test-WorkerHealthy {
+    param(
+        [Parameter(Mandatory = $true)]$Process,
+        [Parameter(Mandatory = $true)][string]$StatusFile,
+        [Parameter(Mandatory = $true)][string]$InstanceId
+    )
+    if (-not (Test-Path -LiteralPath $StatusFile -PathType Leaf)) { return $false }
+    try {
+        $status = Get-Content -LiteralPath $StatusFile -Raw -Encoding UTF8 | ConvertFrom-Json
+        $updated = [DateTime]::Parse(
+            [string]$status.updated_at_utc,
+            [Globalization.CultureInfo]::InvariantCulture,
+            [Globalization.DateTimeStyles]::RoundtripKind
+        ).ToUniversalTime()
+        $age = ((Get-Date).ToUniversalTime() - $updated).TotalSeconds
+        return (
+            $status.state -eq "healthy" -and
+            [string]$status.instance_id -eq $InstanceId -and
+            $age -ge -5 -and $age -le 15
+        )
+    }
+    catch { return $false }
+}
+
+function Wait-WorkerReady {
+    param(
+        [Parameter(Mandatory = $true)]$Process,
+        [Parameter(Mandatory = $true)][string]$StatusFile,
+        [Parameter(Mandatory = $true)][string]$InstanceId,
+        [Parameter(Mandatory = $true)][DateTime]$Deadline
+    )
+    do {
+        if ($Process.HasExited) { throw "Execution Worker exited during startup." }
+        if (Test-WorkerHealthy -Process $Process -StatusFile $StatusFile -InstanceId $InstanceId) { return }
+        Start-Sleep -Milliseconds 250
+    } while ((Get-Date) -lt $Deadline)
+    throw "Timed out waiting for the Execution Worker heartbeat."
+}
+
 function Test-HttpHealthy {
     param([Parameter(Mandatory = $true)][string]$Uri)
 
-    try {
-        $response = Invoke-WebRequest -UseBasicParsing -Uri $Uri -TimeoutSec 2
-        return $response.StatusCode -eq 200
+    foreach ($attempt in 1..3) {
+        try {
+            $response = Invoke-WebRequest -UseBasicParsing -Uri $Uri -TimeoutSec 3
+            if ($response.StatusCode -eq 200) { return $true }
+        }
+        catch {
+            if ($attempt -lt 3) { Start-Sleep -Milliseconds 250 }
+        }
     }
-    catch {
-        return $false
-    }
+    return $false
 }
 
 function Open-ProductCenter {
@@ -185,6 +242,8 @@ $dataPath = Join-Path $runtimePath "data"
 $artifactPath = Join-Path $runtimePath "artifacts"
 $logPath = Join-Path $runtimePath "logs"
 $pidPath = Join-Path $runtimePath "socialpilotai.pids.json"
+$workerStatusPath = Join-Path $runtimePath "execution-worker.status.json"
+$workerStopPath = Join-Path $runtimePath "execution-worker.stop"
 $databasePath = Join-Path $dataPath "socialpilot.db"
 $migrationBackupPath = Join-Path $runtimePath "backups\database-migrations"
 
@@ -192,6 +251,9 @@ New-Item -ItemType Directory -Path $dataPath -Force | Out-Null
 New-Item -ItemType Directory -Path $artifactPath -Force | Out-Null
 New-Item -ItemType Directory -Path $logPath -Force | Out-Null
 
+$recoverWorkerOnly = $false
+$preservedBackendRecord = $null
+$preservedFrontendRecord = $null
 if (Test-Path -LiteralPath $pidPath -PathType Leaf) {
     $existing = $null
     try {
@@ -203,48 +265,79 @@ if (Test-Path -LiteralPath $pidPath -PathType Leaf) {
     if ($null -ne $existing) {
         $verified = @()
         foreach ($record in @(
-            [pscustomobject]@{ name = "backend"; value = $existing.backend },
-            [pscustomobject]@{ name = "frontend"; value = $existing.frontend }
+            [pscustomobject]@{ name = "backend"; value = (Get-OptionalRecord $existing "backend") },
+            [pscustomobject]@{ name = "frontend"; value = (Get-OptionalRecord $existing "frontend") },
+            [pscustomobject]@{ name = "worker"; value = (Get-OptionalRecord $existing "worker") }
         )) {
+            if ($null -eq $record.value) { continue }
             $process = Get-VerifiedRecordedProcess $record.value
             if ($null -ne $process) {
                 $verified += [pscustomobject]@{ name = $record.name; process = $process }
             }
         }
 
-        if ($verified.Count -eq 2) {
-            $backendHealthy = Test-HttpHealthy "http://127.0.0.1:8000/api/v1/health"
-            $frontendHealthy = Test-HttpHealthy "http://127.0.0.1:5173/products"
-            if ($backendHealthy -and $frontendHealthy) {
+        $verifiedBackend = @($verified | Where-Object name -eq "backend")
+        $verifiedFrontend = @($verified | Where-Object name -eq "frontend")
+        $verifiedWorker = @($verified | Where-Object name -eq "worker")
+        $backendHealthy = $verifiedBackend.Count -eq 1 -and (Test-HttpHealthy "http://127.0.0.1:8000/api/v1/health")
+        $frontendHealthy = $verifiedFrontend.Count -eq 1 -and (Test-HttpHealthy "http://127.0.0.1:5173/products")
+        $workerRecord = Get-OptionalRecord $existing "worker"
+        $workerInstanceProperty = if ($null -ne $workerRecord) { $workerRecord.PSObject.Properties["instance_id"] } else { $null }
+        $workerInstance = if ($null -ne $workerInstanceProperty) { [string]$workerInstanceProperty.Value } else { "" }
+        $workerHealthy = $verifiedWorker.Count -eq 1 -and $workerInstance -and (Test-WorkerHealthy -Process $verifiedWorker[0].process -StatusFile $workerStatusPath -InstanceId $workerInstance)
+        $pidVersion = if ($null -ne $existing.PSObject.Properties["version"]) { [int]$existing.version } else { 1 }
+        Write-Host "Recorded health: Backend=$backendHealthy Frontend=$frontendHealthy Worker=$workerHealthy."
+
+        if ($backendHealthy -and $frontendHealthy -and $workerHealthy -and $pidVersion -eq 2) {
                 Write-Host "SocialPilotAI is already running."
                 Write-Host "Product Center: http://127.0.0.1:5173/products"
                 if (-not $NoBrowser) {
                     Open-ProductCenter
                 }
                 exit 0
-            }
-            Write-Host "Recorded services are not healthy. Restarting both services."
-            Stop-VerifiedRecordedProcesses $verified
         }
-        elseif ($verified.Count -eq 1) {
-            Write-Host "A partial SocialPilotAI service was found. Restarting both services."
-            Stop-VerifiedRecordedProcesses $verified
+        elseif ($backendHealthy -and $frontendHealthy -and $pidVersion -eq 2) {
+            Write-Host "Execution Worker is missing or unhealthy. Recovering only the recorded Worker."
+            if ($verifiedWorker.Count -eq 1) {
+                Stop-VerifiedRecordedProcesses -Targets $verifiedWorker -WorkerStopFile $workerStopPath
+            }
+            $recoverWorkerOnly = $true
+            $preservedBackendRecord = $existing.backend
+            $preservedFrontendRecord = $existing.frontend
         }
         else {
-            Write-Host "Removing an expired SocialPilotAI PID file."
+            if ($verified.Count -gt 0) {
+                Write-Host "Recorded services are partial or unhealthy. Restarting the verified SocialPilotAI processes."
+                Stop-VerifiedRecordedProcesses -Targets $verified -WorkerStopFile $workerStopPath
+            }
+            else {
+                Write-Host "Removing an expired SocialPilotAI PID file."
+            }
         }
     }
     Remove-Item -LiteralPath $pidPath -Force
 }
 
-Assert-PortAvailable 8000
-Assert-PortAvailable 5173
+if (-not $recoverWorkerOnly) {
+    Assert-PortAvailable 8000
+    Assert-PortAvailable 5173
+}
 
 $migrationStatus = Get-DatabaseMigrationStatus -Python $pythonPath -Backend $backendRoot -Database $databasePath
 if ($migrationStatus.state -eq "head" -and $migrationStatus.ready) {
     Write-Host "Database migration status: verified Alembic head."
 }
 elseif ($migrationStatus.upgrade_required) {
+    if ($recoverWorkerOnly) {
+        $preserved = @(
+            [pscustomobject]@{ name = "backend"; process = (Get-VerifiedRecordedProcess $preservedBackendRecord) },
+            [pscustomobject]@{ name = "frontend"; process = (Get-VerifiedRecordedProcess $preservedFrontendRecord) }
+        ) | Where-Object { $null -ne $_.process }
+        Stop-VerifiedRecordedProcesses -Targets $preserved -WorkerStopFile $workerStopPath
+        $recoverWorkerOnly = $false
+        Assert-PortAvailable 8000
+        Assert-PortAvailable 5173
+    }
     Write-Host "Database migration is required. Creating a verified backup when applicable."
     Invoke-SafeDatabaseUpgrade -Python $pythonPath -Backend $backendRoot -Database $databasePath -BackupDirectory $migrationBackupPath
     $migrationStatus = Get-DatabaseMigrationStatus -Python $pythonPath -Backend $backendRoot -Database $databasePath
@@ -254,9 +347,23 @@ elseif ($migrationStatus.upgrade_required) {
     Write-Host "Database migration completed at the verified Alembic head."
 }
 elseif ($migrationStatus.state -eq "locked") {
+    if ($recoverWorkerOnly) {
+        $preserved = @(
+            [pscustomobject]@{ name = "backend"; process = (Get-VerifiedRecordedProcess $preservedBackendRecord) },
+            [pscustomobject]@{ name = "frontend"; process = (Get-VerifiedRecordedProcess $preservedFrontendRecord) }
+        ) | Where-Object { $null -ne $_.process }
+        Stop-VerifiedRecordedProcesses -Targets $preserved -WorkerStopFile $workerStopPath
+    }
     throw "Database migration is locked by another operation. No services were started; the unknown lock was preserved."
 }
 else {
+    if ($recoverWorkerOnly) {
+        $preserved = @(
+            [pscustomobject]@{ name = "backend"; process = (Get-VerifiedRecordedProcess $preservedBackendRecord) },
+            [pscustomobject]@{ name = "frontend"; process = (Get-VerifiedRecordedProcess $preservedFrontendRecord) }
+        ) | Where-Object { $null -ne $_.process }
+        Stop-VerifiedRecordedProcesses -Targets $preserved -WorkerStopFile $workerStopPath
+    }
     throw "Database schema is not compatible with this SocialPilotAI version. No services were started; existing data was preserved."
 }
 
@@ -265,6 +372,8 @@ $backendOut = Join-Path $logPath "backend-$timestamp.stdout.log"
 $backendErr = Join-Path $logPath "backend-$timestamp.stderr.log"
 $frontendOut = Join-Path $logPath "frontend-$timestamp.stdout.log"
 $frontendErr = Join-Path $logPath "frontend-$timestamp.stderr.log"
+$workerOut = Join-Path $logPath "worker-$timestamp.stdout.log"
+$workerErr = Join-Path $logPath "worker-$timestamp.stderr.log"
 $sqlitePath = $databasePath.Replace("\", "/")
 
 # The standalone process loads backend/.env internally. Explicit process values
@@ -273,6 +382,7 @@ $env:SOCIALPILOT_DISABLE_DOTENV = if ($DisableDotenv) { "1" } else { "0" }
 $env:APP_ENVIRONMENT = "standalone"
 $env:DATABASE_URL = "sqlite:///$sqlitePath"
 $env:VIDEO_ARTIFACT_STORAGE_ROOT = $artifactPath
+$env:EXECUTION_WORKER_STATUS_FILE = $workerStatusPath
 $env:ENABLE_STRATEGY_EXECUTION = "true"
 $env:ENABLE_COPY_EXECUTION = "true"
 $env:ENABLE_V2_COPY_EXECUTION = "false"
@@ -286,66 +396,103 @@ $env:ENABLE_YOUTUBE_PUBLISHING = "true"
 
 $backend = $null
 $frontend = $null
+$worker = $null
 try {
-    $backendParameters = @{
+    Remove-Item -LiteralPath $workerStopPath -Force -ErrorAction SilentlyContinue
+    $workerInstance = [Guid]::NewGuid().ToString("N")
+    $workerParameters = @{
         FilePath = $pythonPath
-        ArgumentList = @("-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000")
+        ArgumentList = @(
+            "-m", "app.cli.execution_worker",
+            "--database", $databasePath,
+            "--status-file", $workerStatusPath,
+            "--stop-file", $workerStopPath,
+            "--instance-id", $workerInstance,
+            "--poll-seconds", "2"
+        )
         WorkingDirectory = $backendRoot
-        RedirectStandardOutput = $backendOut
-        RedirectStandardError = $backendErr
+        RedirectStandardOutput = $workerOut
+        RedirectStandardError = $workerErr
         WindowStyle = "Hidden"
         PassThru = $true
     }
-    $backend = Start-Process @backendParameters
+    $worker = Start-Process @workerParameters
+    $deadline = (Get-Date).AddSeconds($StartupTimeoutSeconds)
+    Wait-WorkerReady -Process $worker -StatusFile $workerStatusPath -InstanceId $workerInstance -Deadline $deadline
 
-    $env:VITE_API_BASE_URL = "http://127.0.0.1:8000/api/v1"
-    $env:VITE_ENABLE_STRATEGY_EXECUTION = "true"
-    $env:VITE_ENABLE_COPY_EXECUTION = "true"
-    $env:VITE_ENABLE_V2_COPY_EXECUTION = "false"
-    $env:VITE_ENABLE_VIDEO_PROJECT_EXECUTION = "true"
-    $env:VITE_ENABLE_V2_VIDEO_PROJECT_EXECUTION = "false"
-    $env:VITE_ENABLE_VIDEO_RENDER_EXECUTION = "true"
-    $env:VITE_ENABLE_GROWTH_EXECUTION = "false"
-    $env:VITE_ENABLE_SOCIAL_ACCOUNT_BINDING = "true"
-    $env:VITE_ENABLE_YOUTUBE_PUBLISHING = "true"
+    if (-not $recoverWorkerOnly) {
+        $backendParameters = @{
+            FilePath = $pythonPath
+            ArgumentList = @("-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000")
+            WorkingDirectory = $backendRoot
+            RedirectStandardOutput = $backendOut
+            RedirectStandardError = $backendErr
+            WindowStyle = "Hidden"
+            PassThru = $true
+        }
+        $backend = Start-Process @backendParameters
 
-    $frontendParameters = @{
-        FilePath = $nodePath
-        ArgumentList = @($quotedViteScript, "--host", "127.0.0.1", "--port", "5173")
-        WorkingDirectory = $frontendRoot
-        RedirectStandardOutput = $frontendOut
-        RedirectStandardError = $frontendErr
-        WindowStyle = "Hidden"
-        PassThru = $true
+        $env:VITE_API_BASE_URL = "http://127.0.0.1:8000/api/v1"
+        $env:VITE_ENABLE_STRATEGY_EXECUTION = "true"
+        $env:VITE_ENABLE_COPY_EXECUTION = "true"
+        $env:VITE_ENABLE_V2_COPY_EXECUTION = "false"
+        $env:VITE_ENABLE_VIDEO_PROJECT_EXECUTION = "true"
+        $env:VITE_ENABLE_V2_VIDEO_PROJECT_EXECUTION = "false"
+        $env:VITE_ENABLE_VIDEO_RENDER_EXECUTION = "true"
+        $env:VITE_ENABLE_GROWTH_EXECUTION = "false"
+        $env:VITE_ENABLE_SOCIAL_ACCOUNT_BINDING = "true"
+        $env:VITE_ENABLE_YOUTUBE_PUBLISHING = "true"
+
+        $frontendParameters = @{
+            FilePath = $nodePath
+            ArgumentList = @($quotedViteScript, "--host", "127.0.0.1", "--port", "5173")
+            WorkingDirectory = $frontendRoot
+            RedirectStandardOutput = $frontendOut
+            RedirectStandardError = $frontendErr
+            WindowStyle = "Hidden"
+            PassThru = $true
+        }
+        $frontend = Start-Process @frontendParameters
     }
-    $frontend = Start-Process @frontendParameters
+
+    $backendRecord = if ($recoverWorkerOnly) { $preservedBackendRecord } else { [ordered]@{
+        pid = $backend.Id
+        executable = $pythonPath
+        started_at_utc = $backend.StartTime.ToUniversalTime().ToString("o")
+        stdout_log = $backendOut
+        stderr_log = $backendErr
+    } }
+    $frontendRecord = if ($recoverWorkerOnly) { $preservedFrontendRecord } else { [ordered]@{
+        pid = $frontend.Id
+        executable = $nodePath
+        started_at_utc = $frontend.StartTime.ToUniversalTime().ToString("o")
+        stdout_log = $frontendOut
+        stderr_log = $frontendErr
+    } }
 
     $pidDocument = [ordered]@{
-        version = 1
+        version = 2
         repository_root = $repositoryRoot
         runtime_root = $runtimePath
         database = $databasePath
         artifacts = $artifactPath
-        backend = [ordered]@{
-            pid = $backend.Id
+        backend = $backendRecord
+        frontend = $frontendRecord
+        worker = [ordered]@{
+            pid = $worker.Id
             executable = $pythonPath
-            started_at_utc = $backend.StartTime.ToUniversalTime().ToString("o")
-            stdout_log = $backendOut
-            stderr_log = $backendErr
-        }
-        frontend = [ordered]@{
-            pid = $frontend.Id
-            executable = $nodePath
-            started_at_utc = $frontend.StartTime.ToUniversalTime().ToString("o")
-            stdout_log = $frontendOut
-            stderr_log = $frontendErr
+            started_at_utc = $worker.StartTime.ToUniversalTime().ToString("o")
+            stdout_log = $workerOut
+            stderr_log = $workerErr
+            status_file = $workerStatusPath
+            stop_file = $workerStopPath
+            instance_id = $workerInstance
         }
     }
     $pidTemp = "$pidPath.tmp"
     $pidDocument | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $pidTemp -Encoding UTF8
     Move-Item -LiteralPath $pidTemp -Destination $pidPath -Force
 
-    $deadline = (Get-Date).AddSeconds($StartupTimeoutSeconds)
     Wait-HttpReady "http://127.0.0.1:8000/api/v1/health" $deadline
     Wait-HttpReady "http://127.0.0.1:5173/products" $deadline
 
@@ -357,15 +504,23 @@ try {
     Write-Host "Qwen ready: $($readiness.qwen.ready)"
     Write-Host "Wanx ready: $($readiness.wanx.ready)"
     Write-Host "Google/YouTube ready: $($readiness.google_youtube.ready)"
+    Write-Host "Execution Worker ready: $($readiness.execution_worker.ready)"
     if (-not $NoBrowser) {
         Open-ProductCenter
     }
 }
 catch {
-    foreach ($process in @($frontend, $backend)) {
+    foreach ($process in @($frontend, $backend, $worker)) {
         if ($null -ne $process -and -not $process.HasExited) {
             Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
         }
+    }
+    if ($recoverWorkerOnly) {
+        $preserved = @(
+            [pscustomobject]@{ name = "backend"; process = (Get-VerifiedRecordedProcess $preservedBackendRecord) },
+            [pscustomobject]@{ name = "frontend"; process = (Get-VerifiedRecordedProcess $preservedFrontendRecord) }
+        ) | Where-Object { $null -ne $_.process }
+        Stop-VerifiedRecordedProcesses -Targets $preserved -WorkerStopFile $workerStopPath
     }
     Remove-Item -LiteralPath $pidPath -Force -ErrorAction SilentlyContinue
     throw

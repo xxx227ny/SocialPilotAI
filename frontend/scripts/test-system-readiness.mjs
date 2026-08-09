@@ -18,6 +18,7 @@ for (const label of [
   "Google / YouTube",
   "Database",
   "Artifact Storage",
+  "Execution Worker",
 ]) {
   assert.match(component, new RegExp(label.replace("/", "\\/")));
 }
@@ -33,5 +34,7 @@ assert.match(types, /automatic_actions: false/);
 assert.match(types, /revision_status: "head" \| "upgrade_required" \| "unavailable"/);
 assert.match(types, /revision: string \| null/);
 assert.match(component, /Revision:/);
+assert.match(types, /status: "healthy" \| "not_running" \| "stale"/);
+assert.doesNotMatch(types, /worker_pid|worker_path|lease_owner_digest/i);
 
 console.log("System readiness frontend checks passed: safe labels, local guidance, Presentation isolation, no secret fields");
