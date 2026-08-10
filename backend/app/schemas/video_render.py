@@ -67,6 +67,17 @@ class VideoRenderTaskSafeRead(BaseModel):
     error_message: str | None
     created_at: datetime
     updated_at: datetime
+    external_call: Literal[False] = False
+
+
+class VideoRenderTaskPublicRead(VideoRenderTaskSafeRead):
+    provider_task_id: None = None
+
+    @field_validator("provider_task_id", mode="before")
+    @classmethod
+    def redact_provider_task_id(cls, value: object) -> None:
+        del value
+        return None
 
 
 class VideoRenderArtifactReferenceRead(BaseModel):
@@ -147,9 +158,46 @@ class VideoRenderPreflightRead(BaseModel):
     aspect_ratio: str
     scene_count: int
     project_status: str
+    scene_sequence: Literal[1] = 1
+    resolution: Literal["720P"] = "720P"
+    provider_model: str
+    render_contract_version: str
+    input_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    preflight_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    expires_at: datetime
     preflight_only: Literal[True] = True
     estimated_cost_notice: str
     association_notice: str
+
+
+class VideoRenderSubmitJobRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    product_id: int = Field(gt=0)
+    marketing_strategy_id: int = Field(gt=0)
+    copy_matrix_id: int = Field(gt=0)
+    input_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    preflight_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    preflight_expires_at: datetime
+    cost_confirmed: Literal[True]
+
+    @field_validator("preflight_expires_at")
+    @classmethod
+    def require_timezone(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("preflight_expires_at must include a timezone")
+        return value
+
+
+class VideoRenderRefreshJobRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    video_project_id: int = Field(gt=0)
+    refresh_request_id: str = Field(
+        min_length=16,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9._:-]+$",
+    )
 
 
 class LiveVideoRenderRequest(BaseModel):

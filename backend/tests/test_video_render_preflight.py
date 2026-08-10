@@ -1,9 +1,10 @@
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.api.dependencies import get_visual_generation_provider
 from app.core.config import Settings, get_settings
@@ -15,6 +16,7 @@ from app.models import (
     VideoRenderTask,
 )
 from app.models.product import utc_now
+from app.services.video_render_preflight import VideoRenderPreflightService
 from tests.test_video_render_service import create_video_project
 
 
@@ -88,6 +90,12 @@ def test_exact_project_and_preflight_are_read_only(
     assert body["ready_for_execution"] is False
     assert body["preflight_only"] is True
     assert body["scene_count"] == 2
+    assert body["scene_sequence"] == 1
+    assert body["resolution"] == "720P"
+    assert body["render_contract_version"] == "v1"
+    assert len(body["input_digest"]) == 64
+    assert len(body["preflight_digest"]) == 64
+    assert body["expires_at"]
     assert "video_render_execution" in body["missing_requirements"]
     assert "artifact_storage_configuration" in body["missing_requirements"]
     assert (
@@ -105,6 +113,33 @@ def test_exact_project_and_preflight_are_read_only(
     assert "MarketingBrief" in body["association_notice"]
     assert provider_resolutions == 0
     assert before == after == (0, 0)
+
+
+def test_render_input_digest_is_stable_and_preflight_expiry_is_independent(
+    db_session: Session, tmp_path: Path
+) -> None:
+    project = create_video_project(db_session)
+    app_settings = configured_settings(
+        execution_enabled=True, storage_root=tmp_path
+    )
+    service = VideoRenderPreflightService(db_session, app_settings)
+    first_expiry = datetime(2030, 1, 1, tzinfo=UTC)
+    second_expiry = first_expiry + timedelta(minutes=1)
+
+    first = service.run(project.id, expires_at=first_expiry)
+    repeated = service.run(project.id, expires_at=first_expiry)
+    later = service.run(project.id, expires_at=second_expiry)
+
+    assert first.input_digest == repeated.input_digest == later.input_digest
+    assert first.preflight_digest == repeated.preflight_digest
+    assert first.preflight_digest != later.preflight_digest
+    assert first.provider_model == app_settings.wanx_model
+
+    project.scenes[0]["visual_description"] = "Changed frozen first scene"
+    flag_modified(project, "scenes")
+    db_session.commit()
+    changed = service.run(project.id, expires_at=first_expiry)
+    assert changed.input_digest != first.input_digest
 
 
 def test_preflight_missing_project_returns_404(client: TestClient) -> None:

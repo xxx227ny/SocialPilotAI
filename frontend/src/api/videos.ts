@@ -11,6 +11,8 @@ import type {
   VideoRenderArtifactSafe,
   VideoRenderOperation,
   VideoRenderPreflight,
+  VideoRenderRefreshJobRequest,
+  VideoRenderSubmitJobRequest,
   V2VideoProjectExecutionRequest,
   V2VideoProjectExecutionResult,
   V2VideoProjectPreflight,
@@ -197,12 +199,13 @@ export function isVideoRenderTaskNotFound(error: unknown): boolean {
 
 export async function executeVideoProjectRender(
   videoProjectId: number,
+  payload: VideoRenderSubmitJobRequest,
   signal?: AbortSignal,
-): Promise<VideoRenderOperation> {
-  const response = await apiClient.post<VideoRenderOperation>(
+): Promise<ExecutionJobCreateResult> {
+  const response = await apiClient.post<ExecutionJobCreateResult>(
     `/video-projects/${videoProjectId}/render-execution`,
-    undefined,
-    { signal, timeout: AI_EXECUTION_TIMEOUT_MS },
+    payload,
+    { signal },
   );
   return response.data;
 }
@@ -231,14 +234,43 @@ export async function recoverVideoRenderTask(
 
 export async function refreshWorkspaceVideoRenderTask(
   taskId: number,
+  payload: VideoRenderRefreshJobRequest,
   signal?: AbortSignal,
-): Promise<VideoRenderOperation> {
-  await apiClient.post(
+): Promise<ExecutionJobCreateResult> {
+  const response = await apiClient.post<ExecutionJobCreateResult>(
     `/video-render-tasks/${taskId}/refresh`,
-    undefined,
+    payload,
     { signal },
   );
-  return recoverVideoRenderTask(taskId, signal);
+  return response.data;
+}
+
+export async function listVideoRenderJobs(
+  jobType: "wanx.video_render.submit.v1" | "wanx.video_render.refresh.v1",
+  sourceType: "video_project" | "video_render_task",
+  sourceId: number,
+  signal?: AbortSignal,
+): Promise<ExecutionJob[]> {
+  const response = await apiClient.get<ExecutionJob[]>("/execution-jobs", {
+    params: {
+      job_type: jobType,
+      source_type: sourceType,
+      source_id: sourceId,
+    },
+    signal,
+  });
+  return response.data;
+}
+
+export async function getVideoRenderJob(
+  jobId: number,
+  signal?: AbortSignal,
+): Promise<ExecutionJob> {
+  const response = await apiClient.get<ExecutionJob>(
+    `/execution-jobs/${jobId}`,
+    { signal },
+  );
+  return response.data;
 }
 
 export async function getVideoRenderArtifactMetadata(

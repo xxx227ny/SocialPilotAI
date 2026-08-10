@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_visual_generation_provider
 from app.core.config import get_settings
+from app.execution.worker import WorkerRunStatus
 from app.main import app
 from app.models import VideoRenderArtifact, VideoRenderTask
 from app.repositories.video_render_artifact_repository import (
@@ -24,9 +25,12 @@ from app.services.video_render_service import VideoRenderService
 from tests.test_video_render_contract import (
     contract_settings,
     count_rows,
-    execute_path,
+    enqueue_refresh,
+    enqueue_submit,
+    get_job,
     install_contract_dependencies,
     latest_path,
+    run_fake_worker,
 )
 from tests.test_video_render_execution_service import (
     FakeOutputFetcher,
@@ -199,16 +203,27 @@ def test_created_recovery_continues_same_original_task_once(
     )
     install_contract_dependencies(tmp_path, provider)
 
-    first = client.post(execute_path(project.id))
-    second = client.post(execute_path(project.id))
+    first = enqueue_submit(client, project.id)
+    assert first.status_code == 201
+    assert run_fake_worker(
+        db_session,
+        tmp_path,
+        provider,
+        worker_id="created-recovery-worker",
+    ).status == WorkerRunStatus.SUCCEEDED
+    db_session.expire_all()
+    first_job = get_job(client, first.json()["job"]["id"])
+    second = enqueue_submit(client, project.id)
+    exact = client.get(
+        f"/api/v1/video-render-tasks/{first_job['result_entity_id']}/recovery"
+    )
 
-    assert first.status_code == 200
-    assert second.status_code == 200
-    assert first.json()["task"]["id"] == original.id
-    assert second.json()["task"]["id"] == original.id
-    assert first.json()["task"]["status"] == "PENDING"
+    assert second.status_code == 201
+    assert first_job["result_entity_id"] == original.id
+    assert exact.json()["task"]["id"] == original.id
+    assert provider.submit_calls == 1, first_job
+    assert exact.json()["task"]["status"] == "PENDING"
     assert second.json()["reused"] is True
-    assert second.json()["external_call"] is False
     assert provider.submit_calls == 1
     assert count_rows(db_session, VideoRenderTask) == 1
     assert count_rows(db_session, VideoRenderArtifact) == 0
@@ -252,13 +267,21 @@ def test_existing_non_created_task_cannot_be_resubmitted(
     )
     install_contract_dependencies(tmp_path, provider)
 
-    response = client.post(execute_path(project.id))
+    response = enqueue_submit(client, project.id)
+    assert response.status_code == 201
+    worker_result = run_fake_worker(
+        db_session,
+        tmp_path,
+        provider,
+        worker_id=f"existing-{status.lower()}-worker",
+    )
+    exact = client.get(f"/api/v1/video-render-tasks/{task.id}/recovery")
 
-    assert response.status_code == 200
-    assert response.json()["task"]["id"] == task.id
-    assert response.json()["task"]["status"] == status
-    assert response.json()["external_call"] is False
-    assert response.json()["reused"] is True
+    assert worker_result.status == WorkerRunStatus.SUCCEEDED
+    job = get_job(client, response.json()["job"]["id"])
+    assert job["result_entity_id"] == task.id
+    assert exact.json()["task"]["id"] == task.id
+    assert exact.json()["task"]["status"] == status
     assert provider.submit_calls == 0
     assert provider.fetch_calls == 0
     assert count_rows(db_session, VideoRenderTask) == 1
@@ -279,8 +302,8 @@ def test_refreshing_recovery_blocks_parallel_refresh(
     provider = MockVisualProvider()
     install_contract_dependencies(tmp_path, provider)
 
-    response = client.post(
-        f"/api/v1/video-render-tasks/{task.id}/refresh"
+    response = enqueue_refresh(
+        client, task.id, project.id, "parallel-refresh-0001"
     )
 
     assert response.status_code == 409
@@ -342,7 +365,6 @@ def get_all_operation_responses(
     task: VideoRenderTask,
 ) -> list:
     return [
-        client.post(execute_path(task.video_project_id)),
         client.get(latest_path(task.video_project_id)),
         client.get(f"/api/v1/video-render-tasks/{task.id}/recovery"),
     ]
@@ -629,21 +651,32 @@ def test_active_without_provider_identity_cannot_refresh(
     task.provider_task_id = None
     db_session.commit()
 
-    execution, latest, exact = get_all_operation_responses(client, task)
-    refresh = client.post(
-        f"/api/v1/video-render-tasks/{task.id}/refresh"
+    latest, exact = get_all_operation_responses(client, task)
+    refresh = enqueue_refresh(
+        client,
+        task.id,
+        task.video_project_id,
+        f"missing-provider-{status.lower()}-0001",
+    )
+    assert refresh.status_code == 201
+    worker_result = run_fake_worker(
+        db_session,
+        tmp_path,
+        provider,
+        fetcher=fetcher,
+        worker_id=f"missing-provider-{status.lower()}-worker",
     )
 
     assert_consistent_recovery(
-        [execution, latest, exact],
+        [latest, exact],
         category="refresh_uncertain",
         artifact_state="not_applicable",
     )
-    for response in (execution, latest, exact):
+    for response in (latest, exact):
         decision = response.json()["recovery"]
         assert decision["explicit_refresh_allowed"] is False
         assert decision["resubmit_forbidden"] is True
-    assert refresh.status_code == 409
+    assert worker_result.status == WorkerRunStatus.FAILED
     assert provider.submit_calls == 0
     assert provider.fetch_calls == 0
     assert fetcher.calls == 0

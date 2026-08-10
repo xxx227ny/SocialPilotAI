@@ -182,9 +182,31 @@ export interface VideoRenderPreflight {
   aspect_ratio: string;
   scene_count: number;
   project_status: string;
+  scene_sequence: 1;
+  resolution: "720P";
+  provider_model: string;
+  render_contract_version: string;
+  input_digest: string;
+  preflight_digest: string;
+  expires_at: string;
   preflight_only: true;
   estimated_cost_notice: string;
   association_notice: string;
+}
+
+export interface VideoRenderSubmitJobRequest {
+  product_id: number;
+  marketing_strategy_id: number;
+  copy_matrix_id: number;
+  input_digest: string;
+  preflight_digest: string;
+  preflight_expires_at: string;
+  cost_confirmed: true;
+}
+
+export interface VideoRenderRefreshJobRequest {
+  video_project_id: number;
+  refresh_request_id: string;
 }
 
 export interface VideoRenderArtifact {

@@ -10,6 +10,10 @@ from app.execution.handlers.qwen_strategy import QWEN_STRATEGY_GENERATE_V1
 from app.execution.handlers.qwen_video_project import (
     QWEN_VIDEO_PROJECT_GENERATE_V1,
 )
+from app.execution.handlers.wanx_video_render import (
+    WANX_VIDEO_RENDER_REFRESH_V1,
+    WANX_VIDEO_RENDER_SUBMIT_V1,
+)
 from app.schemas.execution import (
     ExecutionJobClaimRead,
     ExecutionJobClaimRequest,
@@ -40,9 +44,11 @@ def create_execution_job(
         QWEN_STRATEGY_GENERATE_V1,
         QWEN_COPY_MATRIX_GENERATE_V1,
         QWEN_VIDEO_PROJECT_GENERATE_V1,
+        WANX_VIDEO_RENDER_SUBMIT_V1,
+        WANX_VIDEO_RENDER_REFRESH_V1,
     }:
         raise AppError(
-            "Qwen jobs must use their confirmed business enqueue endpoint",
+            "Provider jobs must use their confirmed business enqueue endpoint",
             409,
         )
     return ExecutionQueueService(db).create(data)

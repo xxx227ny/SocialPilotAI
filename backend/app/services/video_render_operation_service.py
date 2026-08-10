@@ -34,15 +34,15 @@ from app.services.video_render_execution_service import (
 )
 from app.services.video_render_preflight import (
     VIDEO_PROJECT_ASSOCIATION_NOTICE,
+    WORKSPACE_RENDER_CONTRACT_VERSION,
+    WORKSPACE_RENDER_PROVIDER,
+    WORKSPACE_RENDER_RESOLUTION,
+    WORKSPACE_RENDER_SCENE_SEQUENCE,
     VideoProjectQueryService,
     VideoRenderPreflightService,
 )
 from app.services.video_render_service import VideoRenderService
 
-WORKSPACE_RENDER_SCENE_SEQUENCE = 1
-WORKSPACE_RENDER_RESOLUTION = "720P"
-WORKSPACE_RENDER_CONTRACT_VERSION = "v1"
-WORKSPACE_RENDER_PROVIDER = "wanx"
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 
 

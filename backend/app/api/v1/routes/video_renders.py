@@ -7,16 +7,14 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import (
-    ProviderOutputFetcherDep,
     VideoArtifactStorageDep,
-    VideoRenderExecutionGateDep,
-    VisualProviderDep,
     get_visual_generation_provider,
 )
 from app.core.config import Settings, get_settings, settings
 from app.core.exceptions import AppError
 from app.db.session import get_db
 from app.providers.visual_base import VisualGenerationProvider
+from app.schemas.execution import ExecutionJobCreateRead
 from app.schemas.video import VideoProjectSchema
 from app.schemas.video_render import (
     LiveVideoRenderRequest,
@@ -24,8 +22,10 @@ from app.schemas.video_render import (
     VideoRenderExecutionSchema,
     VideoRenderOperationRead,
     VideoRenderPreflightRead,
+    VideoRenderRefreshJobRequest,
+    VideoRenderSubmitJobRequest,
     VideoRenderTaskCreate,
-    VideoRenderTaskSchema,
+    VideoRenderTaskPublicRead,
 )
 from app.schemas.video_render_artifact import VideoRenderArtifactSchema
 from app.services.live_video_render_service import LiveVideoRenderService
@@ -40,12 +40,9 @@ from app.services.video_artifact_storage import (
     VideoArtifactError,
     VideoArtifactStorage,
 )
-from app.services.video_render_execution_service import (
-    VideoRenderExecutionService,
-)
+from app.services.video_render_job_service import VideoRenderJobService
 from app.services.video_render_operation_service import (
     VideoArtifactAccessService,
-    VideoProjectRenderExecutionService,
     VideoRenderRecoveryService,
 )
 from app.services.video_render_preflight import (
@@ -92,14 +89,14 @@ RecoveryArtifactStorageDep = Annotated[
 
 @router.post(
     "/video-projects/{video_project_id}/render-tasks",
-    response_model=VideoRenderTaskSchema,
+    response_model=VideoRenderTaskPublicRead,
     status_code=status.HTTP_201_CREATED,
 )
 def create_video_render_task(
     video_project_id: int,
     data: VideoRenderTaskCreate,
     db: DbSession,
-) -> VideoRenderTaskSchema:
+) -> VideoRenderTaskPublicRead:
     return VideoRenderService(db).create_render_task(video_project_id, data)
 
 
@@ -140,25 +137,18 @@ def get_video_render_preflight(
 
 @router.post(
     "/video-projects/{video_project_id}/render-execution",
-    response_model=VideoRenderOperationRead,
+    response_model=ExecutionJobCreateRead,
+    status_code=status.HTTP_201_CREATED,
 )
-async def execute_video_project_render(
+def execute_video_project_render(
     video_project_id: int,
+    data: VideoRenderSubmitJobRequest,
     db: DbSession,
-    execution_gate: VideoRenderExecutionGateDep,
-    provider: VisualProviderDep,
     app_settings: SettingsDep,
-    output_fetcher: ProviderOutputFetcherDep,
-    artifact_storage: VideoArtifactStorageDep,
-) -> VideoRenderOperationRead:
-    del execution_gate
-    return await VideoProjectRenderExecutionService(
-        db,
-        provider,
-        app_settings,
-        output_fetcher,
-        artifact_storage,
-    ).execute(video_project_id)
+) -> ExecutionJobCreateRead:
+    return VideoRenderJobService(db, app_settings).enqueue_submit(
+        video_project_id, data
+    )
 
 
 @router.get(
@@ -196,11 +186,11 @@ async def create_live_video_render(
 
 
 @router.get(
-    "/video-render-tasks/{task_id}", response_model=VideoRenderTaskSchema
+    "/video-render-tasks/{task_id}", response_model=VideoRenderTaskPublicRead
 )
 def get_video_render_task(
     task_id: int, db: DbSession
-) -> VideoRenderTaskSchema:
+) -> VideoRenderTaskPublicRead:
     return VideoRenderService(db).get_render_task(task_id)
 
 
@@ -220,44 +210,26 @@ def recover_video_render_task(
 
 @router.post(
     "/video-render-tasks/{task_id}/submit",
-    response_model=VideoRenderExecutionSchema,
 )
-async def submit_video_render_task(
-    task_id: int,
-    db: DbSession,
-    execution_gate: VideoRenderExecutionGateDep,
-    provider: VisualProviderDep,
-    app_settings: SettingsDep,
-) -> VideoRenderExecutionSchema:
-    del execution_gate
-    result = await VideoRenderExecutionService(
-        db, provider, app_settings
-    ).submit(task_id)
-    return VideoRenderExecutionSchema.model_validate(result)
+def submit_video_render_task(task_id: int) -> None:
+    del task_id
+    raise AppError(
+        "Video render submission must use the confirmed queue endpoint", 409
+    )
 
 
 @router.post(
     "/video-render-tasks/{task_id}/refresh",
-    response_model=VideoRenderExecutionSchema,
+    response_model=ExecutionJobCreateRead,
+    status_code=status.HTTP_201_CREATED,
 )
-async def refresh_video_render_task(
+def refresh_video_render_task(
     task_id: int,
+    data: VideoRenderRefreshJobRequest,
     db: DbSession,
-    execution_gate: VideoRenderExecutionGateDep,
-    provider: VisualProviderDep,
     app_settings: SettingsDep,
-    output_fetcher: ProviderOutputFetcherDep,
-    artifact_storage: VideoArtifactStorageDep,
-) -> VideoRenderExecutionSchema:
-    del execution_gate
-    result = await VideoRenderExecutionService(
-        db,
-        provider,
-        app_settings,
-        output_fetcher=output_fetcher,
-        artifact_storage=artifact_storage,
-    ).refresh(task_id)
-    return VideoRenderExecutionSchema.model_validate(result)
+) -> ExecutionJobCreateRead:
+    return VideoRenderJobService(db, app_settings).enqueue_refresh(task_id, data)
 
 
 @router.get(

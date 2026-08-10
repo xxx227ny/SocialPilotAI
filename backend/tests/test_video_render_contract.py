@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.api.dependencies import (
     get_provider_output_fetcher,
@@ -13,8 +14,15 @@ from app.api.dependencies import (
     get_visual_generation_provider,
 )
 from app.core.config import Settings, get_settings
+from app.core.exceptions import AppError
+from app.execution.runtime_registry import build_execution_handler_registry
+from app.execution.worker import (
+    ExecutionWorker,
+    WorkerRunResult,
+    WorkerRunStatus,
+)
 from app.main import app
-from app.models import VideoRenderArtifact, VideoRenderTask
+from app.models import ExecutionJob, VideoRenderArtifact, VideoRenderTask
 from app.providers.base import (
     ProviderAuthenticationError,
     ProviderConnectionError,
@@ -29,6 +37,9 @@ from app.services.video_artifact_storage import (
     LocalVideoArtifactStorage,
     VideoArtifactError,
     VideoArtifactStorage,
+)
+from app.services.video_render_operation_service import (
+    VideoProjectRenderExecutionService,
 )
 from app.services.video_render_service import VideoRenderService
 from tests.test_video_render_execution_service import (
@@ -92,6 +103,76 @@ def latest_path(project_id: int) -> str:
     return f"/api/v1/video-projects/{project_id}/render-tasks/latest"
 
 
+def enqueue_submit(
+    client: TestClient,
+    project_id: int,
+    *,
+    cost_confirmed: bool = True,
+):
+    preflight = client.get(
+        f"/api/v1/video-projects/{project_id}/render-preflight"
+    )
+    assert preflight.status_code == 200
+    checked = preflight.json()
+    payload = {
+        "product_id": checked["product_id"],
+        "marketing_strategy_id": checked["marketing_strategy_id"],
+        "copy_matrix_id": checked["copy_matrix_id"],
+        "input_digest": checked["input_digest"],
+        "preflight_digest": checked["preflight_digest"],
+        "preflight_expires_at": checked["expires_at"],
+        "cost_confirmed": cost_confirmed,
+    }
+    return client.post(execute_path(project_id), json=payload)
+
+
+def enqueue_refresh(
+    client: TestClient,
+    task_id: int,
+    project_id: int,
+    request_id: str,
+):
+    return client.post(
+        f"/api/v1/video-render-tasks/{task_id}/refresh",
+        json={
+            "video_project_id": project_id,
+            "refresh_request_id": request_id,
+        },
+    )
+
+
+def run_fake_worker(
+    db_session: Session,
+    tmp_path: Path,
+    provider: MockVisualProvider,
+    *,
+    fetcher: FakeOutputFetcher | None = None,
+    storage: VideoArtifactStorage | None = None,
+    worker_id: str = "video-contract-worker",
+) -> WorkerRunResult:
+    sessions = sessionmaker(bind=db_session.bind, expire_on_commit=False)
+    registry = build_execution_handler_registry(
+        session_factory=sessions,
+        settings=contract_settings(tmp_path),
+        wanx_provider_factory=lambda _: provider,
+        output_fetcher=fetcher or FakeOutputFetcher(),
+        artifact_storage=storage
+        or LocalVideoArtifactStorage(tmp_path.resolve(), 1_000_000),
+    )
+    return ExecutionWorker(
+        session_factory=sessions,
+        registry=registry,
+        worker_id=worker_id,
+        heartbeat_interval_seconds=0.1,
+    ).run_once()
+
+
+def get_job(client: TestClient, job_id: int):
+    response = client.get(f"/api/v1/execution-jobs/{job_id}")
+    assert response.status_code == 200
+    return response.json()
+
+
 def test_default_gate_stops_before_provider_and_task_write(
     client: TestClient,
     db_session: Session,
@@ -110,10 +191,15 @@ def test_default_gate_stops_before_provider_and_task_write(
     )
     app.dependency_overrides[get_visual_generation_provider] = forbidden_provider
 
-    response = client.post(execute_path(project.id))
+    unconfirmed = enqueue_submit(
+        client, project.id, cost_confirmed=False
+    )
+    response = enqueue_submit(client, project.id)
 
-    assert response.status_code == 503
+    assert unconfirmed.status_code == 422
+    assert response.status_code == 409
     assert provider_resolutions == 0
+    assert count_rows(db_session, ExecutionJob) == 0
     assert count_rows(db_session, VideoRenderTask) == 0
     assert count_rows(db_session, VideoRenderArtifact) == 0
 
@@ -127,30 +213,38 @@ def test_exact_execution_is_idempotent_and_safe(
     provider = MockVisualProvider()
     install_contract_dependencies(tmp_path, provider)
 
-    first = client.post(execute_path(project.id))
-    repeated = client.post(execute_path(project.id))
+    first = enqueue_submit(client, project.id)
+    repeated = enqueue_submit(client, project.id)
 
-    assert first.status_code == 200
-    assert repeated.status_code == 200
+    assert first.status_code == 201
+    assert repeated.status_code == 201
     first_body = first.json()
     repeated_body = repeated.json()
-    assert first_body["video_project_id"] == project.id
-    assert first_body["product_id"] == project.product_id
-    assert first_body["marketing_strategy_id"] == project.marketing_strategy_id
-    assert first_body["copy_matrix_id"] == project.copy_matrix_id
-    assert first_body["task"]["scene_sequence"] == 1
-    assert first_body["task"]["resolution"] == "720P"
-    assert first_body["task"]["status"] == "PENDING"
-    assert first_body["external_call"] is True
+    assert first_body["job"]["source_id"] == project.id
+    assert first_body["job"]["status"] == "QUEUED"
     assert first_body["reused"] is False
-    assert repeated_body["task"]["id"] == first_body["task"]["id"]
-    assert repeated_body["external_call"] is False
+    assert repeated_body["job"]["id"] == first_body["job"]["id"]
     assert repeated_body["reused"] is True
+    assert provider.submit_calls == 0
+    assert count_rows(db_session, VideoRenderTask) == 0
+
+    result = run_fake_worker(db_session, tmp_path, provider)
+    assert result.status == WorkerRunStatus.SUCCEEDED
+    job = get_job(client, first_body["job"]["id"])
+    assert job["result_entity_type"] == "video_render_task"
+    exact = client.get(
+        f"/api/v1/video-render-tasks/{job['result_entity_id']}/recovery"
+    )
+    assert exact.status_code == 200
+    assert exact.json()["video_project_id"] == project.id
+    assert exact.json()["task"]["id"] == job["result_entity_id"]
+    assert exact.json()["task"]["status"] == "PENDING"
     assert provider.submit_calls == 1
     assert count_rows(db_session, VideoRenderTask) == 1
-    serialized = first.text.casefold()
+    serialized = (first.text + exact.text).casefold()
     assert "render_prompt" not in serialized
-    assert "idempotency_key" not in serialized
+    assert "idempotency_key" not in exact.text.casefold()
+    assert "workspace-render" not in first.text.casefold()
     assert "storage_path" not in serialized
     assert "provider_output_url" not in serialized
     assert "marketingbrief" in serialized
@@ -168,10 +262,11 @@ def test_execution_rejects_cross_product_associations_without_submit(
     provider = MockVisualProvider()
     install_contract_dependencies(tmp_path, provider)
 
-    response = client.post(execute_path(project.id))
+    response = enqueue_submit(client, project.id)
 
-    assert response.status_code == 422
+    assert response.status_code == 409
     assert provider.submit_calls == 0
+    assert count_rows(db_session, ExecutionJob) == 0
     assert count_rows(db_session, VideoRenderTask) == 0
 
 
@@ -195,11 +290,19 @@ def test_definite_submit_failures_are_safe_and_terminal(
     provider = MockVisualProvider(submit_error=provider_error)
     install_contract_dependencies(tmp_path, provider)
 
-    response = client.post(execute_path(project.id))
+    service = VideoProjectRenderExecutionService(
+        db_session,
+        provider,
+        contract_settings(tmp_path),
+        FakeOutputFetcher(),
+        LocalVideoArtifactStorage(tmp_path.resolve(), 1_000_000),
+    )
+    with pytest.raises(AppError) as raised:
+        asyncio.run(service.execute(project.id))
     recovered = client.get(latest_path(project.id))
 
-    assert response.status_code == status_code
-    assert "secret" not in response.text
+    assert raised.value.status_code == status_code
+    assert "secret" not in str(raised.value)
     assert recovered.status_code == 200
     assert recovered.json()["task"]["status"] == "FAILED"
     assert recovered.json()["task"]["error_code"] == error_code
@@ -231,18 +334,30 @@ def test_uncertain_submit_blocks_all_automatic_resubmission(
     provider = MockVisualProvider(submit_error=provider_error)
     install_contract_dependencies(tmp_path, provider)
 
-    first = client.post(execute_path(project.id))
+    first = enqueue_submit(client, project.id)
+    assert first.status_code == 201
+    result = run_fake_worker(
+        db_session,
+        tmp_path,
+        provider,
+        worker_id=f"uncertain-{error_code}-worker",
+    )
     recovered = client.get(latest_path(project.id))
-    repeated = client.post(execute_path(project.id))
+    repeated = enqueue_submit(client, project.id)
+    retry = client.post(
+        f"/api/v1/execution-jobs/{first.json()['job']['id']}/retry",
+        json={"retry_confirmed": True},
+    )
 
-    assert first.status_code == 502
+    assert result.status == WorkerRunStatus.SUBMIT_UNKNOWN
     assert recovered.status_code == 200
-    assert repeated.status_code == 200
-    body = repeated.json()
+    assert repeated.status_code == 201
+    assert retry.status_code == 409
+    body = recovered.json()
     assert body["task"]["status"] == "SUBMIT_UNKNOWN"
     assert body["task"]["error_code"] == error_code
-    assert body["reused"] is True
-    assert body["external_call"] is False
+    assert repeated.json()["reused"] is True
+    assert repeated.json()["job"]["status"] == "SUBMIT_UNKNOWN"
     assert provider.submit_calls == 1
     assert count_rows(db_session, VideoRenderTask) == 1
     assert count_rows(db_session, VideoRenderArtifact) == 0
@@ -269,26 +384,54 @@ def test_refresh_progress_success_storage_and_recovery(
         ]
     )
     fetcher = install_contract_dependencies(tmp_path, provider)
-    executed = client.post(execute_path(project.id)).json()
-    task_id = executed["task"]["id"]
+    submitted = enqueue_submit(client, project.id)
+    assert submitted.status_code == 201
+    assert run_fake_worker(
+        db_session,
+        tmp_path,
+        provider,
+        fetcher=fetcher,
+        worker_id="progress-submit-worker",
+    ).status == WorkerRunStatus.SUCCEEDED
+    submit_job = get_job(client, submitted.json()["job"]["id"])
+    task_id = submit_job["result_entity_id"]
 
-    processing = client.post(
-        f"/api/v1/video-render-tasks/{task_id}/refresh"
+    processing = enqueue_refresh(
+        client, task_id, project.id, "refresh-progress-0001"
     )
-    succeeded = client.post(
-        f"/api/v1/video-render-tasks/{task_id}/refresh"
+    assert processing.status_code == 201
+    assert run_fake_worker(
+        db_session,
+        tmp_path,
+        provider,
+        fetcher=fetcher,
+        worker_id="progress-refresh-worker-1",
+    ).status == WorkerRunStatus.SUCCEEDED
+    processing_exact = client.get(
+        f"/api/v1/video-render-tasks/{task_id}/recovery"
     )
-    repeated = client.post(
-        f"/api/v1/video-render-tasks/{task_id}/refresh"
+    succeeded = enqueue_refresh(
+        client, task_id, project.id, "refresh-success-0002"
+    )
+    assert succeeded.status_code == 201
+    assert run_fake_worker(
+        db_session,
+        tmp_path,
+        provider,
+        fetcher=fetcher,
+        worker_id="progress-refresh-worker-2",
+    ).status == WorkerRunStatus.SUCCEEDED
+    repeated = enqueue_refresh(
+        client, task_id, project.id, "refresh-success-0002"
     )
     recovered = client.get(latest_path(project.id))
 
-    assert processing.status_code == 200
-    assert processing.json()["task"]["status"] == "RUNNING"
-    assert succeeded.status_code == 200
-    assert succeeded.json()["task"]["status"] == "SUCCEEDED"
-    assert repeated.status_code == 200
-    assert repeated.json()["external_call"] is False
+    assert processing_exact.json()["task"]["status"] == "RUNNING"
+    assert get_job(client, succeeded.json()["job"]["id"])[
+        "result_entity_type"
+    ] == "video_render_artifact"
+    assert repeated.status_code == 201
+    assert repeated.json()["reused"] is True
     assert recovered.status_code == 200
     body = recovered.json()
     assert body["recovered"] is True
@@ -335,8 +478,8 @@ def test_refresh_never_submits_and_rejects_created_task(
     provider = MockVisualProvider()
     install_contract_dependencies(tmp_path, provider)
 
-    response = client.post(
-        f"/api/v1/video-render-tasks/{task.id}/refresh"
+    response = enqueue_refresh(
+        client, task.id, project.id, "created-refresh-0001"
     )
 
     assert response.status_code == 409
@@ -361,16 +504,25 @@ def test_failed_refresh_creates_no_artifact(
         ]
     )
     install_contract_dependencies(tmp_path, provider)
-    task = client.post(execute_path(project.id)).json()["task"]
-
-    response = client.post(
-        f"/api/v1/video-render-tasks/{task['id']}/refresh"
+    submitted = enqueue_submit(client, project.id)
+    assert run_fake_worker(
+        db_session, tmp_path, provider, worker_id="failed-submit-worker"
+    ).status == WorkerRunStatus.SUCCEEDED
+    task_id = get_job(client, submitted.json()["job"]["id"])[
+        "result_entity_id"
+    ]
+    response = enqueue_refresh(
+        client, task_id, project.id, "failed-refresh-0001"
     )
+    assert response.status_code == 201
+    assert run_fake_worker(
+        db_session, tmp_path, provider, worker_id="failed-refresh-worker"
+    ).status == WorkerRunStatus.SUCCEEDED
+    exact = client.get(f"/api/v1/video-render-tasks/{task_id}/recovery")
 
-    assert response.status_code == 200
-    assert response.json()["task"]["status"] == "FAILED"
-    assert response.json()["task"]["error_code"] == "provider_failed"
-    assert "raw-provider" not in response.text
+    assert exact.json()["task"]["status"] == "FAILED"
+    assert exact.json()["task"]["error_code"] == "provider_failed"
+    assert "raw-provider" not in exact.text
     assert count_rows(db_session, VideoRenderArtifact) == 0
 
 
@@ -414,14 +566,31 @@ def test_storage_failure_is_not_reported_as_success(
         provider,
         storage=FailingStorage(),
     )
-    task = client.post(execute_path(project.id)).json()["task"]
-
-    response = client.post(
-        f"/api/v1/video-render-tasks/{task['id']}/refresh"
+    submitted = enqueue_submit(client, project.id)
+    assert run_fake_worker(
+        db_session,
+        tmp_path,
+        provider,
+        storage=FailingStorage(),
+        worker_id="storage-submit-worker",
+    ).status == WorkerRunStatus.SUCCEEDED
+    task_id = get_job(client, submitted.json()["job"]["id"])[
+        "result_entity_id"
+    ]
+    response = enqueue_refresh(
+        client, task_id, project.id, "storage-refresh-0001"
+    )
+    assert response.status_code == 201
+    worker_result = run_fake_worker(
+        db_session,
+        tmp_path,
+        provider,
+        storage=FailingStorage(),
+        worker_id="storage-refresh-worker",
     )
     recovered = client.get(latest_path(project.id))
 
-    assert response.status_code == 502
+    assert worker_result.status == WorkerRunStatus.FAILED
     assert recovered.status_code == 200
     assert recovered.json()["task"]["status"] == "ARTIFACT_PERSIST_FAILED"
     assert recovered.json()["artifact"] is None
@@ -438,14 +607,26 @@ def test_latest_task_is_isolated_by_exact_video_project(
     provider = MockVisualProvider()
     install_contract_dependencies(tmp_path, provider)
 
-    first_task = client.post(execute_path(first.id)).json()["task"]
-    second_task = client.post(execute_path(second.id)).json()["task"]
+    first_submit = enqueue_submit(client, first.id)
+    assert run_fake_worker(
+        db_session, tmp_path, provider, worker_id="isolation-worker-1"
+    ).status == WorkerRunStatus.SUCCEEDED
+    first_task_id = get_job(client, first_submit.json()["job"]["id"])[
+        "result_entity_id"
+    ]
+    second_submit = enqueue_submit(client, second.id)
+    assert run_fake_worker(
+        db_session, tmp_path, provider, worker_id="isolation-worker-2"
+    ).status == WorkerRunStatus.SUCCEEDED
+    second_task_id = get_job(client, second_submit.json()["job"]["id"])[
+        "result_entity_id"
+    ]
 
     first_latest = client.get(latest_path(first.id))
     second_latest = client.get(latest_path(second.id))
 
-    assert first_latest.json()["task"]["id"] == first_task["id"]
-    assert second_latest.json()["task"]["id"] == second_task["id"]
+    assert first_latest.json()["task"]["id"] == first_task_id
+    assert second_latest.json()["task"]["id"] == second_task_id
     assert first_latest.json()["video_project_id"] == first.id
     assert second_latest.json()["video_project_id"] == second.id
 

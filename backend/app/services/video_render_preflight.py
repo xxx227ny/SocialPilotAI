@@ -1,3 +1,7 @@
+import hashlib
+import json
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from pydantic import ValidationError
@@ -5,7 +9,13 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.core.exceptions import AppError
-from app.models import CopyMatrix, MarketingStrategy, Product, VideoProject
+from app.models import (
+    CopyMatrix,
+    MarketingStrategy,
+    Product,
+    VideoProject,
+    VideoRenderTask,
+)
 from app.providers.live_configuration import (
     wanx_missing_requirements,
     wanx_provider_configured,
@@ -28,6 +38,11 @@ VIDEO_RENDER_CONTRACT_CAPABILITIES = {
     "uncertain_submit_recovery_contract",
     "durable_video_artifact_storage_contract",
 }
+VIDEO_RENDER_PREFLIGHT_TTL = timedelta(minutes=10)
+WORKSPACE_RENDER_SCENE_SEQUENCE = 1
+WORKSPACE_RENDER_RESOLUTION = "720P"
+WORKSPACE_RENDER_CONTRACT_VERSION = "v1"
+WORKSPACE_RENDER_PROVIDER = "wanx"
 
 
 class VideoProjectQueryService:
@@ -63,12 +78,24 @@ class VideoProjectQueryService:
 class VideoRenderPreflightService:
     """Validate one exact VideoProject without constructing a Provider request."""
 
-    def __init__(self, session: Session, app_settings: Settings) -> None:
+    def __init__(
+        self,
+        session: Session,
+        app_settings: Settings,
+        *,
+        now: Callable[[], datetime] | None = None,
+    ) -> None:
         self.session = session
         self.settings = app_settings
+        self.now = now or (lambda: datetime.now(UTC))
         self.video_repository = VideoProjectRepository(session)
 
-    def run(self, video_project_id: int) -> VideoRenderPreflightRead:
+    def run(
+        self,
+        video_project_id: int,
+        *,
+        expires_at: datetime | None = None,
+    ) -> VideoRenderPreflightRead:
         project = self.video_repository.get(video_project_id)
         if project is None:
             raise AppError("Video project not found", status_code=404)
@@ -106,6 +133,14 @@ class VideoRenderPreflightService:
                 contract_ready,
             )
         )
+        normalized_expiry = self._normalize_expiry(
+            expires_at or self.now() + VIDEO_RENDER_PREFLIGHT_TTL
+        )
+        input_digest = self.compute_input_digest(project.id)
+        preflight_digest = self.compute_preflight_digest(
+            input_digest=input_digest,
+            expires_at=normalized_expiry,
+        )
         return VideoRenderPreflightRead(
             video_project_id=project.id,
             product_id=product.id,
@@ -123,9 +158,119 @@ class VideoRenderPreflightService:
             aspect_ratio=project.aspect_ratio or "",
             scene_count=len(project.scenes) if isinstance(project.scenes, list) else 0,
             project_status=project.status or "",
+            provider_model=self.settings.wanx_model,
+            render_contract_version=WORKSPACE_RENDER_CONTRACT_VERSION,
+            input_digest=input_digest,
+            preflight_digest=preflight_digest,
+            expires_at=normalized_expiry,
             estimated_cost_notice=VIDEO_RENDER_COST_NOTICE,
             association_notice=VIDEO_PROJECT_ASSOCIATION_NOTICE,
         )
+
+    def compute_input_digest(self, video_project_id: int) -> str:
+        project = self.video_repository.get(video_project_id)
+        if project is None:
+            raise AppError("Video project not found", status_code=404)
+        product = self.session.get(Product, project.product_id)
+        if product is None:
+            raise AppError("Video project Product not found", status_code=404)
+        strategy = self.session.get(
+            MarketingStrategy, project.marketing_strategy_id
+        )
+        copy_matrix = self.session.get(CopyMatrix, project.copy_matrix_id)
+        first_scene = next(
+            (
+                scene
+                for scene in (project.scenes or [])
+                if isinstance(scene, dict)
+                and scene.get("sequence") == WORKSPACE_RENDER_SCENE_SEQUENCE
+            ),
+            None,
+        )
+        payload = {
+            "render_contract_version": WORKSPACE_RENDER_CONTRACT_VERSION,
+            "provider": WORKSPACE_RENDER_PROVIDER,
+            "provider_model": self.settings.wanx_model,
+            "resolution": WORKSPACE_RENDER_RESOLUTION,
+            "product": {
+                "id": product.id,
+                "name": product.name,
+                "category": product.category,
+                "description": product.description,
+                "selling_points": list(product.selling_points or []),
+                "target_markets": list(product.target_markets or []),
+            },
+            "strategy": (
+                {
+                    "id": strategy.id,
+                    "product_id": strategy.product_id,
+                    "positioning": strategy.positioning,
+                    "audience_insights": list(strategy.audience_insights or []),
+                    "angles": list(strategy.angles or []),
+                    "risks": list(strategy.risks or []),
+                    "evidence": list(strategy.evidence or []),
+                }
+                if strategy is not None
+                else None
+            ),
+            "copy_matrix": (
+                {
+                    "id": copy_matrix.id,
+                    "product_id": copy_matrix.product_id,
+                    "marketing_strategy_id": copy_matrix.marketing_strategy_id,
+                    "copies": copy_matrix.copies or [],
+                }
+                if copy_matrix is not None
+                else None
+            ),
+            "video_project": {
+                "id": project.id,
+                "product_id": project.product_id,
+                "marketing_strategy_id": project.marketing_strategy_id,
+                "copy_matrix_id": project.copy_matrix_id,
+                "title": project.title,
+                "concept": project.concept,
+                "platform": project.platform,
+                "duration_seconds": project.duration_seconds,
+                "aspect_ratio": project.aspect_ratio,
+                "scenes": project.scenes or [],
+                "cta": project.cta,
+                "status": project.status,
+            },
+            "first_scene": first_scene,
+            "scene_sequence": WORKSPACE_RENDER_SCENE_SEQUENCE,
+        }
+        return self._digest(payload)
+
+    @staticmethod
+    def compute_preflight_digest(
+        *, input_digest: str, expires_at: datetime
+    ) -> str:
+        return VideoRenderPreflightService._digest(
+            {
+                "render_contract_version": WORKSPACE_RENDER_CONTRACT_VERSION,
+                "input_digest": input_digest,
+                "expires_at": VideoRenderPreflightService._normalize_expiry(
+                    expires_at
+                ).isoformat(),
+            }
+        )
+
+    @staticmethod
+    def _normalize_expiry(value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("Preflight expiry must include a timezone")
+        return value.astimezone(UTC)
+
+    @staticmethod
+    def _digest(payload: dict[str, object]) -> str:
+        serialized = json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
     def _input_requirements(
         self, project: VideoProject, product: Product
@@ -222,3 +367,33 @@ class VideoRenderPreflightService:
             "durable_video_artifact_storage_contract",
         }
         return sorted(VIDEO_RENDER_CONTRACT_CAPABILITIES - implemented)
+
+
+def compute_video_render_task_digest(
+    session: Session,
+    task: VideoRenderTask,
+    app_settings: Settings,
+) -> str:
+    project_digest = VideoRenderPreflightService(
+        session, app_settings
+    ).compute_input_digest(task.video_project_id)
+    artifact = task.artifact
+    payload = {
+        "render_contract_version": WORKSPACE_RENDER_CONTRACT_VERSION,
+        "project_input_digest": project_digest,
+        "task": {
+            "id": task.id,
+            "video_project_id": task.video_project_id,
+            "scene_sequence": task.scene_sequence,
+            "status": task.status,
+            "provider_name": task.provider_name,
+            "render_prompt": task.render_prompt,
+            "duration_seconds": task.duration_seconds,
+            "aspect_ratio": task.aspect_ratio,
+            "resolution": task.resolution,
+            "idempotency_key": task.idempotency_key,
+            "error_code": task.error_code,
+        },
+        "artifact_id": artifact.id if artifact is not None else None,
+    }
+    return VideoRenderPreflightService._digest(payload)
