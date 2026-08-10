@@ -79,6 +79,9 @@ export interface CopyPreflight {
   platforms: string[];
   product_summary: CopyPreflightProductSummary;
   strategy_summary: CopyPreflightStrategySummary;
+  input_digest: string;
+  preflight_digest: string;
+  expires_at: string;
   association_persisted: false;
   association_notice: string;
   preflight_only: true;

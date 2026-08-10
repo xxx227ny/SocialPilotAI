@@ -1,9 +1,14 @@
+import hashlib
+import json
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
+
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.core.exceptions import AppError
-from app.models import MarketingStrategy, Product
+from app.models import MarketingBrief, MarketingStrategy, Product
 from app.providers.live_configuration import effective_qwen_api_key
 from app.repositories.marketing import MarketingRepository
 from app.repositories.strategy import MarketingStrategyRepository
@@ -14,6 +19,7 @@ from app.schemas.copy import (
 )
 from app.schemas.marketing import SUPPORTED_MARKETING_PLATFORMS
 from app.schemas.strategy import MarketingStrategySchema
+from app.services.copy_generation_service import CopyGenerationService
 from app.services.marketing import TARGET_MARKET_AUDIENCE_PATTERN
 
 COPY_ASSOCIATION_NOTICE = (
@@ -25,18 +31,32 @@ COPY_COST_NOTICE = (
     "真实Copy生成将调用阿里云百炼Qwen，并可能消耗比赛Credits；"
     "实际消耗由模型、输入输出长度和平台计费决定。"
 )
+COPY_PREFLIGHT_TTL = timedelta(minutes=10)
 
 
 class CopyPreflightService:
     """Validate exact Brief and Strategy inputs without resolving a Provider."""
 
-    def __init__(self, session: Session, settings: Settings) -> None:
+    def __init__(
+        self,
+        session: Session,
+        settings: Settings,
+        *,
+        now: Callable[[], datetime] | None = None,
+    ) -> None:
         self.session = session
         self.settings = settings
         self.marketing_repository = MarketingRepository(session)
         self.strategy_repository = MarketingStrategyRepository(session)
+        self.now = now or (lambda: datetime.now(UTC))
 
-    def run(self, task_id: int, strategy_id: int) -> CopyPreflightRead:
+    def run(
+        self,
+        task_id: int,
+        strategy_id: int,
+        *,
+        expires_at: datetime | None = None,
+    ) -> CopyPreflightRead:
         task = self.marketing_repository.get(task_id)
         if task is None:
             raise AppError("Marketing task not found", status_code=404)
@@ -90,6 +110,20 @@ class CopyPreflightService:
             and self.settings.enable_copy_execution
             and contract_ready
         )
+        input_digest = self.compute_input_digest(
+            product=task_product,
+            task=task,
+            strategy=strategy,
+            platforms=normalized_platforms or [],
+            model_label=self.settings.qwen_model,
+        )
+        normalized_expiry = self._normalize_expiry(
+            expires_at or self.now() + COPY_PREFLIGHT_TTL
+        )
+        preflight_digest = self.compute_preflight_digest(
+            input_digest=input_digest,
+            expires_at=normalized_expiry,
+        )
         return CopyPreflightRead(
             task_id=task.id,
             strategy_id=strategy.id,
@@ -121,9 +155,57 @@ class CopyPreflightService:
                 risks_count=len(strategy.risks or []),
                 evidence_count=len(strategy.evidence or []),
             ),
+            input_digest=input_digest,
+            preflight_digest=preflight_digest,
+            expires_at=normalized_expiry,
             association_notice=COPY_ASSOCIATION_NOTICE,
             cost_notice=COPY_COST_NOTICE,
         )
+
+    @staticmethod
+    def compute_input_digest(
+        *,
+        product: Product,
+        task: MarketingBrief,
+        strategy: MarketingStrategy,
+        platforms: list[str],
+        model_label: str,
+    ) -> str:
+        payload = {
+            "schema": "qwen.copy_matrix.generate.v1",
+            "execution_input": CopyGenerationService.prepare_marketing_task_input(
+                product, task, strategy, platforms
+            ),
+            "model": model_label,
+        }
+        encoded = json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
+
+    @staticmethod
+    def compute_preflight_digest(
+        *, input_digest: str, expires_at: datetime
+    ) -> str:
+        payload = {
+            "input_digest": input_digest,
+            "expires_at": CopyPreflightService._normalize_expiry(
+                expires_at
+            ).isoformat(),
+        }
+        encoded = json.dumps(
+            payload, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
+
+    @staticmethod
+    def _normalize_expiry(value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("Copy preflight expiry requires a timezone")
+        return value.astimezone(UTC)
 
     def _provider_configured(self) -> bool:
         return bool(effective_qwen_api_key(self.settings))

@@ -7,6 +7,10 @@ import type {
   CopyPreflight,
   PersistedCopyMatrix,
 } from "../types/copy";
+import type {
+  ExecutionJob,
+  ExecutionJobCreateResult,
+} from "../types/execution";
 import { apiClient } from "./client";
 
 export async function generateCopyMatrix(productId: number): Promise<CopyMatrix> {
@@ -21,6 +25,78 @@ export async function getCopyPreflight(
 ): Promise<CopyPreflight> {
   const response = await apiClient.get<CopyPreflight>(
     `/marketing-tasks/${taskId}/strategies/${strategyId}/copy-preflight`,
+    { signal },
+  );
+  return response.data;
+}
+
+export async function enqueueCopyJob(
+  taskId: number,
+  strategyId: number,
+  payload: {
+    product_id: number;
+    strategy_id: number;
+    input_digest: string;
+    preflight_digest: string;
+    preflight_expires_at: string;
+    cost_confirmed: true;
+  },
+  signal?: AbortSignal,
+): Promise<ExecutionJobCreateResult> {
+  const response = await apiClient.post<ExecutionJobCreateResult>(
+    `/marketing-tasks/${taskId}/strategies/${strategyId}/copy-jobs`,
+    payload,
+    { signal },
+  );
+  return response.data;
+}
+
+export async function listCopyJobs(
+  strategyId: number,
+  signal?: AbortSignal,
+): Promise<ExecutionJob[]> {
+  const response = await apiClient.get<ExecutionJob[]>("/execution-jobs", {
+    params: {
+      job_type: "qwen.copy_matrix.generate.v1",
+      source_type: "marketing_strategy",
+      source_id: strategyId,
+    },
+    signal,
+  });
+  return response.data;
+}
+
+export async function getCopyExecutionJob(
+  jobId: number,
+  signal?: AbortSignal,
+): Promise<ExecutionJob> {
+  const response = await apiClient.get<ExecutionJob>(
+    `/execution-jobs/${jobId}`,
+    { signal },
+  );
+  return response.data;
+}
+
+export async function retryCopyExecutionJob(
+  jobId: number,
+  signal?: AbortSignal,
+): Promise<ExecutionJob> {
+  const response = await apiClient.post<ExecutionJob>(
+    `/execution-jobs/${jobId}/retry`,
+    { retry_confirmed: true },
+    { signal },
+  );
+  return response.data;
+}
+
+export async function getExactCopyMatrix(
+  taskId: number,
+  strategyId: number,
+  copyMatrixId: number,
+  signal?: AbortSignal,
+): Promise<PersistedCopyMatrix> {
+  const response = await apiClient.get<PersistedCopyMatrix>(
+    `/marketing-tasks/${taskId}/strategies/${strategyId}/copies/${copyMatrixId}`,
     { signal },
   );
   return response.data;

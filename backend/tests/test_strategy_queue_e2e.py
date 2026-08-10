@@ -146,7 +146,10 @@ def test_http_enqueue_is_provider_free_and_worker_restores_exact_result(
         settings=queue_settings(),
         qwen_provider_factory=factory,
     )
-    assert registry.job_types == ("qwen.strategy.generate.v1",)
+    assert registry.job_types == (
+        "qwen.copy_matrix.generate.v1",
+        "qwen.strategy.generate.v1",
+    )
     assert factory.state == {"constructed": 0, "calls": 0}
 
     first = enqueue(client, task["id"], product["id"], checked)

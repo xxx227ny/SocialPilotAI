@@ -319,6 +319,7 @@ class CopyMatrixQueryService:
     """Read the latest matrix for one exact persisted Strategy."""
 
     def __init__(self, session: Session) -> None:
+        self.marketing_repository = MarketingRepository(session)
         self.strategy_repository = MarketingStrategyRepository(session)
         self.copy_repository = CopyMatrixRepository(session)
 
@@ -330,5 +331,28 @@ class CopyMatrixQueryService:
             raise AppError(
                 "Copy matrix not found for Marketing strategy",
                 status_code=404,
+            )
+        return copy_matrix
+
+    def get_exact_for_task(
+        self, task_id: int, strategy_id: int, copy_matrix_id: int
+    ) -> CopyMatrix:
+        task = self.marketing_repository.get(task_id)
+        if task is None:
+            raise AppError("Marketing task not found", status_code=404)
+        strategy = self.strategy_repository.get(strategy_id)
+        if strategy is None:
+            raise AppError("Marketing strategy not found", status_code=404)
+        copy_matrix = self.copy_repository.get(copy_matrix_id)
+        if copy_matrix is None:
+            raise AppError("Copy matrix not found", status_code=404)
+        if (
+            strategy.product_id != task.product_id
+            or copy_matrix.product_id != task.product_id
+            or copy_matrix.marketing_strategy_id != strategy.id
+        ):
+            raise AppError(
+                "Marketing task, Strategy and CopyMatrix identity mismatch",
+                status_code=409,
             )
         return copy_matrix

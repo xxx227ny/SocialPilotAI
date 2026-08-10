@@ -10,7 +10,12 @@ from app.api.dependencies import (
 )
 from app.core.config import Settings, get_settings
 from app.db.session import get_db
-from app.schemas.copy import CopyMatrixExecutionRead, CopyPreflightRead
+from app.schemas.copy import (
+    CopyJobEnqueueRequest,
+    CopyMatrixExecutionRead,
+    CopyMatrixRead,
+    CopyPreflightRead,
+)
 from app.schemas.execution import ExecutionJobCreateRead
 from app.schemas.marketing import MarketingTaskCreate, MarketingTaskRead
 from app.schemas.strategy import (
@@ -19,7 +24,11 @@ from app.schemas.strategy import (
     StrategyJobEnqueueRequest,
     StrategyPreflightRead,
 )
-from app.services.copy_generation_service import CopyGenerationService
+from app.services.copy_generation_service import (
+    CopyGenerationService,
+    CopyMatrixQueryService,
+)
+from app.services.copy_job_service import CopyJobService
 from app.services.copy_preflight import CopyPreflightService
 from app.services.marketing import MarketingService
 from app.services.marketing_strategy_service import (
@@ -103,6 +112,40 @@ def get_copy_preflight(
     app_settings: SettingsDep,
 ) -> CopyPreflightRead:
     return CopyPreflightService(db, app_settings).run(task_id, strategy_id)
+
+
+@router.post(
+    "/{task_id}/strategies/{strategy_id}/copy-jobs",
+    response_model=ExecutionJobCreateRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def enqueue_copy_job(
+    task_id: int,
+    strategy_id: int,
+    data: CopyJobEnqueueRequest,
+    db: DbSession,
+    execution_gate: CopyExecutionGateDep,
+    app_settings: SettingsDep,
+) -> ExecutionJobCreateRead:
+    del execution_gate
+    return CopyJobService(db, app_settings).enqueue(
+        task_id, strategy_id, data
+    )
+
+
+@router.get(
+    "/{task_id}/strategies/{strategy_id}/copies/{copy_matrix_id}",
+    response_model=CopyMatrixRead,
+)
+def get_exact_task_copy(
+    task_id: int,
+    strategy_id: int,
+    copy_matrix_id: int,
+    db: DbSession,
+) -> CopyMatrixRead:
+    return CopyMatrixQueryService(db).get_exact_for_task(
+        task_id, strategy_id, copy_matrix_id
+    )
 
 
 @router.post(

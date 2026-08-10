@@ -151,12 +151,31 @@ class CopyPreflightRead(BaseModel):
     platforms: list[str]
     product_summary: CopyPreflightProductSummary
     strategy_summary: CopyPreflightStrategySummary
+    input_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    preflight_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    expires_at: datetime
     association_persisted: bool = False
     association_notice: str
     preflight_only: bool = True
     execution_will_call_ai: bool = True
     execution_will_create_copy_matrix: bool = True
     cost_notice: str
+
+
+class CopyJobEnqueueRequest(BaseModel):
+    product_id: int = Field(gt=0)
+    strategy_id: int = Field(gt=0)
+    input_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    preflight_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    preflight_expires_at: datetime
+    cost_confirmed: Literal[True]
+
+    @field_validator("preflight_expires_at")
+    @classmethod
+    def require_timezone(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("preflight_expires_at must include a timezone")
+        return value
 
 
 class StrictV2CopyModel(BaseModel):

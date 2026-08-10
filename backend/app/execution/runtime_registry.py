@@ -5,6 +5,7 @@ from collections.abc import Callable
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
+from app.execution.handlers.qwen_copy_matrix import QwenCopyMatrixGenerateV1Handler
 from app.execution.handlers.qwen_strategy import QwenStrategyGenerateV1Handler
 from app.execution.registry import ExecutionHandlerRegistry
 from app.providers import QwenProvider, TextGenerationProvider
@@ -34,6 +35,13 @@ def build_execution_handler_registry(
     registry = ExecutionHandlerRegistry()
     registry.register(
         QwenStrategyGenerateV1Handler(
+            session_factory=session_factory,
+            provider=LazyQwenProvider(settings, qwen_provider_factory),
+            settings=settings,
+        )
+    )
+    registry.register(
+        QwenCopyMatrixGenerateV1Handler(
             session_factory=session_factory,
             provider=LazyQwenProvider(settings, qwen_provider_factory),
             settings=settings,
