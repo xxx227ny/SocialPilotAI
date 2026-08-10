@@ -121,11 +121,14 @@ class InitialVideoProjectPreflightService:
         normalized_expiry = self._normalize_expiry(
             expires_at or self.now() + INITIAL_VIDEO_PROJECT_PREFLIGHT_TTL
         )
-        digest = self.compute_preflight_digest(
+        input_digest = self.compute_input_digest(
             product=product,
             strategy=strategy,
             copy_matrix=copy_matrix,
             request=data,
+        )
+        digest = self.compute_preflight_digest(
+            input_digest=input_digest,
             expires_at=normalized_expiry,
         )
         return InitialVideoProjectPreflightRead(
@@ -143,6 +146,7 @@ class InitialVideoProjectPreflightService:
                 input_ready and provider_configured and execution_enabled
             ),
             missing_requirements=list(dict.fromkeys(missing)),
+            input_digest=input_digest,
             preflight_digest=digest,
             expires_at=normalized_expiry,
             cost_notice=INITIAL_VIDEO_PROJECT_COST_NOTICE,
@@ -152,17 +156,28 @@ class InitialVideoProjectPreflightService:
     @staticmethod
     def compute_preflight_digest(
         *,
-        product: Product,
-        strategy: MarketingStrategy,
-        copy_matrix: CopyMatrix,
-        request: InitialVideoProjectSourceRequest,
+        input_digest: str,
         expires_at: datetime,
     ) -> str:
         payload = {
             "contract_version": INITIAL_VIDEO_PROJECT_CONTRACT_VERSION,
+            "input_digest": input_digest,
             "expires_at": InitialVideoProjectPreflightService._normalize_expiry(
                 expires_at
             ).isoformat(),
+        }
+        return InitialVideoProjectPreflightService._digest(payload)
+
+    @staticmethod
+    def compute_input_digest(
+        *,
+        product: Product,
+        strategy: MarketingStrategy,
+        copy_matrix: CopyMatrix,
+        request: InitialVideoProjectSourceRequest,
+    ) -> str:
+        payload = {
+            "contract_version": INITIAL_VIDEO_PROJECT_CONTRACT_VERSION,
             "request": request.model_dump(mode="json"),
             "product": {
                 "id": product.id,
@@ -188,6 +203,10 @@ class InitialVideoProjectPreflightService:
                 "copies": copy_matrix.copies or [],
             },
         }
+        return InitialVideoProjectPreflightService._digest(payload)
+
+    @staticmethod
+    def _digest(payload: dict[str, object]) -> str:
         serialized = json.dumps(
             payload,
             ensure_ascii=False,

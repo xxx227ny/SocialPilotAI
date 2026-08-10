@@ -7,6 +7,9 @@ from app.core.exceptions import AppError
 from app.db.session import get_db
 from app.execution.handlers.qwen_copy_matrix import QWEN_COPY_MATRIX_GENERATE_V1
 from app.execution.handlers.qwen_strategy import QWEN_STRATEGY_GENERATE_V1
+from app.execution.handlers.qwen_video_project import (
+    QWEN_VIDEO_PROJECT_GENERATE_V1,
+)
 from app.schemas.execution import (
     ExecutionJobClaimRead,
     ExecutionJobClaimRequest,
@@ -36,6 +39,7 @@ def create_execution_job(
     if data.job_type in {
         QWEN_STRATEGY_GENERATE_V1,
         QWEN_COPY_MATRIX_GENERATE_V1,
+        QWEN_VIDEO_PROJECT_GENERATE_V1,
     }:
         raise AppError(
             "Qwen jobs must use their confirmed business enqueue endpoint",

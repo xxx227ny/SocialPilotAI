@@ -149,6 +149,7 @@ def test_http_enqueue_is_provider_free_and_worker_restores_exact_result(
     assert registry.job_types == (
         "qwen.copy_matrix.generate.v1",
         "qwen.strategy.generate.v1",
+        "qwen.video_project.generate.v1",
     )
     assert factory.state == {"constructed": 0, "calls": 0}
 

@@ -1,40 +1,22 @@
 import json
-from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, func, select
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_text_generation_provider
 from app.core.config import Settings, get_settings
-from app.db.base import Base
 from app.main import app
-from app.models import CopyMatrix, MarketingStrategy, Product, VideoProject
+from app.models import (
+    CopyMatrix,
+    ExecutionJob,
+    MarketingStrategy,
+    Product,
+    VideoProject,
+)
 from app.providers.base import TextGenerationProvider
-from app.schemas.video import (
-    InitialVideoProjectExecutionRequest,
-    InitialVideoProjectSourceRequest,
-)
-from app.services.initial_video_project_generation_service import (
-    InitialVideoProjectGenerationService,
-)
-from app.services.initial_video_project_preflight import (
-    InitialVideoProjectPreflightService,
-)
-from tests.test_content_studio_service import add_video_sources, valid_plan
-
-
-class FakeInitialVideoProvider(TextGenerationProvider):
-    def __init__(self, result: dict[str, object] | None = None) -> None:
-        self.result = result or valid_plan()
-        self.calls = 0
-
-    def generate(self, prompt: str) -> str:
-        self.calls += 1
-        assert "structured short-video production plan" in prompt
-        return json.dumps(self.result)
+from tests.test_content_studio_service import add_video_sources
 
 
 def enabled_settings() -> Settings:
@@ -74,15 +56,18 @@ def preflight(
 
 
 def execution_payload(
+    product: Product,
     strategy: MarketingStrategy,
     copy_matrix: CopyMatrix,
     preflight_data: dict[str, object],
 ) -> dict[str, object]:
     return {
         **source_payload(strategy, copy_matrix),
-        "expected_preflight_digest": preflight_data["preflight_digest"],
+        "product_id": product.id,
+        "input_digest": preflight_data["input_digest"],
+        "preflight_digest": preflight_data["preflight_digest"],
         "preflight_expires_at": preflight_data["expires_at"],
-        "confirm_cost": True,
+        "cost_confirmed": True,
     }
 
 
@@ -115,6 +100,7 @@ def test_preflight_is_provider_free_read_only_and_exact(
     assert data["missing_requirements"] == []
     assert data["provider_calls"] == 0
     assert data["database_writes"] == 0
+    assert len(data["input_digest"]) == 64
     assert len(data["preflight_digest"]) == 64
     assert datetime.fromisoformat(data["expires_at"].replace("Z", "+00:00")) > (
         datetime.now(UTC)
@@ -250,19 +236,17 @@ def test_execution_rejects_digest_cost_and_expiry_before_provider(
     db_session: Session,
 ) -> None:
     product, strategy, copy_matrix = add_video_sources(db_session)
-    provider = FakeInitialVideoProvider()
     app.dependency_overrides[get_settings] = enabled_settings
-    app.dependency_overrides[get_text_generation_provider] = lambda: provider
     data = preflight(client, product, strategy, copy_matrix)
-    payload = execution_payload(strategy, copy_matrix, data)
+    payload = execution_payload(product, strategy, copy_matrix, data)
 
     wrong_digest = client.post(
         f"/api/v1/products/{product.id}/video-projects/execute",
-        json={**payload, "expected_preflight_digest": "0" * 64},
+        json={**payload, "preflight_digest": "0" * 64},
     )
     no_cost = client.post(
         f"/api/v1/products/{product.id}/video-projects/execute",
-        json={**payload, "confirm_cost": False},
+        json={**payload, "cost_confirmed": False},
     )
     expired = client.post(
         f"/api/v1/products/{product.id}/video-projects/execute",
@@ -277,42 +261,26 @@ def test_execution_rejects_digest_cost_and_expiry_before_provider(
     assert wrong_digest.status_code == 409
     assert no_cost.status_code == 422
     assert expired.status_code == 409
-    assert provider.calls == 0
     assert db_session.scalar(select(func.count(VideoProject.id))) == 0
+    assert db_session.scalar(select(func.count(ExecutionJob.id))) == 0
 
 
-def test_invalid_schema_does_not_create_video_project(
+def test_http_enqueue_is_provider_free_and_duplicate_reuses_exact_job(
     client: TestClient,
     db_session: Session,
 ) -> None:
     product, strategy, copy_matrix = add_video_sources(db_session)
-    invalid = valid_plan()
-    invalid["scenes"] = []
-    provider = FakeInitialVideoProvider(invalid)
+    provider_resolutions = 0
+
+    def forbidden_provider() -> TextGenerationProvider:
+        nonlocal provider_resolutions
+        provider_resolutions += 1
+        raise AssertionError("HTTP enqueue must not resolve a Provider")
+
     app.dependency_overrides[get_settings] = enabled_settings
-    app.dependency_overrides[get_text_generation_provider] = lambda: provider
+    app.dependency_overrides[get_text_generation_provider] = forbidden_provider
     data = preflight(client, product, strategy, copy_matrix)
-
-    response = client.post(
-        f"/api/v1/products/{product.id}/video-projects/execute",
-        json=execution_payload(strategy, copy_matrix, data),
-    )
-
-    assert response.status_code == 502
-    assert provider.calls == 1
-    assert db_session.scalar(select(func.count(VideoProject.id))) == 0
-
-
-def test_success_and_immediate_duplicate_reuse_exact_project(
-    client: TestClient,
-    db_session: Session,
-) -> None:
-    product, strategy, copy_matrix = add_video_sources(db_session)
-    provider = FakeInitialVideoProvider()
-    app.dependency_overrides[get_settings] = enabled_settings
-    app.dependency_overrides[get_text_generation_provider] = lambda: provider
-    data = preflight(client, product, strategy, copy_matrix)
-    payload = execution_payload(strategy, copy_matrix, data)
+    payload = execution_payload(product, strategy, copy_matrix, data)
 
     first = client.post(
         f"/api/v1/products/{product.id}/video-projects/execute",
@@ -323,70 +291,10 @@ def test_success_and_immediate_duplicate_reuse_exact_project(
         json=payload,
     )
 
-    assert first.status_code == second.status_code == 200
-    first_body = first.json()
-    second_body = second.json()
-    assert first_body["reused"] is False
-    assert first_body["provider_calls"] == 1
-    assert second_body["reused"] is True
-    assert second_body["provider_calls"] == 0
-    assert (
-        first_body["generated_video_project"]["id"]
-        == second_body["generated_video_project"]["id"]
-    )
-    assert first_body["strategy_id"] == strategy.id
-    assert first_body["copy_matrix_id"] == copy_matrix.id
-    assert provider.calls == 1
-    assert db_session.scalar(select(func.count(VideoProject.id))) == 1
-
-
-def test_concurrent_double_click_calls_provider_once(tmp_path: Path) -> None:
-    engine = create_engine(
-        f"sqlite:///{tmp_path / 'double-click.db'}",
-        connect_args={"check_same_thread": False},
-    )
-    Base.metadata.create_all(engine)
-    sessions = sessionmaker(bind=engine, expire_on_commit=False)
-    settings = enabled_settings()
-    with sessions() as setup:
-        product, strategy, copy_matrix = add_video_sources(setup)
-        source = InitialVideoProjectSourceRequest(
-            **source_payload(strategy, copy_matrix)
-        )
-        checked = InitialVideoProjectPreflightService(
-            setup, settings
-        ).run(product.id, source)
-        execution = InitialVideoProjectExecutionRequest(
-            **source.model_dump(),
-            expected_preflight_digest=checked.preflight_digest,
-            preflight_expires_at=checked.expires_at,
-            confirm_cost=True,
-        )
-        product_id = product.id
-
-    provider = FakeInitialVideoProvider()
-
-    def execute_once() -> tuple[int, bool, int]:
-        with sessions() as session:
-            result = InitialVideoProjectGenerationService(
-                session, provider, settings
-            ).generate(product_id, execution)
-            return (
-                result.generated_video_project.id,
-                result.reused,
-                result.provider_calls,
-            )
-
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        results = list(executor.map(lambda _: execute_once(), range(2)))
-
-    with sessions() as check:
-        assert check.scalar(select(func.count(VideoProject.id))) == 1
-    assert provider.calls == 1
-    assert results[0][0] == results[1][0]
-    assert sorted((item[1], item[2]) for item in results) == [
-        (False, 1),
-        (True, 0),
-    ]
-    Base.metadata.drop_all(engine)
-    engine.dispose()
+    assert first.status_code == second.status_code == 201
+    assert first.json()["reused"] is False
+    assert second.json()["reused"] is True
+    assert first.json()["job"]["id"] == second.json()["job"]["id"]
+    assert provider_resolutions == 0
+    assert db_session.scalar(select(func.count(ExecutionJob.id))) == 1
+    assert db_session.scalar(select(func.count(VideoProject.id))) == 0

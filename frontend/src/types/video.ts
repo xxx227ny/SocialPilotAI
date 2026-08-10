@@ -48,9 +48,11 @@ export interface InitialVideoProjectSource {
 
 export interface InitialVideoProjectExecutionRequest
   extends InitialVideoProjectSourceRequest {
-  expected_preflight_digest: string;
+  product_id: number;
+  input_digest: string;
+  preflight_digest: string;
   preflight_expires_at: string;
-  confirm_cost: true;
+  cost_confirmed: true;
 }
 
 export interface InitialVideoProjectPreflight
@@ -62,6 +64,7 @@ export interface InitialVideoProjectPreflight
   contract_ready: boolean;
   ready_for_execution: boolean;
   missing_requirements: string[];
+  input_digest: string;
   preflight_digest: string;
   expires_at: string;
   preflight_only: true;

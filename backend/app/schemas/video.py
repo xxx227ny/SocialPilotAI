@@ -111,9 +111,11 @@ class InitialVideoProjectSourceRead(StrictInitialVideoModel):
 
 
 class InitialVideoProjectExecutionRequest(InitialVideoProjectSourceRequest):
-    expected_preflight_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    product_id: int = Field(gt=0)
+    input_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    preflight_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     preflight_expires_at: datetime
-    confirm_cost: Literal[True]
+    cost_confirmed: Literal[True]
 
     @field_validator("preflight_expires_at")
     @classmethod
@@ -136,6 +138,7 @@ class InitialVideoProjectPreflightRead(StrictInitialVideoModel):
     contract_ready: bool
     ready_for_execution: bool
     missing_requirements: list[str]
+    input_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     preflight_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     expires_at: datetime
     preflight_only: Literal[True] = True

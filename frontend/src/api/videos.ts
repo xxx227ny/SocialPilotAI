@@ -1,7 +1,6 @@
 import { AI_EXECUTION_TIMEOUT_MS, apiClient } from "./client";
 import type {
   InitialVideoProjectExecutionRequest,
-  InitialVideoProjectExecutionResult,
   InitialVideoProjectPreflight,
   InitialVideoProjectSource,
   InitialVideoProjectSourceRequest,
@@ -17,7 +16,31 @@ import type {
   V2VideoProjectPreflight,
   V2VideoProjectSourceRequest,
 } from "../types/video";
+import type {
+  ExecutionJob,
+  ExecutionJobCreateResult,
+} from "../types/execution";
 import axios from "axios";
+
+export interface InitialVideoOperationIdentity {
+  productId: number;
+  operationId: number;
+  controller: AbortController;
+}
+
+export function isCurrentInitialVideoOperation(
+  expected: InitialVideoOperationIdentity,
+  currentProductId: number,
+  currentOperationId: number,
+  currentController: AbortController | null,
+): boolean {
+  return (
+    !expected.controller.signal.aborted &&
+    expected.productId === currentProductId &&
+    expected.operationId === currentOperationId &&
+    expected.controller === currentController
+  );
+}
 
 export async function generateVideoProject(
   productId: number,
@@ -54,15 +77,53 @@ export async function getInitialVideoProjectSource(
   return response.data;
 }
 
-export async function executeInitialVideoProject(
+export async function enqueueInitialVideoProject(
   productId: number,
   payload: InitialVideoProjectExecutionRequest,
   signal?: AbortSignal,
-): Promise<InitialVideoProjectExecutionResult> {
-  const response = await apiClient.post<InitialVideoProjectExecutionResult>(
+): Promise<ExecutionJobCreateResult> {
+  const response = await apiClient.post<ExecutionJobCreateResult>(
     `/products/${productId}/video-projects/execute`,
     payload,
-    { signal, timeout: AI_EXECUTION_TIMEOUT_MS },
+    { signal },
+  );
+  return response.data;
+}
+
+export async function listInitialVideoProjectJobs(
+  productId: number,
+  signal?: AbortSignal,
+): Promise<ExecutionJob[]> {
+  const response = await apiClient.get<ExecutionJob[]>("/execution-jobs", {
+    params: {
+      job_type: "qwen.video_project.generate.v1",
+      source_type: "product",
+      source_id: productId,
+    },
+    signal,
+  });
+  return response.data;
+}
+
+export async function getInitialVideoProjectJob(
+  jobId: number,
+  signal?: AbortSignal,
+): Promise<ExecutionJob> {
+  const response = await apiClient.get<ExecutionJob>(
+    `/execution-jobs/${jobId}`,
+    { signal },
+  );
+  return response.data;
+}
+
+export async function retryInitialVideoProjectJob(
+  jobId: number,
+  signal?: AbortSignal,
+): Promise<ExecutionJob> {
+  const response = await apiClient.post<ExecutionJob>(
+    `/execution-jobs/${jobId}/retry`,
+    { retry_confirmed: true },
+    { signal },
   );
   return response.data;
 }

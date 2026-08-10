@@ -6,8 +6,8 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import VideoProjectTextProviderDep
 from app.core.config import Settings, get_settings
 from app.db.session import get_db
+from app.schemas.execution import ExecutionJobCreateRead
 from app.schemas.video import (
-    InitialVideoProjectExecutionRead,
     InitialVideoProjectExecutionRequest,
     InitialVideoProjectPreflightRead,
     InitialVideoProjectSourceRead,
@@ -16,8 +16,8 @@ from app.schemas.video import (
     VideoProjectSchema,
 )
 from app.services.content_studio_service import ContentStudioService
-from app.services.initial_video_project_generation_service import (
-    InitialVideoProjectGenerationService,
+from app.services.initial_video_project_job_service import (
+    InitialVideoProjectJobService,
 )
 from app.services.initial_video_project_preflight import (
     InitialVideoProjectPreflightService,
@@ -72,18 +72,18 @@ def preflight_initial_video_project(
 
 @router.post(
     "/{product_id}/video-projects/execute",
-    response_model=InitialVideoProjectExecutionRead,
+    response_model=ExecutionJobCreateRead,
+    status_code=201,
 )
 def execute_initial_video_project(
     product_id: int,
     request: InitialVideoProjectExecutionRequest,
-    provider: VideoProjectTextProviderDep,
     db: DbSession,
     app_settings: SettingsDep,
-) -> InitialVideoProjectExecutionRead:
-    return InitialVideoProjectGenerationService(
-        db, provider, app_settings
-    ).generate(product_id, request)
+) -> ExecutionJobCreateRead:
+    return InitialVideoProjectJobService(db, app_settings).enqueue(
+        product_id, request
+    )
 
 
 @router.get(

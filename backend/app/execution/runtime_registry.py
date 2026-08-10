@@ -7,6 +7,9 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings
 from app.execution.handlers.qwen_copy_matrix import QwenCopyMatrixGenerateV1Handler
 from app.execution.handlers.qwen_strategy import QwenStrategyGenerateV1Handler
+from app.execution.handlers.qwen_video_project import (
+    QwenVideoProjectGenerateV1Handler,
+)
 from app.execution.registry import ExecutionHandlerRegistry
 from app.providers import QwenProvider, TextGenerationProvider
 
@@ -42,6 +45,13 @@ def build_execution_handler_registry(
     )
     registry.register(
         QwenCopyMatrixGenerateV1Handler(
+            session_factory=session_factory,
+            provider=LazyQwenProvider(settings, qwen_provider_factory),
+            settings=settings,
+        )
+    )
+    registry.register(
+        QwenVideoProjectGenerateV1Handler(
             session_factory=session_factory,
             provider=LazyQwenProvider(settings, qwen_provider_factory),
             settings=settings,

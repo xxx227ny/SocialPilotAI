@@ -85,49 +85,51 @@ class InitialVideoProjectGenerationService:
                 "run Preflight again",
                 status_code=409,
             )
-        if preflight.preflight_digest != data.expected_preflight_digest:
+        if preflight.input_digest != data.input_digest:
+            raise AppError(
+                "Initial VideoProject frozen input changed; run Preflight again",
+                status_code=409,
+            )
+        if preflight.preflight_digest != data.preflight_digest:
             raise AppError(
                 "Initial VideoProject Preflight changed; run Preflight again",
                 status_code=409,
             )
+        return self.generate_frozen(
+            product_id,
+            source,
+            preflight_digest=data.preflight_digest,
+        )
 
+    def generate_frozen(
+        self,
+        product_id: int,
+        source: InitialVideoProjectSourceRequest,
+        *,
+        preflight_digest: str,
+    ) -> InitialVideoProjectExecutionRead:
+        """Run the one shared prompt/schema/persistence implementation."""
+        self._require_execution_enabled()
         with _INITIAL_VIDEO_PROJECT_LOCK:
-            self._require_valid_expiry(data.preflight_expires_at)
-            locked_preflight = InitialVideoProjectPreflightService(
-                self.session, self.settings
-            ).run(
-                product_id,
-                source,
-                expires_at=data.preflight_expires_at,
-            )
-            if (
-                not locked_preflight.ready_for_execution
-                or locked_preflight.preflight_digest
-                != data.expected_preflight_digest
-            ):
-                raise AppError(
-                    "Initial VideoProject source changed; run Preflight again",
-                    status_code=409,
-                )
             existing = self.video_repository.get_by_initial_identity(
                 product_id=product_id,
-                marketing_strategy_id=data.strategy_id,
-                copy_matrix_id=data.copy_matrix_id,
-                platform=data.platform,
-                duration_seconds=data.duration_seconds,
-                aspect_ratio=data.aspect_ratio,
+                marketing_strategy_id=source.strategy_id,
+                copy_matrix_id=source.copy_matrix_id,
+                platform=source.platform,
+                duration_seconds=source.duration_seconds,
+                aspect_ratio=source.aspect_ratio,
             )
             if existing is not None:
                 return self._response(
                     project=existing,
-                    preflight_digest=data.expected_preflight_digest,
+                    preflight_digest=preflight_digest,
                     reused=True,
                     provider_calls=0,
                 )
 
             product = self.product_repository.get(product_id)
-            strategy = self.strategy_repository.get(data.strategy_id)
-            copy_matrix = self.copy_repository.get(data.copy_matrix_id)
+            strategy = self.strategy_repository.get(source.strategy_id)
+            copy_matrix = self.copy_repository.get(source.copy_matrix_id)
             if product is None or strategy is None or copy_matrix is None:
                 raise AppError(
                     "Initial VideoProject source changed; run Preflight again",
@@ -144,14 +146,14 @@ class InitialVideoProjectGenerationService:
             try:
                 provider_output = V2VideoProjectProviderOutput.model_validate_json(
                     raw_result,
-                    context={"duration_seconds": data.duration_seconds},
+                    context={"duration_seconds": source.duration_seconds},
                 )
                 plan = VideoPlanSchema.model_validate(
                     {
                         **provider_output.model_dump(mode="json"),
-                        "platform": data.platform,
-                        "duration_seconds": data.duration_seconds,
-                        "aspect_ratio": data.aspect_ratio,
+                        "platform": source.platform,
+                        "duration_seconds": source.duration_seconds,
+                        "aspect_ratio": source.aspect_ratio,
                     }
                 )
             except (ValidationError, ValueError, json.JSONDecodeError) as exc:
@@ -173,7 +175,7 @@ class InitialVideoProjectGenerationService:
                 ) from exc
             return self._response(
                 project=project,
-                preflight_digest=data.expected_preflight_digest,
+                preflight_digest=preflight_digest,
                 reused=False,
                 provider_calls=1,
             )
