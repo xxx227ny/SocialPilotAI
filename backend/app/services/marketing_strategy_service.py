@@ -194,6 +194,7 @@ class MarketingStrategyQueryService:
     """Read persisted Product strategies without resolving a Provider."""
 
     def __init__(self, session: Session) -> None:
+        self.marketing_repository = MarketingRepository(session)
         self.product_repository = ProductRepository(session)
         self.strategy_repository = MarketingStrategyRepository(session)
 
@@ -204,4 +205,20 @@ class MarketingStrategyQueryService:
         strategy = self.strategy_repository.get_latest_by_product(product_id)
         if strategy is None:
             raise AppError("Marketing strategy not found", status_code=404)
+        return strategy
+
+    def get_exact_for_task(
+        self, task_id: int, strategy_id: int
+    ) -> MarketingStrategy:
+        task = self.marketing_repository.get(task_id)
+        if task is None:
+            raise AppError("Marketing task not found", status_code=404)
+        strategy = self.strategy_repository.get(strategy_id)
+        if strategy is None:
+            raise AppError("Marketing strategy not found", status_code=404)
+        if strategy.product_id != task.product_id:
+            raise AppError(
+                "Marketing strategy does not belong to the task Product",
+                status_code=409,
+            )
         return strategy

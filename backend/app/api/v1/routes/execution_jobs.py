@@ -3,7 +3,9 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
+from app.core.exceptions import AppError
 from app.db.session import get_db
+from app.execution.handlers.qwen_strategy import QWEN_STRATEGY_GENERATE_V1
 from app.schemas.execution import (
     ExecutionJobClaimRead,
     ExecutionJobClaimRequest,
@@ -30,6 +32,11 @@ DbSession = Annotated[Session, Depends(get_db)]
 def create_execution_job(
     data: ExecutionJobCreate, db: DbSession
 ) -> ExecutionJobCreateRead:
+    if data.job_type == QWEN_STRATEGY_GENERATE_V1:
+        raise AppError(
+            "Strategy jobs must use the confirmed Strategy enqueue endpoint",
+            409,
+        )
     return ExecutionQueueService(db).create(data)
 
 
@@ -112,4 +119,3 @@ def mark_execution_job_submit_unknown(
     job_id: int, data: ExecutionJobUnknownRequest, db: DbSession
 ) -> ExecutionJobRead:
     return ExecutionQueueService(db).mark_submit_unknown(job_id, data)
-

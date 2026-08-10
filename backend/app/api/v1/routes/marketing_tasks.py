@@ -11,15 +11,22 @@ from app.api.dependencies import (
 from app.core.config import Settings, get_settings
 from app.db.session import get_db
 from app.schemas.copy import CopyMatrixExecutionRead, CopyPreflightRead
+from app.schemas.execution import ExecutionJobCreateRead
 from app.schemas.marketing import MarketingTaskCreate, MarketingTaskRead
 from app.schemas.strategy import (
     MarketingStrategyExecutionRead,
+    MarketingStrategyRead,
+    StrategyJobEnqueueRequest,
     StrategyPreflightRead,
 )
 from app.services.copy_generation_service import CopyGenerationService
 from app.services.copy_preflight import CopyPreflightService
 from app.services.marketing import MarketingService
-from app.services.marketing_strategy_service import MarketingStrategyService
+from app.services.marketing_strategy_service import (
+    MarketingStrategyQueryService,
+    MarketingStrategyService,
+)
+from app.services.strategy_job_service import StrategyJobService
 from app.services.strategy_preflight import StrategyPreflightService
 
 router = APIRouter(prefix="/marketing-tasks")
@@ -55,6 +62,34 @@ def get_strategy_preflight(
     task_id: int, db: DbSession, app_settings: SettingsDep
 ) -> StrategyPreflightRead:
     return StrategyPreflightService(db, app_settings).run(task_id)
+
+
+@router.post(
+    "/{task_id}/strategy-jobs",
+    response_model=ExecutionJobCreateRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def enqueue_strategy_job(
+    task_id: int,
+    data: StrategyJobEnqueueRequest,
+    db: DbSession,
+    execution_gate: StrategyExecutionGateDep,
+    app_settings: SettingsDep,
+) -> ExecutionJobCreateRead:
+    del execution_gate
+    return StrategyJobService(db, app_settings).enqueue(task_id, data)
+
+
+@router.get(
+    "/{task_id}/strategies/{strategy_id}",
+    response_model=MarketingStrategyRead,
+)
+def get_exact_task_strategy(
+    task_id: int, strategy_id: int, db: DbSession
+) -> MarketingStrategyRead:
+    return MarketingStrategyQueryService(db).get_exact_for_task(
+        task_id, strategy_id
+    )
 
 
 @router.get(

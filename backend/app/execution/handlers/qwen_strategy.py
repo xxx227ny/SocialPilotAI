@@ -85,7 +85,7 @@ class QwenStrategyGenerateV1Handler:
                 or preflight.task_id != data.marketing_brief_id
             ):
                 return HandlerResult.failed("STRATEGY_PREFLIGHT_IDENTITY_MISMATCH")
-            if preflight.preflight_digest != data.frozen_digest:
+            if preflight.input_digest != data.frozen_digest:
                 return HandlerResult.failed("STRATEGY_FROZEN_DIGEST_MISMATCH")
             if not preflight.ready_for_execution:
                 return HandlerResult.failed("STRATEGY_PREFLIGHT_NOT_READY")

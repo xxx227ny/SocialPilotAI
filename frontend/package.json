@@ -13,6 +13,7 @@
     "test:system-readiness": "node scripts/test-system-readiness.mjs",
     "test:presentation-snapshot": "node scripts/test-presentation-snapshot.mjs",
     "test:brand-kit-onboarding": "node scripts/test-brand-kit-onboarding.mjs",
+    "test:strategy-queue": "node scripts/test-strategy-queue.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

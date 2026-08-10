@@ -1,5 +1,7 @@
 import hashlib
 import json
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -18,6 +20,7 @@ from app.services.marketing import TARGET_MARKET_AUDIENCE_PATTERN
 from app.services.marketing_strategy_service import MarketingStrategyService
 
 PROVIDER_LABEL = "Alibaba Cloud Bailian Qwen"
+STRATEGY_PREFLIGHT_TTL = timedelta(minutes=10)
 COST_NOTICE = (
     "执行真实生成将调用阿里云百炼 Qwen，并可能消耗比赛 Credits；"
     "实际消耗由模型、输入输出长度和平台计费决定。"
@@ -32,13 +35,17 @@ class StrategyPreflightService:
         session: Session,
         settings: Settings,
         provider_type: type[object] | None = QwenProvider,
+        now: Callable[[], datetime] | None = None,
     ) -> None:
         self.session = session
         self.settings = settings
         self.provider_type = provider_type
+        self.now = now or (lambda: datetime.now(UTC))
         self.marketing_repository = MarketingRepository(session)
 
-    def run(self, task_id: int) -> StrategyPreflightRead:
+    def run(
+        self, task_id: int, *, expires_at: datetime | None = None
+    ) -> StrategyPreflightRead:
         task = self.marketing_repository.get(task_id)
         if task is None:
             raise AppError("Marketing task not found", status_code=404)
@@ -77,10 +84,17 @@ class StrategyPreflightService:
             and self.settings.enable_strategy_execution
         )
         audience = TARGET_MARKET_AUDIENCE_PATTERN.sub("", audience_value).strip()
-        preflight_digest = self.compute_digest(
+        input_digest = self.compute_input_digest(
             product=product,
             task=task,
             model_label=self.settings.qwen_model,
+        )
+        normalized_expiry = self._normalize_expiry(
+            expires_at or self.now() + STRATEGY_PREFLIGHT_TTL
+        )
+        preflight_digest = self.compute_preflight_digest(
+            input_digest=input_digest,
+            expires_at=normalized_expiry,
         )
 
         return StrategyPreflightRead(
@@ -107,12 +121,14 @@ class StrategyPreflightService:
             model_label=self.settings.qwen_model,
             provider_configured=provider_configured,
             execution_enabled=self.settings.enable_strategy_execution,
+            input_digest=input_digest,
             preflight_digest=preflight_digest,
+            expires_at=normalized_expiry,
             cost_notice=COST_NOTICE,
         )
 
     @staticmethod
-    def compute_digest(
+    def compute_input_digest(
         *, product: Product, task: MarketingBrief, model_label: str
     ) -> str:
         payload = {
@@ -130,6 +146,27 @@ class StrategyPreflightService:
             separators=(",", ":"),
         ).encode("utf-8")
         return hashlib.sha256(encoded).hexdigest()
+
+    @staticmethod
+    def compute_preflight_digest(
+        *, input_digest: str, expires_at: datetime
+    ) -> str:
+        payload = {
+            "input_digest": input_digest,
+            "expires_at": StrategyPreflightService._normalize_expiry(
+                expires_at
+            ).isoformat(),
+        }
+        encoded = json.dumps(
+            payload, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
+
+    @staticmethod
+    def _normalize_expiry(value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("Strategy preflight expiry requires a timezone")
+        return value.astimezone(UTC)
 
     def _provider_configured(self) -> bool:
         return bool(effective_qwen_api_key(self.settings))

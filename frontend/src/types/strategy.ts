@@ -61,6 +61,9 @@ export interface StrategyPreflight {
   model_label: string;
   provider_configured: boolean;
   execution_enabled: boolean;
+  input_digest: string;
+  preflight_digest: string;
+  expires_at: string;
   preflight_only: boolean;
   execution_will_call_ai: boolean;
   execution_will_create_strategy: boolean;

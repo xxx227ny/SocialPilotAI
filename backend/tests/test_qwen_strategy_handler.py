@@ -101,7 +101,7 @@ def create_sources(
         session.add(brief)
         session.commit()
         preflight = StrategyPreflightService(session, settings()).run(brief.id)
-        return product.id, brief.id, preflight.preflight_digest
+        return product.id, brief.id, preflight.input_digest
 
 
 def create_job(

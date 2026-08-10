@@ -71,8 +71,25 @@ class StrategyPreflightRead(BaseModel):
     model_label: str
     provider_configured: bool
     execution_enabled: bool
+    input_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     preflight_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    expires_at: datetime
     preflight_only: bool = True
     execution_will_call_ai: bool = True
     execution_will_create_strategy: bool = True
     cost_notice: str
+
+
+class StrategyJobEnqueueRequest(BaseModel):
+    product_id: int = Field(gt=0)
+    input_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    preflight_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    preflight_expires_at: datetime
+    cost_confirmed: Literal[True]
+
+    @field_validator("preflight_expires_at")
+    @classmethod
+    def require_timezone(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("preflight_expires_at must include a timezone")
+        return value

@@ -382,13 +382,15 @@ function ProductDetail({
         )}
       </section>
 
-      <MarketingTaskConfig
-        product={product}
-        selectedPlatforms={selectedPlatforms}
-        onPlatformsChange={onPlatformsChange}
-        onProductUpdated={onProductUpdated}
-        onTaskChanged={onBriefChanged}
-      />
+      {!isPresentation ? (
+        <MarketingTaskConfig
+          product={product}
+          selectedPlatforms={selectedPlatforms}
+          onPlatformsChange={onPlatformsChange}
+          onProductUpdated={onProductUpdated}
+          onTaskChanged={onBriefChanged}
+        />
+      ) : null}
 
       <section className="product-detail-card__existing-workflow">
         <p className="strategy-preflight__note">

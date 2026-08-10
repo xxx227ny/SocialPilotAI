@@ -6,6 +6,10 @@ import type {
   StrategyExecutionIssue,
   StrategyPreflight,
 } from "../types/strategy";
+import type {
+  ExecutionJob,
+  ExecutionJobCreateResult,
+} from "../types/execution";
 import { apiClient } from "./client";
 
 export async function generateMarketingStrategy(
@@ -93,6 +97,75 @@ export async function getStrategyPreflight(
 ): Promise<StrategyPreflight> {
   const response = await apiClient.get<StrategyPreflight>(
     `/marketing-tasks/${taskId}/strategy-preflight`,
+    { signal },
+  );
+  return response.data;
+}
+
+export async function enqueueStrategyJob(
+  taskId: number,
+  payload: {
+    product_id: number;
+    input_digest: string;
+    preflight_digest: string;
+    preflight_expires_at: string;
+    cost_confirmed: true;
+  },
+  signal?: AbortSignal,
+): Promise<ExecutionJobCreateResult> {
+  const response = await apiClient.post<ExecutionJobCreateResult>(
+    `/marketing-tasks/${taskId}/strategy-jobs`,
+    payload,
+    { signal },
+  );
+  return response.data;
+}
+
+export async function listStrategyJobs(
+  taskId: number,
+  signal?: AbortSignal,
+): Promise<ExecutionJob[]> {
+  const response = await apiClient.get<ExecutionJob[]>("/execution-jobs", {
+    params: {
+      job_type: "qwen.strategy.generate.v1",
+      source_type: "marketing_brief",
+      source_id: taskId,
+    },
+    signal,
+  });
+  return response.data;
+}
+
+export async function getExecutionJob(
+  jobId: number,
+  signal?: AbortSignal,
+): Promise<ExecutionJob> {
+  const response = await apiClient.get<ExecutionJob>(
+    `/execution-jobs/${jobId}`,
+    { signal },
+  );
+  return response.data;
+}
+
+export async function retryExecutionJob(
+  jobId: number,
+  signal?: AbortSignal,
+): Promise<ExecutionJob> {
+  const response = await apiClient.post<ExecutionJob>(
+    `/execution-jobs/${jobId}/retry`,
+    { retry_confirmed: true },
+    { signal },
+  );
+  return response.data;
+}
+
+export async function getExactMarketingStrategy(
+  taskId: number,
+  strategyId: number,
+  signal?: AbortSignal,
+): Promise<MarketingStrategy> {
+  const response = await apiClient.get<MarketingStrategy>(
+    `/marketing-tasks/${taskId}/strategies/${strategyId}`,
     { signal },
   );
   return response.data;

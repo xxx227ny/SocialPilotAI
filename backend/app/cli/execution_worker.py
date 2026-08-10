@@ -14,7 +14,8 @@ from threading import Event, Thread
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.execution.registry import ExecutionHandlerRegistry
+from app.core.config import settings
+from app.execution.runtime_registry import build_execution_handler_registry
 from app.execution.worker import ExecutionWorker, WorkerRunStatus
 from app.services.database_migration_service import (
     HEAD_REVISION,
@@ -91,7 +92,10 @@ def main(argv: list[str] | None = None) -> int:
     ).hexdigest()
     worker = ExecutionWorker(
         session_factory=session_factory,
-        registry=ExecutionHandlerRegistry(),
+        registry=build_execution_handler_registry(
+            session_factory=session_factory,
+            settings=settings,
+        ),
         worker_id=worker_identity,
         lease_seconds=args.lease_seconds,
         heartbeat_interval_seconds=args.heartbeat_seconds,
