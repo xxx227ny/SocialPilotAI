@@ -16,6 +16,7 @@ for (const label of [
   "Qwen",
   "Wanx",
   "Google / YouTube",
+  "Meta / Instagram",
   "Database",
   "Artifact Storage",
   "Execution Worker",
@@ -29,6 +30,7 @@ assert.match(api, /\/system\/readiness/);
 assert.match(layout, /!isPresentation && <SystemReadinessPanel/);
 assert.doesNotMatch(types, /api_key|client_secret|access_token|refresh_token/i);
 assert.match(types, /provider_calls: 0/);
+assert.match(types, /meta_instagram: SystemReadinessItem/);
 assert.match(types, /database_writes: 0/);
 assert.match(types, /automatic_actions: false/);
 assert.match(types, /revision_status: "head" \| "upgrade_required" \| "unavailable"/);

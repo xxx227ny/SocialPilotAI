@@ -32,6 +32,17 @@ class SocialRepository:
             )
         )
 
+    def get_account_by_provider_identity(
+        self, product_id: int, platform: str, provider_account_id: str
+    ) -> SocialAccount | None:
+        return self.session.scalar(
+            select(SocialAccount).where(
+                SocialAccount.product_id == product_id,
+                SocialAccount.platform == platform,
+                SocialAccount.provider_account_id == provider_account_id,
+            )
+        )
+
     def get_oauth_session(self, state_digest: str) -> OAuthSession | None:
         return self.session.scalar(
             select(OAuthSession).where(OAuthSession.state_digest == state_digest)

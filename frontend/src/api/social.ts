@@ -4,6 +4,7 @@ import type {
   PublishArtifactCandidate,
   PublishTask,
   SocialAccount,
+  InstagramConnectResult,
   YouTubeConnectResult,
   YouTubePreflight,
   YouTubePublishingMetadata,
@@ -19,6 +20,32 @@ export async function connectYouTube(
     { signal },
   );
   return response.data;
+}
+
+export async function connectInstagram(productId: number, signal?: AbortSignal) {
+  const response = await apiClient.post<InstagramConnectResult>(
+    "/social-accounts/instagram/connect",
+    { product_id: productId },
+    { signal },
+  );
+  return response.data;
+}
+
+export async function disconnectInstagramAccount(
+  productId: number,
+  accountId: number,
+  signal?: AbortSignal,
+) {
+  const response = await apiClient.post<{
+    account: SocialAccount;
+    local_only: true;
+    meta_authorization_revoked: false;
+  }>(
+    `/social-accounts/instagram/${accountId}/disconnect`,
+    { product_id: productId, confirm_disconnect: true },
+    { signal },
+  );
+  return response.data.account;
 }
 
 export async function listSocialAccounts(

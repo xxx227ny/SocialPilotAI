@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     enable_video_render_execution: bool = False
     enable_growth_execution: bool = False
     enable_social_account_binding: bool = False
+    enable_instagram_account_binding: bool = False
     enable_youtube_publishing: bool = False
     google_oauth_client_id: str | None = None
     google_oauth_client_secret: SecretStr | None = None
@@ -52,6 +53,13 @@ class Settings(BaseSettings):
     frontend_social_redirect_path: str = "/products"
     social_frontend_base_url: str = "http://127.0.0.1:5173"
     youtube_request_timeout: float = Field(default=30, gt=0, le=120)
+    instagram_app_id: str | None = None
+    instagram_app_secret: SecretStr | None = None
+    instagram_oauth_redirect_uri: str | None = None
+    instagram_graph_api_version: str | None = Field(
+        default=None, pattern=r"^v[0-9]+\.[0-9]+$"
+    )
+    instagram_request_timeout: float = Field(default=30, gt=0, le=120)
     wanx_api_key: SecretStr | None = None
     wanx_model: str = "wan2.7-t2v"
     wanx_region: str = "cn-beijing"

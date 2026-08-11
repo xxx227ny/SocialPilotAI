@@ -251,6 +251,10 @@
   background: #fff;
 }
 
+.social-account-card--instagram {
+  border-color: rgba(193, 53, 132, 0.28);
+}
+
 .social-account-card > div:first-child,
 .youtube-publish-task {
   display: flex;

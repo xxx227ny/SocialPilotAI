@@ -55,6 +55,12 @@ def ready_settings(artifact_root: str) -> Settings:
         google_oauth_redirect_uri=(
             "http://127.0.0.1:8000/api/v1/social-accounts/youtube/callback"
         ),
+        instagram_app_id="fake-instagram-app-id",
+        instagram_app_secret="fake-instagram-app-secret",
+        instagram_oauth_redirect_uri=(
+            "http://127.0.0.1:8000/api/v1/social-accounts/instagram/callback"
+        ),
+        instagram_graph_api_version="v23.0",
         social_token_encryption_key=Fernet.generate_key().decode("ascii"),
         video_artifact_storage_root=artifact_root,
         execution_worker_status_file=str(worker_status),
@@ -64,6 +70,7 @@ def ready_settings(artifact_root: str) -> Settings:
         enable_video_render_execution=True,
         enable_social_account_binding=True,
         enable_youtube_publishing=True,
+        enable_instagram_account_binding=True,
     )
 
 
@@ -99,6 +106,7 @@ def test_readiness_is_provider_free_read_only_and_secret_safe(
             "qwen",
             "wanx",
             "google_youtube",
+            "meta_instagram",
             "database",
             "artifact_storage",
             "execution_worker",
@@ -117,6 +125,8 @@ def test_readiness_is_provider_free_read_only_and_secret_safe(
         "fake-wanx-readiness-key",
         "fake-google-client-id",
         "fake-google-client-secret",
+        "fake-instagram-app-id",
+        "fake-instagram-app-secret",
         settings.social_token_encryption_key.get_secret_value(),
     ):
         assert secret not in serialized
@@ -151,6 +161,7 @@ def test_readiness_explains_missing_local_configuration(
     assert body["wanx"]["ready"] is False
     assert "WANX_API_KEY" in body["wanx"]["message"]
     assert body["google_youtube"]["ready"] is False
+    assert body["meta_instagram"]["ready"] is False
     assert body["artifact_storage"]["ready"] is False
     assert body["execution_worker"]["ready"] is False
     assert body["execution_worker"]["status"] == "not_running"

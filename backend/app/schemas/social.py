@@ -15,12 +15,21 @@ class YouTubeConnectRead(BaseModel):
     expires_at: datetime
 
 
+class InstagramConnectRequest(BaseModel):
+    product_id: int = Field(gt=0)
+
+
+class InstagramConnectRead(BaseModel):
+    authorization_url: str
+    expires_at: datetime
+
+
 class SocialAccountRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     product_id: int
-    platform: Literal["youtube"]
+    platform: Literal["youtube", "instagram"]
     provider_account_id: str
     display_name: str
     scopes: list[str]
@@ -40,6 +49,17 @@ class DisconnectRequest(BaseModel):
 class DisconnectRead(BaseModel):
     account: SocialAccountRead
     google_authorization_revoked: bool
+
+
+class InstagramDisconnectRequest(BaseModel):
+    product_id: int = Field(gt=0)
+    confirm_disconnect: Literal[True]
+
+
+class InstagramDisconnectRead(BaseModel):
+    account: SocialAccountRead
+    local_only: Literal[True] = True
+    meta_authorization_revoked: Literal[False] = False
 
 
 class PublishArtifactCandidateRead(BaseModel):

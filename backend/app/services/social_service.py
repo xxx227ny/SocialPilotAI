@@ -114,7 +114,7 @@ class SocialAccountService:
     ) -> str:
         self._require_binding_enabled()
         oauth_session = self.repository.get_oauth_session(digest_oauth_state(state))
-        if oauth_session is None:
+        if oauth_session is None or oauth_session.platform != "youtube":
             raise AppError("OAuth state is invalid", 400)
         if not hmac.compare_digest(
             oauth_session.browser_session_digest, browser_session_digest

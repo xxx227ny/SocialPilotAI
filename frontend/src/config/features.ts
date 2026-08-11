@@ -34,6 +34,10 @@ export const socialAccountBindingEnabled = isEnabledFeatureFlag(
   import.meta.env.VITE_ENABLE_SOCIAL_ACCOUNT_BINDING,
 );
 
+export const instagramAccountBindingEnabled = isEnabledFeatureFlag(
+  import.meta.env.VITE_ENABLE_INSTAGRAM_ACCOUNT_BINDING,
+);
+
 export const youtubePublishingEnabled = isEnabledFeatureFlag(
   import.meta.env.VITE_ENABLE_YOUTUBE_PUBLISHING,
 );

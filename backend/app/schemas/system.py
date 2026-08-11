@@ -26,6 +26,7 @@ class SystemReadinessRead(BaseModel):
     qwen: SystemComponentRead
     wanx: SystemComponentRead
     google_youtube: SystemComponentRead
+    meta_instagram: SystemComponentRead
     database: DatabaseSystemComponentRead
     artifact_storage: SystemComponentRead
     execution_worker: ExecutionWorkerSystemComponentRead

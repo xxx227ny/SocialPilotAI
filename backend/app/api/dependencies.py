@@ -13,6 +13,7 @@ from app.providers import (
     WanxProvider,
 )
 from app.providers.base import TextGenerationProvider
+from app.providers.instagram_provider import InstagramProvider, InstagramProviderError
 from app.providers.live_configuration import (
     get_provider_failure_metadata,
     provider_public_http_status,
@@ -335,4 +336,38 @@ BindingYouTubeProviderDep = Annotated[
 ]
 PublishingYouTubeProviderDep = Annotated[
     YouTubeProvider, Depends(get_publishing_youtube_provider)
+]
+
+
+def require_instagram_account_binding_enabled(
+    app_settings: Annotated[Settings, Depends(get_settings)],
+) -> None:
+    if not app_settings.enable_instagram_account_binding:
+        raise AppError("Instagram account binding is disabled by the server", 503)
+
+
+InstagramAccountBindingGateDep = Annotated[
+    None, Depends(require_instagram_account_binding_enabled)
+]
+
+
+def get_instagram_provider(
+    app_settings: Annotated[Settings, Depends(get_settings)],
+) -> InstagramProvider:
+    try:
+        return InstagramProvider(app_settings)
+    except InstagramProviderError as exc:
+        raise AppError("Instagram provider is not configured", 503) from exc
+
+
+def get_binding_instagram_provider(
+    gate: InstagramAccountBindingGateDep,
+    provider: Annotated[InstagramProvider, Depends(get_instagram_provider)],
+) -> InstagramProvider:
+    del gate
+    return provider
+
+
+BindingInstagramProviderDep = Annotated[
+    InstagramProvider, Depends(get_binding_instagram_provider)
 ]

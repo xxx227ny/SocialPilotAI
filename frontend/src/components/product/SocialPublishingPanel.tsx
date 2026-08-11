@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
+  connectInstagram,
   connectYouTube,
+  disconnectInstagramAccount,
   disconnectSocialAccount,
   getPublishTask,
   getYouTubePublishJob,
@@ -15,6 +17,7 @@ import {
 } from "../../api/social";
 import { getApiErrorMessage } from "../../api/client";
 import {
+  instagramAccountBindingEnabled,
   socialAccountBindingEnabled,
   youtubePublishingEnabled,
 } from "../../config/features";
@@ -43,6 +46,17 @@ import {
   shouldLoadPublishTaskHistory,
   shouldLoadSocialData,
 } from "./socialPublishingState";
+import {
+  canReleaseInstagramOperationLock,
+  canStartInstagramOperation,
+  cancelInstagramOperations,
+  instagramScopeSummary,
+  isCurrentInstagramOperation,
+  readInstagramOAuthStatus,
+  safeInstagramAuthorizationUrl,
+  shouldReleaseInstagramConnectLock,
+} from "./instagramAccountState";
+import type { InstagramOperationIdentity } from "./instagramAccountState";
 import type {
   YouTubePublishOperationIdentity,
   YouTubePublishPollOutcome,
@@ -65,7 +79,7 @@ export function SocialPublishingPanel({ productId }: { productId: number }) {
   const load = useCallback(async () => {
     const loadSocialData = shouldLoadSocialData(
       isPresentation,
-      socialAccountBindingEnabled,
+      socialAccountBindingEnabled || instagramAccountBindingEnabled,
       youtubePublishingEnabled,
     );
     const loadTaskHistory = shouldLoadPublishTaskHistory(isPresentation);
@@ -117,6 +131,7 @@ export function SocialPublishingPanel({ productId }: { productId: number }) {
   const oauthStatus = new URLSearchParams(window.location.search).get(
     "youtube_oauth",
   );
+  const instagramOAuthStatus = readInstagramOAuthStatus(window.location.search);
 
   return (
     <section className="social-publishing" data-testid="social-publishing">
@@ -149,6 +164,21 @@ export function SocialPublishingPanel({ productId }: { productId: number }) {
           你已取消 YouTube 授权，没有保存任何 Token。
         </p>
       ) : null}
+      {instagramOAuthStatus === "connected" ? (
+        <p className="social-publishing__notice is-success">
+          Instagram Professional 账号授权已完成，正在显示安全账号身份。
+        </p>
+      ) : null}
+      {instagramOAuthStatus === "denied" ? (
+        <p className="social-publishing__notice is-error">
+          你已取消 Instagram 授权，没有保存任何 Token。
+        </p>
+      ) : null}
+      {instagramOAuthStatus === "failed" ? (
+        <p className="social-publishing__notice is-error">
+          Instagram 授权未完成；页面未接收 Provider 错误或敏感信息。
+        </p>
+      ) : null}
       {message ? (
         <p className="social-publishing__notice is-error" role="alert">
           {message}
@@ -159,6 +189,18 @@ export function SocialPublishingPanel({ productId }: { productId: number }) {
         productId={productId}
         accounts={accounts}
         readOnly={!youtubePublishingEnabled}
+        onChanged={(account) => {
+          setAccounts((current) => [
+            account,
+            ...current.filter((item) => item.id !== account.id),
+          ]);
+        }}
+      />
+
+      <InstagramAccountCard
+        key={`instagram-${productId}`}
+        productId={productId}
+        accounts={accounts}
         onChanged={(account) => {
           setAccounts((current) => [
             account,
@@ -192,10 +234,156 @@ export function SocialPublishingPanel({ productId }: { productId: number }) {
       )}
 
       <div className="social-publishing__future">
-        <PlatformPlaceholder name="Instagram" />
         <PlatformPlaceholder name="TikTok" />
       </div>
     </section>
+  );
+}
+
+function InstagramAccountCard({
+  productId,
+  accounts,
+  onChanged,
+}: {
+  productId: number;
+  accounts: SocialAccount[];
+  onChanged: (account: SocialAccount) => void;
+}) {
+  const instagram = accounts.find((account) => account.platform === "instagram");
+  const [state, setState] = useState<ActionState>("idle");
+  const [error, setError] = useState("");
+  const operationIdRef = useRef(0);
+  const connectRef = useRef<InstagramOperationIdentity | null>(null);
+  const disconnectRef = useRef<InstagramOperationIdentity | null>(null);
+
+  useEffect(() => {
+    return () => {
+      operationIdRef.current += 1;
+      cancelInstagramOperations({
+        connect: connectRef.current,
+        disconnect: disconnectRef.current,
+      });
+      connectRef.current = null;
+      disconnectRef.current = null;
+    };
+  }, [productId, instagram?.id]);
+
+  async function connect() {
+    if (
+      !instagramAccountBindingEnabled ||
+      !canStartInstagramOperation(connectRef.current, disconnectRef.current)
+    ) {
+      return;
+    }
+    const identity: InstagramOperationIdentity = {
+      productId,
+      accountId: instagram?.id ?? null,
+      operationId: ++operationIdRef.current,
+      controller: new AbortController(),
+    };
+    connectRef.current = identity;
+    setState("working");
+    setError("");
+    let navigationStarted = false;
+    try {
+      const result = await connectInstagram(productId, identity.controller.signal);
+      if (!isCurrentInstagramOperation(identity, connectRef.current)) return;
+      const safeUrl = safeInstagramAuthorizationUrl(result.authorization_url);
+      if (!safeUrl) throw new Error("Unsafe Instagram authorization URL");
+      window.location.assign(safeUrl);
+      navigationStarted = true;
+    } catch (caught) {
+      if (!isCurrentInstagramOperation(identity, connectRef.current)) return;
+      setError(getApiErrorMessage(caught, "无法开始 Instagram Professional 授权。"));
+      setState("failed");
+    } finally {
+      if (
+        shouldReleaseInstagramConnectLock(
+          identity,
+          connectRef.current,
+          navigationStarted,
+        )
+      ) {
+        connectRef.current = null;
+      }
+    }
+  }
+
+  async function disconnect() {
+    if (
+      !instagram ||
+      connectRef.current !== null ||
+      disconnectRef.current !== null
+    ) {
+      return;
+    }
+    if (!window.confirm("确认仅在本机断开 Instagram？这不会撤销 Meta 侧的授权。")) {
+      return;
+    }
+    const identity: InstagramOperationIdentity = {
+      productId,
+      accountId: instagram.id,
+      operationId: ++operationIdRef.current,
+      controller: new AbortController(),
+    };
+    disconnectRef.current = identity;
+    setState("working");
+    setError("");
+    try {
+      const account = await disconnectInstagramAccount(
+        productId,
+        instagram.id,
+        identity.controller.signal,
+      );
+      if (!isCurrentInstagramOperation(identity, disconnectRef.current)) return;
+      onChanged(account);
+      setState("idle");
+    } catch (caught) {
+      if (!isCurrentInstagramOperation(identity, disconnectRef.current)) return;
+      setError(getApiErrorMessage(caught, "Instagram 本地断开失败。"));
+      setState("failed");
+    } finally {
+      if (canReleaseInstagramOperationLock(identity, disconnectRef.current)) {
+        disconnectRef.current = null;
+      }
+    }
+  }
+
+  return (
+    <div className="social-account-card social-account-card--instagram">
+      <div>
+        <span>Instagram Professional</span>
+        <strong>{instagram?.display_name ?? "未连接"}</strong>
+        <small>
+          {instagram
+            ? `${connectionLabel(instagram.connection_status)} · ${instagramScopeSummary(instagram.scopes)}`
+            : instagramAccountBindingEnabled
+              ? "支持 Business / Creator；不依赖 Facebook Page"
+              : "Instagram 账号绑定 Gate 未开启"}
+        </small>
+      </div>
+      <div className="social-account-card__actions">
+        {!instagram || instagram.connection_status !== "CONNECTED" ? (
+          <button
+            type="button"
+            onClick={() => void connect()}
+            disabled={!instagramAccountBindingEnabled || state === "working"}
+          >
+            {state === "working" ? "连接中…" : "连接 Instagram"}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => void disconnect()}
+            disabled={state === "working"}
+          >
+            仅本地断开
+          </button>
+        )}
+      </div>
+      <small>本地断开只清除本机 Token，不等于在 Meta 侧撤销授权。</small>
+      {error ? <p role="alert">{error}</p> : null}
+    </div>
   );
 }
 

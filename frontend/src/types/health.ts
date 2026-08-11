@@ -23,6 +23,7 @@ export interface SystemReadinessResponse {
   qwen: SystemReadinessItem;
   wanx: SystemReadinessItem;
   google_youtube: SystemReadinessItem;
+  meta_instagram: SystemReadinessItem;
   database: DatabaseReadinessItem;
   artifact_storage: SystemReadinessItem;
   execution_worker: ExecutionWorkerReadinessItem;

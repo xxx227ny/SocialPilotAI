@@ -6,6 +6,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import (
+    BindingInstagramProviderDep,
     BindingYouTubeProviderDep,
     VideoArtifactStorageDep,
     YouTubePublishingGateDep,
@@ -16,6 +17,10 @@ from app.schemas.execution import ExecutionJobCreateRead
 from app.schemas.social import (
     DisconnectRead,
     DisconnectRequest,
+    InstagramConnectRead,
+    InstagramConnectRequest,
+    InstagramDisconnectRead,
+    InstagramDisconnectRequest,
     PublishArtifactCandidateRead,
     PublishTaskIdentityRequest,
     PublishTaskRead,
@@ -26,6 +31,7 @@ from app.schemas.social import (
     YouTubePublishingMetadata,
     YouTubePublishRequest,
 )
+from app.services.instagram_account_service import InstagramAccountService
 from app.services.social_security import digest_oauth_state
 from app.services.social_service import (
     SocialAccountService,
@@ -60,7 +66,7 @@ def connect_youtube(
             httponly=True,
             secure=False,
             samesite="lax",
-            path="/api/v1/social-accounts/youtube",
+            path="/api/v1/social-accounts",
         )
     return SocialAccountService(db, settings, provider).connect(
         data.product_id,
@@ -87,6 +93,69 @@ async def youtube_callback(
         error=error,
     )
     return RedirectResponse(location, status_code=303)
+
+
+@router.post("/social-accounts/instagram/connect", response_model=InstagramConnectRead)
+def connect_instagram(
+    data: InstagramConnectRequest,
+    request: Request,
+    response: Response,
+    db: DbSession,
+    settings: SettingsDep,
+    provider: BindingInstagramProviderDep,
+) -> InstagramConnectRead:
+    browser_session = request.cookies.get(OAUTH_BROWSER_COOKIE)
+    if not browser_session:
+        browser_session = secrets.token_urlsafe(32)
+        response.set_cookie(
+            OAUTH_BROWSER_COOKIE,
+            browser_session,
+            max_age=600,
+            httponly=True,
+            secure=False,
+            samesite="lax",
+            path="/api/v1/social-accounts",
+        )
+    return InstagramAccountService(db, settings, provider).connect(
+        data.product_id,
+        browser_session_digest=digest_oauth_state(browser_session),
+    )
+
+
+@router.get("/social-accounts/instagram/callback", response_class=RedirectResponse)
+async def instagram_callback(
+    request: Request,
+    db: DbSession,
+    settings: SettingsDep,
+    provider: BindingInstagramProviderDep,
+    state: str = Query(min_length=20, max_length=200),
+    code: str | None = Query(default=None, max_length=2000),
+    error: str | None = Query(default=None, max_length=200),
+) -> RedirectResponse:
+    location = await InstagramAccountService(db, settings, provider).callback(
+        state=state,
+        browser_session_digest=digest_oauth_state(
+            request.cookies.get(OAUTH_BROWSER_COOKIE, "")
+        ),
+        code=code,
+        error=error,
+    )
+    return RedirectResponse(location, status_code=303)
+
+
+@router.post(
+    "/social-accounts/instagram/{account_id}/disconnect",
+    response_model=InstagramDisconnectRead,
+)
+def disconnect_instagram_account(
+    account_id: int,
+    data: InstagramDisconnectRequest,
+    db: DbSession,
+    settings: SettingsDep,
+) -> InstagramDisconnectRead:
+    return InstagramAccountService(db, settings, None).disconnect(
+        account_id, product_id=data.product_id
+    )
 
 
 @router.get("/social-accounts", response_model=list[SocialAccountRead])

@@ -7,7 +7,7 @@ export type SocialConnectionStatus =
 export interface SocialAccount {
   id: number;
   product_id: number;
-  platform: "youtube";
+  platform: "youtube" | "instagram";
   provider_account_id: string;
   display_name: string;
   scopes: string[];
@@ -19,6 +19,11 @@ export interface SocialAccount {
 }
 
 export interface YouTubeConnectResult {
+  authorization_url: string;
+  expires_at: string;
+}
+
+export interface InstagramConnectResult {
   authorization_url: string;
   expires_at: string;
 }

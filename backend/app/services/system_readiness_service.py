@@ -5,6 +5,7 @@ from ctypes import byref, wintypes
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlparse
 
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -98,6 +99,14 @@ class SystemReadinessService:
             and self.settings.enable_social_account_binding
             and self.settings.enable_youtube_publishing
         )
+        instagram_ready = bool(
+            self.settings.enable_instagram_account_binding
+            and self._text(self.settings.instagram_app_id)
+            and self._secret(self.settings.instagram_app_secret)
+            and self._valid_http_uri(self.settings.instagram_oauth_redirect_uri)
+            and self._valid_graph_version(self.settings.instagram_graph_api_version)
+            and self._valid_token_cipher()
+        )
         database_ready, revision_status, revision = self._database_readiness()
         artifact_ready = self._artifact_storage_ready()
         worker_ready, worker_status, worker_reason = (
@@ -140,6 +149,19 @@ class SystemReadinessService:
                         "Google/YouTube未就绪：请在backend/.env配置"
                         "GOOGLE_OAUTH_CLIENT_ID、GOOGLE_OAUTH_CLIENT_SECRET、"
                         "GOOGLE_OAUTH_REDIRECT_URI和SOCIAL_TOKEN_ENCRYPTION_KEY。"
+                    )
+                ),
+            ),
+            meta_instagram=SystemComponentRead(
+                ready=instagram_ready,
+                message=(
+                    "Meta / Instagram配置已就绪；仅表示本机配置完整，不代表"
+                    "App Review、Advanced Access或真实账号绑定已通过。"
+                    if instagram_ready
+                    else (
+                        "Meta / Instagram未就绪：请配置独立Gate、App ID、"
+                        "App Secret、Redirect URI、固定Graph API版本和"
+                        "社交Token加密密钥。"
                     )
                 ),
             ),
@@ -245,6 +267,20 @@ class SystemReadinessService:
         except AppError:
             return False
         return True
+
+    @staticmethod
+    def _valid_http_uri(value: object) -> bool:
+        if not isinstance(value, str):
+            return False
+        parsed = urlparse(value.strip())
+        return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+    @staticmethod
+    def _valid_graph_version(value: object) -> bool:
+        if not isinstance(value, str) or not value.startswith("v"):
+            return False
+        major, dot, minor = value[1:].partition(".")
+        return dot == "." and major.isdigit() and minor.isdigit()
 
     @staticmethod
     def _secret(value: object) -> bool:
