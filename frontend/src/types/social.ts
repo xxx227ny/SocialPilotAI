@@ -51,6 +51,7 @@ export interface YouTubePreflight {
   ready: boolean;
   missing_requirements: string[];
   preflight_digest: string;
+  input_digest: string;
   expires_at: string;
   product_id: number;
   social_account_id: number;

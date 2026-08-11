@@ -10,10 +10,12 @@ import pytest
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 from sqlalchemy import event, func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.api.dependencies import get_video_artifact_storage, get_youtube_provider
 from app.core.config import Settings, _local_env_file, get_settings
+from app.execution.runtime_registry import build_execution_handler_registry
+from app.execution.worker import ExecutionWorker, WorkerRunStatus
 from app.main import app
 from app.models import OAuthSession, PublishTask, SocialAccount, VideoRenderArtifact
 from app.providers.youtube_provider import (
@@ -40,6 +42,8 @@ class FakeYouTubeProvider:
         self.exchange_calls = 0
         self.channel_calls = 0
         self.upload_calls = 0
+        self.session_calls = 0
+        self.media_calls = 0
         self.refresh_token_calls = 0
         self.status_calls = 0
         self.revoke_calls = 0
@@ -90,6 +94,21 @@ class FakeYouTubeProvider:
         assert Path(str(kwargs["path"])).is_file()
         if self.uncertain_upload:
             raise YouTubeUploadUncertain("https://upload.example/fake-session")
+        return YouTubeUploadResult("fake-video-001")
+
+    async def initiate_upload_session(self, **kwargs: object) -> str:
+        self.session_calls += 1
+        assert kwargs["access_token"] in {ACCESS_TOKEN, "fake-refreshed-access"}
+        assert Path(str(kwargs["path"])).is_file()
+        return "https://upload.example/fake-session"
+
+    async def upload_media(self, **kwargs: object) -> YouTubeUploadResult:
+        self.media_calls += 1
+        assert kwargs["access_token"] in {ACCESS_TOKEN, "fake-refreshed-access"}
+        assert kwargs["session_uri"] == "https://upload.example/fake-session"
+        assert Path(str(kwargs["path"])).is_file()
+        if self.uncertain_upload:
+            raise YouTubeUploadUncertain("fake uncertain upload")
         return YouTubeUploadResult("fake-video-001")
 
     async def get_video_status(
@@ -199,9 +218,7 @@ def create_publishable_artifact(
     return project.id, artifact.id
 
 
-def connect_account(
-    client: TestClient, db: Session, product_id: int
-) -> SocialAccount:
+def connect_account(client: TestClient, db: Session, product_id: int) -> SocialAccount:
     response = client.post(
         "/api/v1/social-accounts/youtube/connect", json={"product_id": product_id}
     )
@@ -230,6 +247,40 @@ def metadata(account_id: int, artifact_id: int) -> dict[str, object]:
     }
 
 
+def publish_request(
+    payload: dict[str, object], preflight: dict[str, object]
+) -> dict[str, object]:
+    return payload | {
+        "input_digest": preflight["input_digest"],
+        "preflight_digest": preflight["preflight_digest"],
+        "preflight_expires_at": preflight["expires_at"],
+        "idempotency_key": "fake-client-key-not-used-for-queue-identity",
+        "confirm_upload": True,
+    }
+
+
+def run_youtube_worker(
+    db: Session,
+    settings: Settings,
+    storage: LocalVideoArtifactStorage,
+    provider: FakeYouTubeProvider | YouTubeProvider,
+    worker_id: str,
+):
+    sessions = sessionmaker(bind=db.bind, expire_on_commit=False)
+    registry = build_execution_handler_registry(
+        session_factory=sessions,
+        settings=settings,
+        youtube_provider_factory=lambda _: provider,
+        artifact_storage=storage,
+    )
+    return ExecutionWorker(
+        session_factory=sessions,
+        registry=registry,
+        worker_id=worker_id,
+        heartbeat_interval_seconds=0.05,
+    ).run_once()
+
+
 def test_gates_default_off_before_provider_resolution(
     client: TestClient, db_session: Session
 ) -> None:
@@ -251,6 +302,7 @@ def test_gates_default_off_before_provider_resolution(
         f"/api/v1/products/{project.id}/publishing/youtube",
         json=metadata(1, 1)
         | {
+            "input_digest": "0" * 64,
             "preflight_digest": "0" * 64,
             "preflight_expires_at": (
                 datetime.now(UTC) + timedelta(minutes=5)
@@ -321,6 +373,7 @@ def test_artifact_candidates_are_local_read_only_when_publishing_gate_is_off(
             f"/api/v1/products/{product_id}/publishing/youtube",
             json=metadata(1, artifact_id)
             | {
+                "input_digest": "0" * 64,
                 "preflight_digest": "0" * 64,
                 "preflight_expires_at": (
                     datetime.now(UTC) + timedelta(minutes=5)
@@ -536,19 +589,14 @@ def test_publish_is_idempotent_and_refreshes_same_task(
     client: TestClient, db_session: Session, tmp_path: Path
 ) -> None:
     provider = FakeYouTubeProvider()
-    _, storage = configure(tmp_path, provider)
+    settings, storage = configure(tmp_path, provider)
     product_id, artifact_id = create_publishable_artifact(db_session, storage)
     account = connect_account(client, db_session, product_id)
     payload = metadata(account.id, artifact_id)
     preflight = client.post(
         f"/api/v1/products/{product_id}/publishing/youtube/preflight", json=payload
     ).json()
-    execution = payload | {
-        "preflight_digest": preflight["preflight_digest"],
-        "preflight_expires_at": preflight["expires_at"],
-        "idempotency_key": "fake-idempotency-001",
-        "confirm_upload": True,
-    }
+    execution = publish_request(payload, preflight)
 
     first = client.post(
         f"/api/v1/products/{product_id}/publishing/youtube", json=execution
@@ -556,24 +604,47 @@ def test_publish_is_idempotent_and_refreshes_same_task(
     duplicate = client.post(
         f"/api/v1/products/{product_id}/publishing/youtube", json=execution
     )
-    task_id = first.json()["task"]["id"]
+    job_id = first.json()["job"]["id"]
+    assert provider.session_calls == provider.media_calls == 0
+    assert (
+        run_youtube_worker(
+            db_session, settings, storage, provider, "youtube-submit-idempotent"
+        ).status
+        == WorkerRunStatus.SUCCEEDED
+    )
+    completed_job = client.get(f"/api/v1/execution-jobs/{job_id}").json()
+    task_id = completed_job["result_entity_id"]
     recovered = client.get(
         f"/api/v1/publish-tasks/{task_id}",
         params={"product_id": product_id},
     )
     refreshed = client.post(
         f"/api/v1/publish-tasks/{task_id}/refresh",
-        json={"product_id": product_id},
+        json={
+            "product_id": product_id,
+            "refresh_request_id": "fake-refresh-request-0001",
+        },
+    )
+    assert (
+        run_youtube_worker(
+            db_session, settings, storage, provider, "youtube-refresh-idempotent"
+        ).status
+        == WorkerRunStatus.SUCCEEDED
+    )
+    refreshed_task = client.get(
+        f"/api/v1/publish-tasks/{task_id}", params={"product_id": product_id}
     )
 
-    assert first.status_code == 200
-    assert first.json()["task"]["provider_video_id"] == "fake-video-001"
-    assert duplicate.status_code == 200
+    assert first.status_code == 201
+    assert completed_job["result_entity_type"] == "publish_task"
+    assert duplicate.status_code == 201
     assert duplicate.json()["reused"] is True
     assert recovered.json()["id"] == task_id
-    assert refreshed.json()["task"]["id"] == task_id
-    assert refreshed.json()["task"]["status"] == "SUCCEEDED"
-    assert provider.upload_calls == 1
+    assert refreshed.status_code == 201
+    assert refreshed_task.json()["id"] == task_id
+    assert refreshed_task.json()["status"] == "SUCCEEDED"
+    assert provider.session_calls == 1
+    assert provider.media_calls == 1
     assert provider.status_calls == 1
     assert db_session.scalar(select(func.count()).select_from(PublishTask)) == 1
 
@@ -583,41 +654,51 @@ def test_uncertain_upload_never_retries(
 ) -> None:
     provider = FakeYouTubeProvider()
     provider.uncertain_upload = True
-    _, storage = configure(tmp_path, provider)
+    settings, storage = configure(tmp_path, provider)
     product_id, artifact_id = create_publishable_artifact(db_session, storage)
     account = connect_account(client, db_session, product_id)
     payload = metadata(account.id, artifact_id)
     preflight = client.post(
         f"/api/v1/products/{product_id}/publishing/youtube/preflight", json=payload
     ).json()
-    execution = payload | {
-        "preflight_digest": preflight["preflight_digest"],
-        "preflight_expires_at": preflight["expires_at"],
-        "idempotency_key": "fake-uncertain-001",
-        "confirm_upload": True,
-    }
+    execution = publish_request(payload, preflight)
     first = client.post(
         f"/api/v1/products/{product_id}/publishing/youtube", json=execution
     )
     duplicate = client.post(
         f"/api/v1/products/{product_id}/publishing/youtube", json=execution
     )
-    task_id = first.json()["task"]["id"]
+    job_id = first.json()["job"]["id"]
+    assert (
+        run_youtube_worker(
+            db_session, settings, storage, provider, "youtube-submit-unknown"
+        ).status
+        == WorkerRunStatus.SUBMIT_UNKNOWN
+    )
+    assert (
+        run_youtube_worker(
+            db_session, settings, storage, provider, "youtube-submit-no-retry"
+        ).status
+        == WorkerRunStatus.NO_JOB
+    )
+    job = client.get(f"/api/v1/execution-jobs/{job_id}").json()
+    task = db_session.scalar(select(PublishTask))
+    assert task is not None
+    task_id = task.id
     refresh = client.post(
         f"/api/v1/publish-tasks/{task_id}/refresh",
-        json={"product_id": product_id},
+        json={
+            "product_id": product_id,
+            "refresh_request_id": "fake-refresh-request-0002",
+        },
     )
-    task = db_session.get(PublishTask, task_id)
 
-    assert first.json()["task"]["status"] == "SUBMIT_UNKNOWN"
-    assert first.json()["task"]["uncertain"] is True
-    assert (
-        first.json()["task"]["safe_error_code"]
-        == "upload_media_result_uncertain"
-    )
-    assert duplicate.json()["external_call"] is False
+    assert first.status_code == 201
+    assert job["status"] == "SUBMIT_UNKNOWN"
+    assert duplicate.json()["reused"] is True
     assert refresh.status_code == 409
-    assert provider.upload_calls == 1
+    assert provider.session_calls == 1
+    assert provider.media_calls == 1
     assert task.resumable_session_ciphertext is not None
     assert "upload.example" not in task.resumable_session_ciphertext
 
@@ -651,6 +732,7 @@ def test_product_identity_and_preflight_expiry_fail_closed(
         f"/api/v1/products/{product_id}/publishing/youtube",
         json=payload
         | {
+            "input_digest": preflight["input_digest"],
             "preflight_digest": preflight["preflight_digest"],
             "preflight_expires_at": (
                 datetime.now(UTC) - timedelta(seconds=1)
@@ -711,9 +793,7 @@ def test_oauth_cookie_returns_to_callback_on_127_host(
         "/api/v1/social-accounts/youtube/connect",
         json={"product_id": project.id},
     )
-    state = parse_qs(urlparse(connect.json()["authorization_url"]).query)[
-        "state"
-    ][0]
+    state = parse_qs(urlparse(connect.json()["authorization_url"]).query)["state"][0]
     callback = client.get(
         "/api/v1/social-accounts/youtube/callback",
         params={"state": state, "code": "fake-code"},
@@ -730,9 +810,7 @@ def test_oauth_cookie_returns_to_callback_on_127_host(
 def test_pytest_and_fake_smoke_disable_dotenv_from_code(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    (tmp_path / ".env").write_text(
-        "ENABLE_YOUTUBE_PUBLISHING=true\n", encoding="utf-8"
-    )
+    (tmp_path / ".env").write_text("ENABLE_YOUTUBE_PUBLISHING=true\n", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("ENABLE_YOUTUBE_PUBLISHING", raising=False)
 
@@ -747,7 +825,7 @@ def test_expired_token_refreshes_before_upload(
     client: TestClient, db_session: Session, tmp_path: Path
 ) -> None:
     provider = FakeYouTubeProvider()
-    _, storage = configure(tmp_path, provider)
+    settings, storage = configure(tmp_path, provider)
     product_id, artifact_id = create_publishable_artifact(db_session, storage)
     account = connect_account(client, db_session, product_id)
     payload = metadata(account.id, artifact_id)
@@ -759,20 +837,21 @@ def test_expired_token_refreshes_before_upload(
 
     published = client.post(
         f"/api/v1/products/{product_id}/publishing/youtube",
-        json=payload
-        | {
-            "preflight_digest": preflight["preflight_digest"],
-            "preflight_expires_at": preflight["expires_at"],
-            "idempotency_key": "fake-refresh-success",
-            "confirm_upload": True,
-        },
+        json=publish_request(payload, preflight),
+    )
+    assert published.status_code == 201
+    assert provider.refresh_token_calls == provider.session_calls == 0
+    assert (
+        run_youtube_worker(
+            db_session, settings, storage, provider, "youtube-token-refresh-success"
+        ).status
+        == WorkerRunStatus.SUCCEEDED
     )
 
     db_session.refresh(account)
-    assert published.status_code == 200
-    assert published.json()["task"]["status"] == "SUBMITTED"
     assert provider.refresh_token_calls == 1
-    assert provider.upload_calls == 1
+    assert provider.session_calls == 1
+    assert provider.media_calls == 1
     assert account.access_token_ciphertext != "fake-refreshed-access"
 
 
@@ -783,7 +862,7 @@ def test_token_refresh_failure_is_failed_before_upload(
     provider.refresh_error = YouTubeProviderError(
         "authentication_failed", status_code=401
     )
-    _, storage = configure(tmp_path, provider)
+    settings, storage = configure(tmp_path, provider)
     product_id, artifact_id = create_publishable_artifact(db_session, storage)
     account = connect_account(client, db_session, product_id)
     payload = metadata(account.id, artifact_id)
@@ -795,30 +874,33 @@ def test_token_refresh_failure_is_failed_before_upload(
 
     published = client.post(
         f"/api/v1/products/{product_id}/publishing/youtube",
-        json=payload
-        | {
-            "preflight_digest": preflight["preflight_digest"],
-            "preflight_expires_at": preflight["expires_at"],
-            "idempotency_key": "fake-refresh-failure",
-            "confirm_upload": True,
-        },
+        json=publish_request(payload, preflight),
+    )
+    job_id = published.json()["job"]["id"]
+    assert (
+        run_youtube_worker(
+            db_session, settings, storage, provider, "youtube-token-refresh-failure"
+        ).status
+        == WorkerRunStatus.FAILED
     )
 
-    task = published.json()["task"]
-    assert published.status_code == 200
-    assert published.json()["external_call"] is True
-    assert task["status"] == "FAILED"
-    assert task["uncertain"] is False
-    assert task["safe_error_code"] == "token_refresh_authentication_failed"
+    task = db_session.scalar(select(PublishTask))
+    assert task is not None
+    assert published.status_code == 201
+    assert client.get(f"/api/v1/execution-jobs/{job_id}").json()["status"] == "FAILED"
+    assert task.status == "FAILED"
+    assert task.uncertain is False
+    assert task.safe_error_code == "token_refresh_authentication_failed"
     assert provider.refresh_token_calls == 1
-    assert provider.upload_calls == 0
+    assert provider.session_calls == 0
+    assert provider.media_calls == 0
 
 
 def test_token_decryption_failure_is_failed_before_upload(
     client: TestClient, db_session: Session, tmp_path: Path
 ) -> None:
     provider = FakeYouTubeProvider()
-    _, storage = configure(tmp_path, provider)
+    settings, storage = configure(tmp_path, provider)
     product_id, artifact_id = create_publishable_artifact(db_session, storage)
     account = connect_account(client, db_session, product_id)
     payload = metadata(account.id, artifact_id)
@@ -830,22 +912,24 @@ def test_token_decryption_failure_is_failed_before_upload(
 
     published = client.post(
         f"/api/v1/products/{product_id}/publishing/youtube",
-        json=payload
-        | {
-            "preflight_digest": preflight["preflight_digest"],
-            "preflight_expires_at": preflight["expires_at"],
-            "idempotency_key": "fake-decryption-failure",
-            "confirm_upload": True,
-        },
+        json=publish_request(payload, preflight),
+    )
+    assert published.status_code == 201
+    assert (
+        run_youtube_worker(
+            db_session, settings, storage, provider, "youtube-decryption-failure"
+        ).status
+        == WorkerRunStatus.FAILED
     )
 
-    task = published.json()["task"]
-    assert task["status"] == "FAILED"
-    assert task["uncertain"] is False
-    assert task["safe_error_code"] == "authorization_decryption_failed"
-    assert published.json()["external_call"] is False
+    task = db_session.scalar(select(PublishTask))
+    assert task is not None
+    assert task.status == "FAILED"
+    assert task.uncertain is False
+    assert task.safe_error_code == "authorization_decryption_failed"
     assert provider.refresh_token_calls == 0
-    assert provider.upload_calls == 0
+    assert provider.session_calls == 0
+    assert provider.media_calls == 0
 
 
 @pytest.mark.parametrize(
@@ -1002,22 +1086,26 @@ def test_two_upload_session_connect_errors_create_one_failed_task(
 
     published = client.post(
         f"/api/v1/products/{product_id}/publishing/youtube",
-        json=payload
-        | {
-            "preflight_digest": preflight["preflight_digest"],
-            "preflight_expires_at": preflight["expires_at"],
-            "idempotency_key": "safe-two-connect-errors",
-            "confirm_upload": True,
-        },
+        json=publish_request(payload, preflight),
     )
-
-    assert published.status_code == 200
-    assert published.json()["task"]["status"] == "FAILED"
-    assert published.json()["task"]["uncertain"] is False
+    assert published.status_code == 201
+    assert ScriptedAsyncClient.post_calls == 0
     assert (
-        published.json()["task"]["safe_error_code"]
-        == "upload_session_connection_failed"
+        run_youtube_worker(
+            db_session,
+            settings,
+            storage,
+            YouTubeProvider(settings),
+            "youtube-session-connect-errors",
+        ).status
+        == WorkerRunStatus.FAILED
     )
+    task = db_session.scalar(select(PublishTask))
+
+    assert task is not None
+    assert task.status == "FAILED"
+    assert task.uncertain is False
+    assert task.safe_error_code == "upload_session_connection_failed"
     assert ScriptedAsyncClient.post_calls == 2
     assert ScriptedAsyncClient.put_calls == 0
     assert db_session.scalar(select(func.count()).select_from(PublishTask)) == 1

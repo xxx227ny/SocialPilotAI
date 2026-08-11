@@ -326,13 +326,19 @@ class YouTubePublishingService:
             raise AppError("YouTube publishing preflight has expired", 409)
         if normalized_expiry > datetime.now(UTC) + OAUTH_SESSION_LIFETIME:
             raise AppError("YouTube publishing preflight expiry is invalid", 409)
-        digest = self._preflight_digest(
+        input_digest = self._preflight_digest(
             product_id,
             account,
             verified,
             project,
             data,
-            normalized_expiry,
+        )
+        digest = _digest(
+            {
+                "contract": "youtube-private-preflight-v1",
+                "input_digest": input_digest,
+                "expires_at": normalized_expiry.isoformat(),
+            }
         )
         ready = not missing
         task = verified.artifact.video_render_task
@@ -340,6 +346,7 @@ class YouTubePublishingService:
             status="READY" if ready else "BLOCKED",
             ready=ready,
             missing_requirements=missing,
+            input_digest=input_digest,
             preflight_digest=digest,
             expires_at=normalized_expiry,
             product_id=product_id,
@@ -608,7 +615,6 @@ class YouTubePublishingService:
         verified: VerifiedVideoArtifact,
         project: object,
         data: YouTubePublishingMetadata,
-        expires_at: datetime,
     ) -> str:
         task = verified.artifact.video_render_task
         payload = {
@@ -622,14 +628,14 @@ class YouTubePublishingService:
             "copy_matrix_id": project.copy_matrix_id,
             "artifact_sha256": verified.sha256,
             "title": data.title,
+            "artifact_size": verified.size_bytes,
+            "artifact_content_type": verified.content_type,
             "description": data.description,
             "tags": data.tags,
             "privacy_status": "private",
             "made_for_kids": data.made_for_kids,
             "synthetic_media": True,
             "notify_subscribers": False,
-            "backend_gate": self.settings.enable_youtube_publishing,
-            "expires_at": expires_at.isoformat(),
         }
         return _digest(payload)
 

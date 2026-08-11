@@ -14,6 +14,10 @@ from app.execution.handlers.wanx_video_render import (
     WANX_VIDEO_RENDER_REFRESH_V1,
     WANX_VIDEO_RENDER_SUBMIT_V1,
 )
+from app.execution.handlers.youtube_publish import (
+    YOUTUBE_PUBLISH_REFRESH_V1,
+    YOUTUBE_PUBLISH_SUBMIT_V1,
+)
 from app.schemas.execution import (
     ExecutionJobClaimRead,
     ExecutionJobClaimRequest,
@@ -43,6 +47,8 @@ def create_execution_job(
     if data.job_type in {
         QWEN_STRATEGY_GENERATE_V1,
         QWEN_COPY_MATRIX_GENERATE_V1,
+        YOUTUBE_PUBLISH_SUBMIT_V1,
+        YOUTUBE_PUBLISH_REFRESH_V1,
         QWEN_VIDEO_PROJECT_GENERATE_V1,
         WANX_VIDEO_RENDER_SUBMIT_V1,
         WANX_VIDEO_RENDER_REFRESH_V1,

@@ -152,6 +152,8 @@ def test_http_enqueue_is_provider_free_and_worker_restores_exact_result(
         "qwen.video_project.generate.v1",
         "wanx.video_render.refresh.v1",
         "wanx.video_render.submit.v1",
+        "youtube.publish.refresh.v1",
+        "youtube.publish.submit.v1",
     )
     assert factory.state == {"constructed": 0, "calls": 0}
 

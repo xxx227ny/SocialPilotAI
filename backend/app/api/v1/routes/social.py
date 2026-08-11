@@ -7,17 +7,16 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import (
     BindingYouTubeProviderDep,
-    PublishingYouTubeProviderDep,
     VideoArtifactStorageDep,
     YouTubePublishingGateDep,
 )
 from app.core.config import Settings, get_settings
 from app.db.session import get_db
+from app.schemas.execution import ExecutionJobCreateRead
 from app.schemas.social import (
     DisconnectRead,
     DisconnectRequest,
     PublishArtifactCandidateRead,
-    PublishExecutionRead,
     PublishTaskIdentityRequest,
     PublishTaskRead,
     SocialAccountRead,
@@ -32,6 +31,7 @@ from app.services.social_service import (
     SocialAccountService,
     YouTubePublishingService,
 )
+from app.services.youtube_publish_job_service import YouTubePublishJobService
 
 router = APIRouter()
 OAUTH_BROWSER_COOKIE = "social_oauth_browser"
@@ -162,19 +162,19 @@ def preflight_youtube_publish(
 
 @router.post(
     "/products/{product_id}/publishing/youtube",
-    response_model=PublishExecutionRead,
+    response_model=ExecutionJobCreateRead,
+    status_code=201,
 )
-async def publish_youtube_video(
+def publish_youtube_video(
     product_id: int,
     data: YouTubePublishRequest,
     db: DbSession,
     settings: SettingsDep,
-    provider: PublishingYouTubeProviderDep,
     storage: VideoArtifactStorageDep,
-) -> PublishExecutionRead:
-    return await YouTubePublishingService(
-        db, settings, provider, storage
-    ).publish(product_id, data)
+) -> ExecutionJobCreateRead:
+    return YouTubePublishJobService(db, settings, storage).enqueue_submit(
+        product_id, data
+    )
 
 
 @router.get("/publish-tasks/{task_id}", response_model=PublishTaskRead)
@@ -205,16 +205,17 @@ def list_publish_tasks(
 
 
 @router.post(
-    "/publish-tasks/{task_id}/refresh", response_model=PublishExecutionRead
+    "/publish-tasks/{task_id}/refresh",
+    response_model=ExecutionJobCreateRead,
+    status_code=201,
 )
-async def refresh_publish_task(
+def refresh_publish_task(
     task_id: int,
     data: PublishTaskIdentityRequest,
     db: DbSession,
     settings: SettingsDep,
-    provider: PublishingYouTubeProviderDep,
     storage: VideoArtifactStorageDep,
-) -> PublishExecutionRead:
-    return await YouTubePublishingService(
-        db, settings, provider, storage
-    ).refresh(task_id, data.product_id)
+) -> ExecutionJobCreateRead:
+    return YouTubePublishJobService(db, settings, storage).enqueue_refresh(
+        task_id, data
+    )

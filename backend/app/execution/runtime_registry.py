@@ -15,6 +15,10 @@ from app.execution.handlers.wanx_video_render import (
     WanxVideoRenderRefreshV1Handler,
     WanxVideoRenderSubmitV1Handler,
 )
+from app.execution.handlers.youtube_publish import (
+    YouTubePublishRefreshV1Handler,
+    YouTubePublishSubmitV1Handler,
+)
 from app.execution.registry import ExecutionHandlerRegistry
 from app.providers import (
     QwenProvider,
@@ -27,6 +31,7 @@ from app.providers.visual_base import (
     VisualTaskSnapshot,
     VisualTaskSubmission,
 )
+from app.providers.youtube_provider import YouTubeProvider
 from app.services.video_artifact_storage import (
     HttpProviderOutputFetcher,
     LocalVideoArtifactStorage,
@@ -61,13 +66,38 @@ class LazyWanxProvider(VisualGenerationProvider):
         self.settings = settings
         self.provider_factory = provider_factory
 
-    async def submit(
-        self, request: VisualGenerationRequest
-    ) -> VisualTaskSubmission:
+    async def submit(self, request: VisualGenerationRequest) -> VisualTaskSubmission:
         return await self.provider_factory(self.settings).submit(request)
 
     async def fetch(self, provider_task_id: str) -> VisualTaskSnapshot:
         return await self.provider_factory(self.settings).fetch(provider_task_id)
+
+
+class LazyYouTubeProvider:
+    """Construct the YouTube adapter only inside a claimed Worker Job."""
+
+    def __init__(
+        self,
+        settings: Settings,
+        provider_factory: Callable[[Settings], YouTubeProvider],
+    ) -> None:
+        self.settings = settings
+        self.provider_factory = provider_factory
+
+    def _provider(self) -> YouTubeProvider:
+        return self.provider_factory(self.settings)
+
+    async def refresh_access_token(self, refresh_token: str):
+        return await self._provider().refresh_access_token(refresh_token)
+
+    async def initiate_upload_session(self, **kwargs: object):
+        return await self._provider().initiate_upload_session(**kwargs)
+
+    async def upload_media(self, **kwargs: object):
+        return await self._provider().upload_media(**kwargs)
+
+    async def get_video_status(self, **kwargs: object):
+        return await self._provider().get_video_status(**kwargs)
 
 
 class LazyVideoArtifactStorage(VideoArtifactStorage):
@@ -100,6 +130,7 @@ def build_execution_handler_registry(
     wanx_provider_factory: Callable[
         [Settings], VisualGenerationProvider
     ] = WanxProvider,
+    youtube_provider_factory: Callable[[Settings], YouTubeProvider] = YouTubeProvider,
     output_fetcher: ProviderOutputFetcher | None = None,
     artifact_storage: VideoArtifactStorage | None = None,
 ) -> ExecutionHandlerRegistry:
@@ -145,6 +176,23 @@ def build_execution_handler_registry(
             provider=wanx_provider,
             settings=settings,
             output_fetcher=render_fetcher,
+            artifact_storage=render_storage,
+        )
+    )
+    youtube_provider = LazyYouTubeProvider(settings, youtube_provider_factory)
+    registry.register(
+        YouTubePublishSubmitV1Handler(
+            session_factory=session_factory,
+            provider=youtube_provider,
+            settings=settings,
+            artifact_storage=render_storage,
+        )
+    )
+    registry.register(
+        YouTubePublishRefreshV1Handler(
+            session_factory=session_factory,
+            provider=youtube_provider,
+            settings=settings,
             artifact_storage=render_storage,
         )
     )

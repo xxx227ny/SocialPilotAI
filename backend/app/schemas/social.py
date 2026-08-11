@@ -90,6 +90,7 @@ class YouTubePreflightRead(BaseModel):
     status: Literal["READY", "BLOCKED"]
     ready: bool
     missing_requirements: list[str]
+    input_digest: str
     preflight_digest: str
     expires_at: datetime
     product_id: int
@@ -107,6 +108,7 @@ class YouTubePreflightRead(BaseModel):
 
 
 class YouTubePublishRequest(YouTubePublishingMetadata):
+    input_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     preflight_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     preflight_expires_at: datetime
     idempotency_key: str = Field(min_length=8, max_length=200)
@@ -146,3 +148,4 @@ class PublishExecutionRead(BaseModel):
 
 class PublishTaskIdentityRequest(BaseModel):
     product_id: int = Field(gt=0)
+    refresh_request_id: str = Field(min_length=16, max_length=128)

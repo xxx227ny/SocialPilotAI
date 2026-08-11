@@ -159,6 +159,92 @@ class YouTubeProvider:
                 "revocation_failed", status_code=response.status_code
             )
 
+    async def initiate_upload_session(
+        self,
+        *,
+        access_token: str,
+        path: Path,
+        content_type: str,
+        title: str,
+        description: str,
+        tags: list[str],
+        made_for_kids: bool,
+    ) -> str:
+        size = path.stat().st_size
+        metadata = {
+            "snippet": {
+                "title": title,
+                "description": description,
+                "tags": tags,
+                "categoryId": "22",
+            },
+            "status": {
+                "privacyStatus": "private",
+                "selfDeclaredMadeForKids": made_for_kids,
+                "containsSyntheticMedia": True,
+            },
+        }
+        headers = self._auth(access_token) | {
+            "Content-Type": "application/json; charset=UTF-8",
+            "X-Upload-Content-Length": str(size),
+            "X-Upload-Content-Type": content_type,
+        }
+        try:
+            initiated = await self._post_with_connect_retry(
+                "https://www.googleapis.com/upload/youtube/v3/videos",
+                params={
+                    "uploadType": "resumable",
+                    "part": "snippet,status",
+                    "notifySubscribers": "false",
+                },
+                headers=headers,
+                json=metadata,
+            )
+        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+            raise YouTubeProviderError(
+                "upload_session_connection_failed", uncertain=False
+            ) from exc
+        except httpx.RequestError as exc:
+            raise YouTubeProviderError(
+                "upload_session_response_failed", uncertain=False
+            ) from exc
+        self._raise_for_status(initiated, phase="upload_session")
+        session_uri = initiated.headers.get("location")
+        if not session_uri:
+            raise YouTubeProviderError("invalid_provider_response")
+        return session_uri
+
+    async def upload_media(
+        self,
+        *,
+        access_token: str,
+        path: Path,
+        content_type: str,
+        session_uri: str,
+    ) -> YouTubeUploadResult:
+        size = path.stat().st_size
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                uploaded = await client.put(
+                    session_uri,
+                    headers=self._auth(access_token)
+                    | {"Content-Length": str(size), "Content-Type": content_type},
+                    content=_file_chunks(path),
+                )
+        except httpx.RequestError as exc:
+            raise YouTubeUploadUncertain(session_uri) from exc
+        if uploaded.status_code in {408, 429} or uploaded.status_code >= 500:
+            raise YouTubeUploadUncertain(session_uri)
+        self._raise_for_status(uploaded, phase="upload_media")
+        try:
+            payload = uploaded.json()
+        except ValueError as exc:
+            raise YouTubeUploadUncertain(session_uri) from exc
+        video_id = payload.get("id") if isinstance(payload, dict) else None
+        if not isinstance(video_id, str) or not video_id:
+            raise YouTubeUploadUncertain(session_uri)
+        return YouTubeUploadResult(video_id=video_id)
+
     async def upload_video(
         self,
         *,

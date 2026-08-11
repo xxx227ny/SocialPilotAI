@@ -3,9 +3,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   connectYouTube,
   disconnectSocialAccount,
+  getPublishTask,
+  getYouTubePublishJob,
   listPublishArtifacts,
   listPublishTasks,
   listSocialAccounts,
+  listYouTubePublishJobs,
   preflightYouTubePublish,
   publishYouTube,
   refreshPublishTask,
@@ -16,6 +19,7 @@ import {
   youtubePublishingEnabled,
 } from "../../config/features";
 import { usePresentationMode } from "../../context/PresentationModeContext";
+import type { ExecutionJob } from "../../types/execution";
 import type {
   PublishArtifactCandidate,
   PublishTask,
@@ -25,12 +29,28 @@ import type {
 } from "../../types/social";
 import {
   canSubmitPrivateUpload,
+  YOUTUBE_PUBLISH_SUBMIT_V1,
+  canStartExactYouTubePublishResultRead,
+  canReleaseYouTubePublishLock,
+  cancelYouTubePublishControllers,
+  exactPublishTaskResult,
+  isCurrentYouTubePublishOperation,
+  isCurrentExactYouTubePublishResultRead,
+  isExactYouTubeRefreshJob,
+  selectExactYouTubeSubmitJob,
+  shouldContinueYouTubePublishPolling,
+  youtubePublishJobNeedsPolling,
   shouldLoadPublishTaskHistory,
   shouldLoadSocialData,
+} from "./socialPublishingState";
+import type {
+  YouTubePublishOperationIdentity,
+  YouTubePublishPollOutcome,
 } from "./socialPublishingState";
 
 type LoadState = "idle" | "loading" | "ready" | "failed";
 type ActionState = "idle" | "working" | "failed";
+type ResultReadState = "idle" | "reading" | "failed";
 
 export function SocialPublishingPanel({ productId }: { productId: number }) {
   const { isPresentation } = usePresentationMode();
@@ -155,7 +175,6 @@ export function SocialPublishingPanel({ productId }: { productId: number }) {
             (account) => account.connection_status === "CONNECTED",
           )}
           artifacts={artifacts}
-          recoveredTasks={tasks}
           onTask={(task) => {
             setTasks((current) => [
               task,
@@ -303,13 +322,11 @@ function YouTubePublisher({
   productId,
   accounts,
   artifacts,
-  recoveredTasks,
   onTask,
 }: {
   productId: number;
   accounts: SocialAccount[];
   artifacts: PublishArtifactCandidate[];
-  recoveredTasks: PublishTask[];
   onTask: (task: PublishTask) => void;
 }) {
   const [accountId, setAccountId] = useState("");
@@ -320,42 +337,40 @@ function YouTubePublisher({
   const [madeForKids, setMadeForKids] = useState<"" | "yes" | "no">("");
   const [preflight, setPreflight] = useState<YouTubePreflight | null>(null);
   const [confirmed, setConfirmed] = useState(false);
-  const [task, setTask] = useState<PublishTask | null>(
-    recoveredTasks[0] ?? null,
-  );
+  const [job, setJob] = useState<ExecutionJob | null>(null);
+  const [task, setTask] = useState<PublishTask | null>(null);
   const [state, setState] = useState<ActionState>("idle");
+  const [resultReadState, setResultReadState] = useState<ResultReadState>("idle");
   const [message, setMessage] = useState("");
-  const preflightLock = useRef(false);
-  const uploadLock = useRef(false);
-  const refreshLock = useRef(false);
-  const requestId = useRef(0);
-  const controller = useRef<AbortController | null>(null);
+  const currentProductId = useRef(productId);
+  currentProductId.current = productId;
+  const currentContextRef = useRef({
+    productId,
+    accountId: accountId ? Number(accountId) : null,
+    artifactId: artifactId ? Number(artifactId) : null,
+  });
+  currentContextRef.current = {
+    productId,
+    accountId: accountId ? Number(accountId) : null,
+    artifactId: artifactId ? Number(artifactId) : null,
+  };
+  const currentJobRef = useRef<ExecutionJob | null>(job);
+  currentJobRef.current = job;
+  const operationId = useRef(0);
+  const preflightRef = useRef<YouTubePublishOperationIdentity | null>(null);
+  const submitRef = useRef<YouTubePublishOperationIdentity | null>(null);
+  const refreshRef = useRef<YouTubePublishOperationIdentity | null>(null);
+  const pollRef = useRef<YouTubePublishOperationIdentity | null>(null);
+  const resultReadRef = useRef<YouTubePublishOperationIdentity | null>(null);
 
-  useEffect(() => {
-    setTask((current) => current ?? recoveredTasks[0] ?? null);
-  }, [recoveredTasks]);
-
-  function invalidate() {
-    requestId.current += 1;
-    controller.current?.abort();
-    setPreflight(null);
-    setConfirmed(false);
-    setMessage("");
-    setState("idle");
-    preflightLock.current = false;
-  }
-
-  function payload(): YouTubePublishingMetadata | null {
+  function metadata(): YouTubePublishingMetadata | null {
     if (!accountId || !artifactId || madeForKids === "") return null;
     return {
       social_account_id: Number(accountId),
       artifact_id: Number(artifactId),
       title,
       description,
-      tags: tags
-        .split(",")
-        .map((value) => value.trim())
-        .filter(Boolean),
+      tags: tags.split(",").map((value) => value.trim()).filter(Boolean),
       privacy_status: "private",
       made_for_kids: madeForKids === "yes",
       synthetic_media: true,
@@ -363,114 +378,357 @@ function YouTubePublisher({
     };
   }
 
+  function identity(
+    controller: AbortController,
+    options: {
+      inputDigest?: string | null;
+      jobId?: number | null;
+      publishTaskId?: number | null;
+    } = {},
+  ): YouTubePublishOperationIdentity {
+    return {
+      productId,
+      accountId: accountId ? Number(accountId) : null,
+      artifactId: artifactId ? Number(artifactId) : null,
+      inputDigest: options.inputDigest ?? null,
+      jobId: options.jobId ?? null,
+      publishTaskId: options.publishTaskId ?? null,
+      operationId: ++operationId.current,
+      controller,
+    };
+  }
+
+  function isCurrent(
+    expected: YouTubePublishOperationIdentity,
+    active: YouTubePublishOperationIdentity | null,
+  ) {
+    return (
+      expected.productId === currentProductId.current &&
+      isCurrentYouTubePublishOperation(expected, active)
+    );
+  }
+
+  function isCurrentResultRead(
+    expected: YouTubePublishOperationIdentity,
+  ) {
+    const context = currentContextRef.current;
+    return (
+      expected.productId === context.productId &&
+      expected.accountId === context.accountId &&
+      expected.artifactId === context.artifactId &&
+      expected.operationId === operationId.current &&
+      isCurrentExactYouTubePublishResultRead(
+        expected,
+        resultReadRef.current,
+        currentJobRef.current,
+      )
+    );
+  }
+
+  function cancelOperations() {
+    cancelYouTubePublishControllers({
+      load: null,
+      preflight: preflightRef.current,
+      submit: submitRef.current,
+      refresh: refreshRef.current,
+      poll: pollRef.current,
+      resultRead: resultReadRef.current,
+    });
+    preflightRef.current = null;
+    submitRef.current = null;
+    refreshRef.current = null;
+    pollRef.current = null;
+    resultReadRef.current = null;
+  }
+
+  function invalidate() {
+    operationId.current += 1;
+    cancelOperations();
+    setPreflight(null);
+    setConfirmed(false);
+    setJob(null);
+    setTask(null);
+    setResultReadState("idle");
+    setMessage("");
+    setState("idle");
+  }
+
+  useEffect(() => {
+    return () => {
+      operationId.current += 1;
+      cancelOperations();
+    };
+  }, []);
+
+  useEffect(() => {
+    operationId.current += 1;
+    cancelOperations();
+    setPreflight(null);
+    setConfirmed(false);
+    setJob(null);
+    setTask(null);
+    setResultReadState("idle");
+    setMessage("");
+    setState("idle");
+  }, [productId]);
+
   async function runPreflight() {
-    const data = payload();
+    const data = metadata();
     if (!data) {
-      setMessage("请选择账号、精确 Artifact，并明确 made-for-kids。 ");
+      setMessage("请选择账号、精确 Artifact，并明确 made-for-kids。");
       setState("failed");
       return;
     }
-    if (preflightLock.current || uploadLock.current) return;
-    preflightLock.current = true;
+    if (preflightRef.current || submitRef.current) return;
+    cancelOperations();
+    const active = identity(new AbortController());
+    preflightRef.current = active;
     setState("working");
     setMessage("");
     setConfirmed(false);
-    const current = ++requestId.current;
-    const nextController = new AbortController();
-    controller.current?.abort();
-    controller.current = nextController;
+    setJob(null);
+    setTask(null);
+    setResultReadState("idle");
     try {
-      const result = await preflightYouTubePublish(
-        productId,
-        data,
-        nextController.signal,
+      const checked = await preflightYouTubePublish(
+        productId, data, active.controller.signal,
       );
-      if (current !== requestId.current) return;
-      setPreflight(result);
-      setState(result.ready ? "idle" : "failed");
-      if (!result.ready) setMessage(result.missing_requirements.join("；"));
+      if (
+        !isCurrent(active, preflightRef.current) ||
+        checked.product_id !== active.productId ||
+        checked.social_account_id !== active.accountId ||
+        checked.artifact_id !== active.artifactId
+      ) return;
+      const jobs = await listYouTubePublishJobs(
+        YOUTUBE_PUBLISH_SUBMIT_V1,
+        "product",
+        productId,
+        active.controller.signal,
+      );
+      if (!isCurrent(active, preflightRef.current)) return;
+      setPreflight(checked);
+      setJob(selectExactYouTubeSubmitJob(
+        jobs,
+        productId,
+        Number(accountId),
+        Number(artifactId),
+        checked.input_digest,
+      ));
+      setState(checked.ready ? "idle" : "failed");
+      if (!checked.ready) setMessage(checked.missing_requirements.join("；"));
     } catch (caught) {
-      if (current !== requestId.current || nextController.signal.aborted) return;
+      if (!isCurrent(active, preflightRef.current)) return;
       setState("failed");
       setMessage(getApiErrorMessage(caught, "YouTube Preflight 失败。"));
     } finally {
-      if (current === requestId.current) preflightLock.current = false;
+      if (canReleaseYouTubePublishLock(active, preflightRef.current)) {
+        preflightRef.current = null;
+      }
     }
   }
 
-  async function upload() {
-    const data = payload();
-    const expected = preflight;
+  async function enqueueSubmit() {
+    const data = metadata();
+    const checked = preflight;
     if (
       !data ||
-      !expected ||
+      !checked ||
       !canSubmitPrivateUpload({
-        preflightReady: expected?.ready ?? false,
+        preflightReady: checked.ready,
         confirmed,
-        uploadLocked: uploadLock.current,
+        uploadLocked: submitRef.current !== null,
         madeForKidsSelected: madeForKids !== "",
         identityComplete: Boolean(accountId && artifactId),
       })
     ) return;
-    uploadLock.current = true;
+    const active = identity(new AbortController(), {
+      inputDigest: checked.input_digest,
+    });
+    submitRef.current = active;
     setConfirmed(false);
-    setPreflight(null);
     setState("working");
     setMessage("");
-    const current = ++requestId.current;
-    const nextController = new AbortController();
-    controller.current?.abort();
-    controller.current = nextController;
     try {
-      const result = await publishYouTube(
+      const created = await publishYouTube(
         productId,
         {
           ...data,
-          preflight_digest: expected.preflight_digest,
-          preflight_expires_at: expected.expires_at,
+          input_digest: checked.input_digest,
+          preflight_digest: checked.preflight_digest,
+          preflight_expires_at: checked.expires_at,
           idempotency_key: createIdempotencyKey(),
           confirm_upload: true,
         },
-        nextController.signal,
+        active.controller.signal,
       );
-      if (current !== requestId.current) return;
-      setTask(result.task);
-      onTask(result.task);
-      setState(result.task.uncertain ? "failed" : "idle");
-      if (result.task.uncertain) {
-        setMessage("上传结果不确定；不会自动重传。请恢复任务后再处理。");
+      if (!isCurrent(active, submitRef.current)) return;
+      const exact = selectExactYouTubeSubmitJob(
+        [created.job],
+        productId,
+        Number(accountId),
+        Number(artifactId),
+        checked.input_digest,
+      );
+      if (!exact) {
+        setState("failed");
+        setMessage("入队结果身份不匹配；未执行上传恢复。");
+        return;
       }
+      setJob(exact);
+      setState("idle");
     } catch (caught) {
-      if (current !== requestId.current || nextController.signal.aborted) return;
+      if (!isCurrent(active, submitRef.current)) return;
       setState("failed");
-      setMessage(
-        getApiErrorMessage(
-          caught,
-          "浏览器未获得确定结果；不会自动重试，请重新读取任务。",
-        ),
-      );
+      setMessage(getApiErrorMessage(caught, "YouTube Submit Job 入队失败。"));
     } finally {
-      if (current === requestId.current) uploadLock.current = false;
+      if (canReleaseYouTubePublishLock(active, submitRef.current)) {
+        submitRef.current = null;
+      }
     }
   }
 
-  async function refresh() {
-    if (!task || refreshLock.current) return;
-    refreshLock.current = true;
+  useEffect(() => {
+    if (!job || !youtubePublishJobNeedsPolling(job)) return;
+    const active = identity(new AbortController(), {
+      inputDigest: job.input_digest,
+      jobId: job.id,
+      publishTaskId: task?.id ?? null,
+    });
+    pollRef.current?.controller.abort();
+    pollRef.current = active;
+    let timer: number | null = null;
+    let disposed = false;
+
+    function schedule() {
+      if (disposed || !isCurrent(active, pollRef.current)) return;
+      timer = window.setTimeout(() => void pollOnce(), 1500);
+    }
+
+    async function pollOnce() {
+      if (disposed || !isCurrent(active, pollRef.current)) return;
+      let outcome: YouTubePublishPollOutcome = "LOCAL_READ_ERROR";
+      try {
+        const next = await getYouTubePublishJob(
+          active.jobId!, active.controller.signal,
+        );
+        if (!isCurrent(active, pollRef.current) || next.id !== active.jobId) return;
+        outcome = next;
+        setJob(next);
+        setMessage("");
+      } catch (caught) {
+        if (!isCurrent(active, pollRef.current)) return;
+        setMessage(getApiErrorMessage(caught, "本地 Job 读取暂时失败。"));
+      } finally {
+        if (
+          !disposed &&
+          shouldContinueYouTubePublishPolling(active, pollRef.current, outcome)
+        ) schedule();
+      }
+    }
+
+    schedule();
+    return () => {
+      disposed = true;
+      if (timer !== null) window.clearTimeout(timer);
+      active.controller.abort();
+      if (pollRef.current === active) pollRef.current = null;
+    };
+  }, [job?.id, job?.status]);
+
+  async function readExactPublishTaskResult(targetJob: ExecutionJob) {
+    if (
+      !canStartExactYouTubePublishResultRead(
+        targetJob,
+        resultReadRef.current,
+      )
+    ) return;
+    const publishTaskId = exactPublishTaskResult(targetJob);
+    if (!publishTaskId) return;
+    const active = identity(new AbortController(), {
+      inputDigest: targetJob.input_digest,
+      jobId: targetJob.id,
+      publishTaskId,
+    });
+    resultReadRef.current = active;
+    setResultReadState("reading");
+
+    try {
+        const exactTask = await getPublishTask(
+          active.productId,
+          active.publishTaskId!,
+          active.controller.signal,
+        );
+        if (
+          !isCurrentResultRead(active) ||
+          exactTask.id !== active.publishTaskId ||
+          exactTask.product_id !== active.productId ||
+          exactTask.social_account_id !== active.accountId ||
+          exactTask.artifact_id !== active.artifactId
+        ) return;
+        setTask(exactTask);
+        onTask(exactTask);
+        setResultReadState("idle");
+        setMessage("");
+      } catch (caught) {
+        if (!isCurrentResultRead(active)) return;
+        setResultReadState("failed");
+        setMessage(getApiErrorMessage(caught, "精确 PublishTask 读取失败。"));
+      } finally {
+        if (isCurrentResultRead(active)) {
+          resultReadRef.current = null;
+        }
+      }
+  }
+
+  useEffect(() => {
+    if (!job || task) return;
+    void readExactPublishTaskResult(job);
+  }, [job?.id, job?.status, job?.result_entity_id]);
+
+  async function enqueueRefresh() {
+    if (
+      !task ||
+      !["SUBMITTED", "PROCESSING"].includes(task.status) ||
+      refreshRef.current
+    ) return;
+    cancelOperations();
+    const active = identity(new AbortController(), { publishTaskId: task.id });
+    refreshRef.current = active;
     setMessage("");
     try {
-      const result = await refreshPublishTask(productId, task.id);
-      setTask(result.task);
-      onTask(result.task);
+      const created = await refreshPublishTask(
+        productId,
+        task.id,
+        createRefreshRequestId(),
+        active.controller.signal,
+      );
+      if (
+        !isCurrent(active, refreshRef.current) ||
+        !isExactYouTubeRefreshJob(
+          created.job,
+          productId,
+          task.social_account_id,
+          task.id,
+        )
+      ) return;
+      setJob(created.job);
     } catch (caught) {
-      setMessage(getApiErrorMessage(caught, "状态刷新失败，不会重新上传。"));
+      if (!isCurrent(active, refreshRef.current)) return;
+      setMessage(getApiErrorMessage(caught, "状态 Refresh Job 入队失败。"));
     } finally {
-      refreshLock.current = false;
+      if (canReleaseYouTubePublishLock(active, refreshRef.current)) {
+        refreshRef.current = null;
+      }
     }
   }
 
   const selectedArtifact = artifacts.find(
     (artifact) => artifact.artifact_id === Number(artifactId),
+  );
+  const submitUnknown = job?.status === "SUBMIT_UNKNOWN";
+  const canRereadExactResult = canStartExactYouTubePublishResultRead(
+    job,
+    resultReadRef.current,
   );
 
   return (
@@ -482,7 +740,6 @@ function YouTubePublisher({
         </div>
         <strong>Private · AI 披露开启 · 不通知订阅者</strong>
       </header>
-
       {accounts.length === 0 || artifacts.length === 0 ? (
         <p className="social-publishing__empty">
           {accounts.length === 0
@@ -493,13 +750,10 @@ function YouTubePublisher({
         <div className="youtube-publisher__form">
           <label>
             YouTube Channel
-            <select
-              value={accountId}
-              onChange={(event) => {
-                setAccountId(event.target.value);
-                invalidate();
-              }}
-            >
+            <select value={accountId} onChange={(event) => {
+              setAccountId(event.target.value);
+              invalidate();
+            }}>
               <option value="">请选择账号</option>
               {accounts.map((account) => (
                 <option key={account.id} value={account.id}>
@@ -510,18 +764,16 @@ function YouTubePublisher({
           </label>
           <label>
             精确 Artifact
-            <select
-              value={artifactId}
-              onChange={(event) => {
-                setArtifactId(event.target.value);
-                invalidate();
-              }}
-            >
+            <select value={artifactId} onChange={(event) => {
+              setArtifactId(event.target.value);
+              invalidate();
+            }}>
               <option value="">请选择 Artifact</option>
               {artifacts.map((artifact) => (
                 <option key={artifact.artifact_id} value={artifact.artifact_id}>
-                  Artifact #{artifact.artifact_id} · RenderTask #{artifact.render_task_id}
-                  {" · "}VideoProject #{artifact.video_project_id}
+                  Artifact #{artifact.artifact_id} · RenderTask #
+                  {artifact.render_task_id} · VideoProject #
+                  {artifact.video_project_id}
                 </option>
               ))}
             </select>
@@ -536,35 +788,24 @@ function YouTubePublisher({
           ) : null}
           <label>
             标题
-            <input
-              value={title}
-              maxLength={100}
-              onChange={(event) => {
-                setTitle(event.target.value);
-                invalidate();
-              }}
-            />
+            <input value={title} maxLength={100} onChange={(event) => {
+              setTitle(event.target.value);
+              invalidate();
+            }} />
           </label>
           <label>
             描述
-            <textarea
-              value={description}
-              maxLength={5000}
-              onChange={(event) => {
-                setDescription(event.target.value);
-                invalidate();
-              }}
-            />
+            <textarea value={description} maxLength={5000} onChange={(event) => {
+              setDescription(event.target.value);
+              invalidate();
+            }} />
           </label>
           <label>
             标签（英文逗号分隔）
-            <input
-              value={tags}
-              onChange={(event) => {
-                setTags(event.target.value);
-                invalidate();
-              }}
-            />
+            <input value={tags} onChange={(event) => {
+              setTags(event.target.value);
+              invalidate();
+            }} />
           </label>
           <fieldset>
             <legend>是否为儿童内容（必须明确选择）</legend>
@@ -602,12 +843,11 @@ function YouTubePublisher({
           </button>
         </div>
       )}
-
       {preflight ? (
         <div className={`youtube-preflight is-${preflight.status.toLowerCase()}`}>
           <strong>{preflight.status}</strong>
           <span>Provider 调用 0 · 数据库写入 0</span>
-          {preflight.ready ? (
+          {preflight.ready && !job ? (
             <label>
               <input
                 type="checkbox"
@@ -618,44 +858,67 @@ function YouTubePublisher({
               不通知订阅者。
             </label>
           ) : null}
-          <button
-            type="button"
-            onClick={() => void upload()}
-            disabled={
-              !canSubmitPrivateUpload({
+          {!job ? (
+            <button
+              type="button"
+              onClick={() => void enqueueSubmit()}
+              disabled={!canSubmitPrivateUpload({
                 preflightReady: preflight.ready,
                 confirmed,
-                uploadLocked: uploadLock.current,
+                uploadLocked: submitRef.current !== null,
                 madeForKidsSelected: madeForKids !== "",
                 identityComplete: Boolean(accountId && artifactId),
-              })
-            }
-          >
-            上传一次 Private 视频
-          </button>
+              })}
+            >
+              创建 Private Upload Job
+            </button>
+          ) : null}
         </div>
       ) : null}
-
-      {message ? <p className="social-publishing__notice is-error">{message}</p> : null}
+      {job ? (
+        <p className="social-publishing__notice">
+          Local Job #{job.id} · {job.status}
+        </p>
+      ) : null}
+      {submitUnknown ? (
+        <p className="social-publishing__notice is-error">
+          上传结果不确定；禁止自动或显式重新上传。
+        </p>
+      ) : null}
+      {message ? (
+        <p className="social-publishing__notice is-error">{message}</p>
+      ) : null}
+      {resultReadState !== "idle" && job ? (
+        <button
+          type="button"
+          onClick={() => void readExactPublishTaskResult(job)}
+          disabled={!canRereadExactResult || resultReadState === "reading"}
+        >
+          {resultReadState === "reading"
+            ? "正在读取精确 PublishTask 结果…"
+            : "重新读取精确 PublishTask 结果"}
+        </button>
+      ) : null}
       {task ? (
         <div className="youtube-publish-task">
-          <strong>
-            PublishTask #{task.id} · {task.status}
-          </strong>
+          <strong>PublishTask #{task.id} · {task.status}</strong>
+          <span>Privacy: {task.privacy_status}</span>
+          <span>AI 合成媒体披露：开启 · 订阅通知：关闭</span>
           <span>
-            Provider Video ID：{task.provider_video_id ?? "尚无确定身份"}
+            {task.uncertain
+              ? "结果不确定，禁止重新上传"
+              : "无自动 Provider 查询"}
           </span>
-          <span>{task.uncertain ? "结果不确定，禁止自动重传" : "无自动重试"}</span>
           <button
             type="button"
-            onClick={() => void refresh()}
+            onClick={() => void enqueueRefresh()}
             disabled={
-              refreshLock.current ||
+              refreshRef.current !== null ||
               !task.provider_video_id ||
               !["SUBMITTED", "PROCESSING"].includes(task.status)
             }
           >
-            显式刷新同一任务
+            创建一次显式 Refresh Job
           </button>
         </div>
       ) : null}
@@ -682,6 +945,13 @@ function connectionLabel(status: SocialAccount["connection_status"]) {
     EXPIRED: "授权过期",
     FAILED: "连接失败",
   }[status];
+}
+function createRefreshRequestId() {
+  return typeof crypto.randomUUID === "function"
+    ? `youtube-refresh-${crypto.randomUUID()}`
+    : `youtube-refresh-${Date.now()}-${Math.random()
+        .toString(16)
+        .slice(2)}`;
 }
 
 function createIdempotencyKey() {
