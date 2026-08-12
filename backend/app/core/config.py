@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     enable_growth_execution: bool = False
     enable_social_account_binding: bool = False
     enable_instagram_account_binding: bool = False
+    enable_tiktok_account_binding: bool = False
     enable_instagram_publishing: bool = False
     enable_youtube_publishing: bool = False
     google_oauth_client_id: str | None = None
@@ -61,6 +62,10 @@ class Settings(BaseSettings):
         default=None, pattern=r"^v[0-9]+\.[0-9]+$"
     )
     instagram_request_timeout: float = Field(default=30, gt=0, le=120)
+    tiktok_client_key: str | None = None
+    tiktok_client_secret: SecretStr | None = None
+    tiktok_oauth_redirect_uri: str | None = None
+    tiktok_request_timeout: float = Field(default=30, gt=0, le=120)
     instagram_ffprobe_path: str = "ffprobe"
     instagram_media_probe_timeout: float = Field(default=10, gt=0, le=60)
     wanx_api_key: SecretStr | None = None
@@ -73,9 +78,7 @@ class Settings(BaseSettings):
     video_artifact_storage_root: str | None = None
     execution_worker_status_file: str | None = None
     execution_worker_stale_seconds: int = Field(default=15, ge=5, le=300)
-    video_artifact_max_bytes: int = Field(
-        default=50_000_000, gt=0, le=500_000_000
-    )
+    video_artifact_max_bytes: int = Field(default=50_000_000, gt=0, le=500_000_000)
     cors_origins: list[str] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",

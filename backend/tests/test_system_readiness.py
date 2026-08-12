@@ -61,6 +61,11 @@ def ready_settings(artifact_root: str) -> Settings:
             "http://127.0.0.1:8000/api/v1/social-accounts/instagram/callback"
         ),
         instagram_graph_api_version="v23.0",
+        tiktok_client_key="fake-tiktok-client-key",
+        tiktok_client_secret="fake-tiktok-client-secret",
+        tiktok_oauth_redirect_uri=(
+            "https://app.example/api/v1/social-accounts/tiktok/callback"
+        ),
         social_token_encryption_key=Fernet.generate_key().decode("ascii"),
         video_artifact_storage_root=artifact_root,
         execution_worker_status_file=str(worker_status),
@@ -71,6 +76,7 @@ def ready_settings(artifact_root: str) -> Settings:
         enable_social_account_binding=True,
         enable_youtube_publishing=True,
         enable_instagram_account_binding=True,
+        enable_tiktok_account_binding=True,
     )
 
 
@@ -107,6 +113,7 @@ def test_readiness_is_provider_free_read_only_and_secret_safe(
             "wanx",
             "google_youtube",
             "meta_instagram",
+            "tiktok",
             "database",
             "artifact_storage",
             "execution_worker",
@@ -127,6 +134,8 @@ def test_readiness_is_provider_free_read_only_and_secret_safe(
         "fake-google-client-secret",
         "fake-instagram-app-id",
         "fake-instagram-app-secret",
+        "fake-tiktok-client-key",
+        "fake-tiktok-client-secret",
         settings.social_token_encryption_key.get_secret_value(),
     ):
         assert secret not in serialized
@@ -162,6 +171,7 @@ def test_readiness_explains_missing_local_configuration(
     assert "WANX_API_KEY" in body["wanx"]["message"]
     assert body["google_youtube"]["ready"] is False
     assert body["meta_instagram"]["ready"] is False
+    assert body["tiktok"]["ready"] is False
     assert body["artifact_storage"]["ready"] is False
     assert body["execution_worker"]["ready"] is False
     assert body["execution_worker"]["status"] == "not_running"
@@ -289,9 +299,7 @@ def test_readiness_safely_reports_missing_or_unconfirmed_windows_worker(
 ) -> None:
     settings = ready_settings(str(tmp_path))
     app.dependency_overrides[get_settings] = lambda: settings
-    monkeypatch.setattr(
-        readiness_module, "_process_state", lambda _pid: process_state
-    )
+    monkeypatch.setattr(readiness_module, "_process_state", lambda _pid: process_state)
     mark_database_at_head(db_session)
 
     response = client.get("/api/v1/system/readiness")

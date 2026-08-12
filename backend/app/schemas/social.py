@@ -24,17 +24,27 @@ class InstagramConnectRead(BaseModel):
     expires_at: datetime
 
 
+class TikTokConnectRequest(BaseModel):
+    product_id: int = Field(gt=0)
+
+
+class TikTokConnectRead(BaseModel):
+    authorization_url: str
+    expires_at: datetime
+
+
 class SocialAccountRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     product_id: int
-    platform: Literal["youtube", "instagram"]
+    platform: Literal["youtube", "instagram", "tiktok"]
     provider_account_id: str
     display_name: str
     scopes: list[str]
     connection_status: str
     token_expires_at: datetime | None
+    refresh_token_expires_at: datetime | None
     created_at: datetime
     updated_at: datetime
     disconnected_at: datetime | None
@@ -60,6 +70,17 @@ class InstagramDisconnectRead(BaseModel):
     account: SocialAccountRead
     local_only: Literal[True] = True
     meta_authorization_revoked: Literal[False] = False
+
+
+class TikTokDisconnectRequest(BaseModel):
+    product_id: int = Field(gt=0)
+    confirm_disconnect: Literal[True]
+
+
+class TikTokDisconnectRead(BaseModel):
+    account: SocialAccountRead
+    local_only: Literal[True] = True
+    tiktok_authorization_revoked: Literal[False] = False
 
 
 class PublishArtifactCandidateRead(BaseModel):

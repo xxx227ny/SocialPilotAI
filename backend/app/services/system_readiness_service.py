@@ -108,6 +108,13 @@ class SystemReadinessService:
             and self._valid_graph_version(self.settings.instagram_graph_api_version)
             and self._valid_token_cipher()
         )
+        tiktok_ready = bool(
+            self.settings.enable_tiktok_account_binding
+            and self._text(self.settings.tiktok_client_key)
+            and self._secret(self.settings.tiktok_client_secret)
+            and self._valid_https_uri(self.settings.tiktok_oauth_redirect_uri)
+            and self._valid_token_cipher()
+        )
         database_ready, revision_status, revision = self._database_readiness()
         artifact_ready = self._artifact_storage_ready()
         instagram_publishing_ready = bool(
@@ -167,6 +174,18 @@ class SystemReadinessService:
                         "Meta / Instagram未就绪：请配置独立Gate、App ID、"
                         "App Secret、Redirect URI、固定Graph API版本和"
                         "社交Token加密密钥。"
+                    )
+                ),
+            ),
+            tiktok=SystemComponentRead(
+                ready=tiktok_ready,
+                message=(
+                    "TikTok Login Kit 本机配置已就绪；不代表 video.publish 审批、"
+                    "Content Posting API Audit 或真实发布能力已通过。"
+                    if tiktok_ready
+                    else (
+                        "TikTok 账号绑定未就绪：请检查独立 Gate、Client Key、"
+                        "Client Secret、HTTPS Redirect URI 和 Token 加密密钥。"
                     )
                 ),
             ),
@@ -291,6 +310,21 @@ class SystemReadinessService:
             return False
         parsed = urlparse(value.strip())
         return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+    @staticmethod
+    def _valid_https_uri(value: object) -> bool:
+        if not isinstance(value, str):
+            return False
+        parsed = urlparse(value.strip())
+        return bool(
+            parsed.scheme == "https"
+            and parsed.netloc
+            and parsed.hostname
+            and not parsed.username
+            and not parsed.password
+            and not parsed.query
+            and not parsed.fragment
+        )
 
     @staticmethod
     def _valid_graph_version(value: object) -> bool:

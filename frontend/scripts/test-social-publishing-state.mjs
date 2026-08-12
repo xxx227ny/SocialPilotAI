@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import ts from "typescript";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const output = mkdtempSync(join(tmpdir(), "socialpilot-social-state-"));
@@ -38,6 +39,43 @@ try {
   writeFileSync(join(output, "package.json"), '{"type":"module"}', "utf8");
   const state = await import(
     pathToFileURL(join(output, "socialPublishingState.js")).href
+  );
+  const panelSource = readFileSync(
+    join(root, "src/components/product/SocialPublishingPanel.tsx"), "utf8",
+  );
+  const pureFunctions = panelSource.match(
+    /export function shouldLoadSocialAccounts[\s\S]*?(?=export function SocialPublishingPanel)/,
+  )?.[0];
+  assert.ok(pureFunctions, "executable social account Gate helpers found");
+  const transpiled = ts.transpileModule(pureFunctions, {
+    compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  const panelState = await import(
+    `data:text/javascript;base64,${Buffer.from(transpiled).toString("base64")}`
+  );
+
+  for (const [label, gates, expected] of [
+    ["YouTube only", [false, true, false, false, false, false], true],
+    ["Instagram only", [false, false, true, false, false, false], true],
+    ["TikTok only", [false, false, false, true, false, false], true],
+    ["all off", [false, false, false, false, false, false], false],
+    ["Presentation YouTube", [true, true, false, false, false, false], false],
+    ["Presentation Instagram", [true, false, true, false, false, false], false],
+    ["Presentation TikTok", [true, false, false, true, false, false], false],
+  ]) {
+    assert.equal(
+      panelState.shouldLoadSocialAccounts(...gates),
+      expected,
+      label,
+    );
+  }
+  assert.equal(
+    panelState.canLocallyDisconnectAccount({ connection_status: "CONNECTED" }),
+    true,
+  );
+  assert.equal(
+    panelState.canLocallyDisconnectAccount({ connection_status: "EXPIRED" }),
+    false,
   );
 
   assert.equal(state.shouldLoadSocialData(true, true, true), false);
@@ -81,12 +119,13 @@ try {
     join(root, "src", "components", "product", "SocialPublishingPanel.tsx"),
     "utf8",
   );
-  const placeholder = component.match(
-    /function PlatformPlaceholder[\s\S]*?function connectionLabel/,
+  const tiktokCard = component.match(
+    /function TikTokAccountCard[\s\S]*?function AccountCards/,
   )?.[0];
-  assert.ok(placeholder);
-  assert.match(placeholder, /<button type="button" disabled>/);
-  assert.doesNotMatch(placeholder, /onClick=/);
+  assert.ok(tiktokCard);
+  assert.match(tiktokCard, /连接 TikTok/);
+  assert.match(tiktokCard, /本地断开 TikTok/);
+  assert.doesNotMatch(tiktokCard, /Direct Post|publishTikTok|TikTok PublishTask/);
 
   const readOnlyHistory = component.match(
     /function ReadOnlyPublishTaskHistory[\s\S]*?function YouTubePublisher/,

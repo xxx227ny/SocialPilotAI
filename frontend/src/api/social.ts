@@ -5,6 +5,7 @@ import type {
   PublishTask,
   SocialAccount,
   InstagramConnectResult,
+  TikTokConnectResult,
   InstagramFinalizePreflight,
   InstagramPublishPreflight,
   InstagramPublishingMetadata,
@@ -45,6 +46,32 @@ export async function disconnectInstagramAccount(
     meta_authorization_revoked: false;
   }>(
     `/social-accounts/instagram/${accountId}/disconnect`,
+    { product_id: productId, confirm_disconnect: true },
+    { signal },
+  );
+  return response.data.account;
+}
+
+export async function connectTikTok(productId: number, signal?: AbortSignal) {
+  const response = await apiClient.post<TikTokConnectResult>(
+    "/social-accounts/tiktok/connect",
+    { product_id: productId },
+    { signal },
+  );
+  return response.data;
+}
+
+export async function disconnectTikTokAccount(
+  productId: number,
+  accountId: number,
+  signal?: AbortSignal,
+) {
+  const response = await apiClient.post<{
+    account: SocialAccount;
+    local_only: true;
+    tiktok_authorization_revoked: false;
+  }>(
+    `/social-accounts/tiktok/${accountId}/disconnect`,
     { product_id: productId, confirm_disconnect: true },
     { signal },
   );

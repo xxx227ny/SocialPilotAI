@@ -10,6 +10,7 @@ type ComponentKey =
   | "wanx"
   | "google_youtube"
   | "meta_instagram"
+  | "tiktok"
   | "instagram_publishing"
   | "database"
   | "artifact_storage"
@@ -21,6 +22,7 @@ const COMPONENTS: Array<{ key: ComponentKey; label: string }> = [
   { key: "wanx", label: "Wanx" },
   { key: "google_youtube", label: "Google / YouTube" },
   { key: "meta_instagram", label: "Meta / Instagram" },
+  { key: "tiktok", label: "TikTok Login Kit" },
   { key: "instagram_publishing", label: "Instagram Reel Publishing" },
   { key: "database", label: "Database" },
   { key: "artifact_storage", label: "Artifact Storage" },

@@ -22,6 +22,7 @@ from app.providers.live_configuration import (
     safe_error_message,
     wanx_provider_configured,
 )
+from app.providers.tiktok_provider import TikTokProvider, TikTokProviderError
 from app.providers.visual_base import VisualGenerationProvider
 from app.providers.youtube_provider import YouTubeProvider, YouTubeProviderError
 from app.services.instagram_media_probe import (
@@ -383,4 +384,38 @@ def get_instagram_media_probe(
 
 InstagramMediaProbeDep = Annotated[
     InstagramMediaProbe, Depends(get_instagram_media_probe)
+]
+
+
+def require_tiktok_account_binding_enabled(
+    app_settings: Annotated[Settings, Depends(get_settings)],
+) -> None:
+    if not app_settings.enable_tiktok_account_binding:
+        raise AppError("TikTok account binding is disabled by the server", 503)
+
+
+TikTokAccountBindingGateDep = Annotated[
+    None, Depends(require_tiktok_account_binding_enabled)
+]
+
+
+def get_tiktok_provider(
+    app_settings: Annotated[Settings, Depends(get_settings)],
+) -> TikTokProvider:
+    try:
+        return TikTokProvider(app_settings)
+    except TikTokProviderError:
+        raise AppError("TikTok provider is not configured", 503) from None
+
+
+def get_binding_tiktok_provider(
+    gate: TikTokAccountBindingGateDep,
+    provider: Annotated[TikTokProvider, Depends(get_tiktok_provider)],
+) -> TikTokProvider:
+    del gate
+    return provider
+
+
+BindingTikTokProviderDep = Annotated[
+    TikTokProvider, Depends(get_binding_tiktok_provider)
 ]

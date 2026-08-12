@@ -1,10 +1,13 @@
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import time
 from pathlib import Path
+
+import pytest
 
 from app.services.database_migration_service import HEAD_REVISION, _run_alembic
 
@@ -24,6 +27,74 @@ def wait_for_state(path: Path, expected: str, timeout: float = 8) -> dict:
     raise AssertionError(f"Worker did not report {expected}")
 
 
+def assert_worker_output_is_credential_safe(
+    output: str,
+    *,
+    sensitive_values: tuple[str, ...],
+    database_path: Path,
+) -> None:
+    normalized = output.casefold()
+    for sensitive in sensitive_values:
+        assert sensitive.casefold() not in normalized
+    assert str(database_path).casefold() not in normalized
+    assert "database_url" not in normalized
+    assert "socialpilot_disable_dotenv" not in normalized
+    for pattern in (
+        r"authorization\s*:\s*bearer\s+\S+",
+        r"(?:access|refresh)[_-]?token\s*[:=]\s*[^\s,;}]+",
+        r"client[_-]?secret\s*[:=]\s*[^\s,;}]+",
+        r"authorization[_-]?code\s*[:=]\s*[^\s,;}]+",
+        r"cookie\s*[:=]\s*[^\s,;}]+",
+        r"payload\s*[:=]\s*[^\s,;}]+",
+    ):
+        assert re.search(pattern, output, flags=re.IGNORECASE) is None
+
+
+@pytest.mark.parametrize(
+    "leaked_output",
+    [
+        "fake-worker-access-token",
+        "fake-worker-refresh-token",
+        "fake-worker-client-secret",
+        "fake-worker-authorization-code",
+        "Authorization: Bearer suspicious-value",
+        "access_token=suspicious-value",
+        "refresh-token: suspicious-value",
+        "client_secret=suspicious-value",
+        "authorization_code=suspicious-value",
+    ],
+)
+def test_worker_output_safety_check_detects_credentials(
+    leaked_output: str, tmp_path: Path
+) -> None:
+    with pytest.raises(AssertionError):
+        assert_worker_output_is_credential_safe(
+            leaked_output,
+            sensitive_values=(
+                "fake-worker-access-token",
+                "fake-worker-refresh-token",
+                "fake-worker-client-secret",
+                "fake-worker-authorization-code",
+            ),
+            database_path=tmp_path / "worker.db",
+        )
+
+
+def test_worker_output_safety_check_allows_tiktok_migration_identifier(
+    tmp_path: Path,
+) -> None:
+    assert_worker_output_is_credential_safe(
+        "Running upgrade to 0007_tiktok_refresh_token_expiry",
+        sensitive_values=(
+            "fake-worker-access-token",
+            "fake-worker-refresh-token",
+            "fake-worker-client-secret",
+            "fake-worker-authorization-code",
+        ),
+        database_path=tmp_path / "worker.db",
+    )
+
+
 def test_worker_cli_idles_updates_status_and_stops_without_database_write(
     tmp_path: Path,
 ) -> None:
@@ -34,6 +105,16 @@ def test_worker_cli_idles_updates_status_and_stops_without_database_write(
     before_hash = file_hash(database)
     environment = os.environ.copy()
     environment["SOCIALPILOT_DISABLE_DOTENV"] = "1"
+    sensitive_values = (
+        "fake-worker-access-token",
+        "fake-worker-refresh-token",
+        "fake-worker-client-secret",
+        "fake-worker-authorization-code",
+    )
+    environment["TIKTOK_ACCESS_TOKEN"] = sensitive_values[0]
+    environment["TIKTOK_REFRESH_TOKEN"] = sensitive_values[1]
+    environment["TIKTOK_CLIENT_SECRET"] = sensitive_values[2]
+    environment["TIKTOK_AUTHORIZATION_CODE"] = sensitive_values[3]
 
     process = subprocess.Popen(
         [
@@ -74,9 +155,13 @@ def test_worker_cli_idles_updates_status_and_stops_without_database_write(
     assert isinstance(stopped["pid"], int) and stopped["pid"] > 0
     assert not stop.exists()
     assert file_hash(database) == before_hash
-    output = f"{stdout}\n{stderr}".casefold()
-    for forbidden in ("token", "secret", "authorization", "cookie", "payload"):
-        assert forbidden not in output
+    output = f"{stdout}\n{stderr}"
+    assert "0007_tiktok_refresh_token_expiry" in output
+    assert_worker_output_is_credential_safe(
+        output,
+        sensitive_values=sensitive_values,
+        database_path=database,
+    )
 
 
 def test_worker_cli_refuses_database_before_head(tmp_path: Path) -> None:

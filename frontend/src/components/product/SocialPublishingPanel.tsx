@@ -2,8 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   connectInstagram,
+  connectTikTok,
   connectYouTube,
   disconnectInstagramAccount,
+  disconnectTikTokAccount,
   disconnectSocialAccount,
   getPublishTask,
   getYouTubePublishJob,
@@ -19,6 +21,7 @@ import { getApiErrorMessage } from "../../api/client";
 import {
   instagramAccountBindingEnabled,
   instagramPublishingEnabled,
+  tiktokAccountBindingEnabled,
   socialAccountBindingEnabled,
   youtubePublishingEnabled,
 } from "../../config/features";
@@ -58,6 +61,17 @@ import {
   shouldReleaseInstagramConnectLock,
 } from "./instagramAccountState";
 import type { InstagramOperationIdentity } from "./instagramAccountState";
+import {
+  canReleaseTikTokOperationLock,
+  canStartTikTokOperation,
+  cancelTikTokOperations,
+  isCurrentTikTokOperation,
+  readTikTokOAuthStatus,
+  safeTikTokAuthorizationUrl,
+  shouldReleaseTikTokConnectLock,
+  tiktokScopeSummary,
+} from "./tiktokAccountState";
+import type { TikTokOperationIdentity } from "./tiktokAccountState";
 import { InstagramPublishingPanel } from "./InstagramPublishingPanel";
 import type {
   YouTubePublishOperationIdentity,
@@ -67,6 +81,37 @@ import type {
 type LoadState = "idle" | "loading" | "ready" | "failed";
 type ActionState = "idle" | "working" | "failed";
 type ResultReadState = "idle" | "reading" | "failed";
+
+export function shouldLoadSocialAccounts(
+  isPresentation: boolean,
+  youtubeAccountBinding: boolean,
+  instagramAccountBinding: boolean,
+  tiktokAccountBinding: boolean,
+  youtubePublishing: boolean,
+  instagramPublishing: boolean,
+): boolean {
+  return (
+    !isPresentation &&
+    (youtubeAccountBinding ||
+      instagramAccountBinding ||
+      tiktokAccountBinding ||
+      youtubePublishing ||
+      instagramPublishing)
+  );
+}
+
+export function findPlatformAccount(
+  accounts: SocialAccount[],
+  platform: SocialAccount["platform"],
+): SocialAccount | undefined {
+  return accounts.find((account) => account.platform === platform);
+}
+
+export function canLocallyDisconnectAccount(
+  account: SocialAccount | undefined,
+): boolean {
+  return account?.connection_status === "CONNECTED";
+}
 
 export function SocialPublishingPanel({ productId }: { productId: number }) {
   const { isPresentation } = usePresentationMode();
@@ -79,9 +124,17 @@ export function SocialPublishingPanel({ productId }: { productId: number }) {
   const loadController = useRef<AbortController | null>(null);
 
   const load = useCallback(async () => {
+    const loadAccountData = shouldLoadSocialAccounts(
+      isPresentation,
+      socialAccountBindingEnabled,
+      instagramAccountBindingEnabled,
+      tiktokAccountBindingEnabled,
+      youtubePublishingEnabled,
+      instagramPublishingEnabled,
+    );
     const loadSocialData = shouldLoadSocialData(
       isPresentation,
-      socialAccountBindingEnabled || instagramAccountBindingEnabled,
+      loadAccountData,
       youtubePublishingEnabled,
     );
     const loadTaskHistory = shouldLoadPublishTaskHistory(isPresentation);
@@ -96,7 +149,7 @@ export function SocialPublishingPanel({ productId }: { productId: number }) {
     setMessage("");
     try {
       const [nextAccounts, nextArtifacts, nextTasks] = await Promise.all([
-        loadSocialData && socialAccountBindingEnabled
+        loadAccountData
           ? listSocialAccounts(productId, controller.signal)
           : Promise.resolve([]),
         youtubePublishingEnabled
@@ -134,6 +187,7 @@ export function SocialPublishingPanel({ productId }: { productId: number }) {
     "youtube_oauth",
   );
   const instagramOAuthStatus = readInstagramOAuthStatus(window.location.search);
+  const tiktokOAuthStatus = readTikTokOAuthStatus(window.location.search);
 
   return (
     <section className="social-publishing" data-testid="social-publishing">
@@ -181,6 +235,21 @@ export function SocialPublishingPanel({ productId }: { productId: number }) {
           Instagram 授权未完成；页面未接收 Provider 错误或敏感信息。
         </p>
       ) : null}
+      {tiktokOAuthStatus === "connected" ? (
+        <p className="social-publishing__notice is-success">
+          TikTok 授权已完成，正在显示安全账号身份。
+        </p>
+      ) : null}
+      {tiktokOAuthStatus === "denied" ? (
+        <p className="social-publishing__notice is-error">
+          你已取消 TikTok 授权，没有保存任何 Token。
+        </p>
+      ) : null}
+      {tiktokOAuthStatus === "failed" ? (
+        <p className="social-publishing__notice is-error">
+          TikTok 授权未完成；页面未接收 Provider 错误或敏感信息。
+        </p>
+      ) : null}
       {message ? (
         <p className="social-publishing__notice is-error" role="alert">
           {message}
@@ -201,6 +270,18 @@ export function SocialPublishingPanel({ productId }: { productId: number }) {
 
       <InstagramAccountCard
         key={`instagram-${productId}`}
+        productId={productId}
+        accounts={accounts}
+        onChanged={(account) => {
+          setAccounts((current) => [
+            account,
+            ...current.filter((item) => item.id !== account.id),
+          ]);
+        }}
+      />
+
+      <TikTokAccountCard
+        key={`tiktok-${productId}`}
         productId={productId}
         accounts={accounts}
         onChanged={(account) => {
@@ -247,9 +328,6 @@ export function SocialPublishingPanel({ productId }: { productId: number }) {
         </>
       )}
 
-      <div className="social-publishing__future">
-        <PlatformPlaceholder name="TikTok" />
-      </div>
     </section>
   );
 }
@@ -399,6 +477,108 @@ function InstagramAccountCard({
       {error ? <p role="alert">{error}</p> : null}
     </div>
   );
+}
+
+function TikTokAccountCard({
+  productId,
+  accounts,
+  onChanged,
+}: {
+  productId: number;
+  accounts: SocialAccount[];
+  onChanged: (account: SocialAccount) => void;
+}) {
+  const tiktok = findPlatformAccount(accounts, "tiktok");
+  const [state, setState] = useState<ActionState>("idle");
+  const [error, setError] = useState("");
+  const operationIdRef = useRef(0);
+  const connectRef = useRef<TikTokOperationIdentity | null>(null);
+  const disconnectRef = useRef<TikTokOperationIdentity | null>(null);
+
+  useEffect(() => () => {
+    operationIdRef.current += 1;
+    cancelTikTokOperations({
+      connect: connectRef.current,
+      disconnect: disconnectRef.current,
+    });
+    connectRef.current = null;
+    disconnectRef.current = null;
+  }, [productId, tiktok?.id]);
+
+  async function connect() {
+    if (!tiktokAccountBindingEnabled ||
+      !canStartTikTokOperation(connectRef.current, disconnectRef.current)) return;
+    const identity: TikTokOperationIdentity = {
+      productId, accountId: tiktok?.id ?? null,
+      operationId: ++operationIdRef.current, controller: new AbortController(),
+    };
+    connectRef.current = identity;
+    setState("working");
+    setError("");
+    let navigationStarted = false;
+    try {
+      const result = await connectTikTok(productId, identity.controller.signal);
+      if (!isCurrentTikTokOperation(identity, connectRef.current)) return;
+      const safeUrl = safeTikTokAuthorizationUrl(result.authorization_url);
+      if (!safeUrl) throw new Error("Unsafe TikTok authorization URL");
+      window.location.assign(safeUrl);
+      navigationStarted = true;
+    } catch (caught) {
+      if (!isCurrentTikTokOperation(identity, connectRef.current)) return;
+      setError(getApiErrorMessage(caught, "无法开始 TikTok 授权。"));
+      setState("failed");
+    } finally {
+      if (shouldReleaseTikTokConnectLock(
+        identity, connectRef.current, navigationStarted,
+      )) connectRef.current = null;
+    }
+  }
+
+  async function disconnect() {
+    if (!tiktok || connectRef.current !== null || disconnectRef.current !== null) return;
+    if (!window.confirm("确认仅在本机断开 TikTok？这不会撤销 TikTok 侧授权。")) return;
+    const identity: TikTokOperationIdentity = {
+      productId, accountId: tiktok.id,
+      operationId: ++operationIdRef.current, controller: new AbortController(),
+    };
+    disconnectRef.current = identity;
+    setState("working");
+    setError("");
+    try {
+      const account = await disconnectTikTokAccount(
+        productId, tiktok.id, identity.controller.signal,
+      );
+      if (!isCurrentTikTokOperation(identity, disconnectRef.current)) return;
+      onChanged(account);
+      setState("idle");
+    } catch (caught) {
+      if (!isCurrentTikTokOperation(identity, disconnectRef.current)) return;
+      setError(getApiErrorMessage(caught, "TikTok 本地断开失败。"));
+      setState("failed");
+    } finally {
+      if (canReleaseTikTokOperationLock(identity, disconnectRef.current)) {
+        disconnectRef.current = null;
+      }
+    }
+  }
+
+  return <div className="social-account-card social-account-card--tiktok">
+    <div><span>TikTok</span><strong>{tiktok?.display_name ?? "未连接"}</strong>
+      <small>{tiktok
+        ? `${connectionLabel(tiktok.connection_status)} · ${tiktokScopeSummary(tiktok.scopes)}`
+        : tiktokAccountBindingEnabled ? "Web Login Kit；视频发布留待下一阶段"
+          : "TikTok 账号绑定 Gate 未开启"}</small></div>
+    <div className="social-account-card__actions">
+      {!canLocallyDisconnectAccount(tiktok) ?
+        <button type="button" onClick={() => void connect()}
+          disabled={!tiktokAccountBindingEnabled || state === "working"}>
+          {state === "working" ? "连接中…" : "连接 TikTok"}</button> :
+        <button type="button" onClick={() => void disconnect()}
+          disabled={state === "working"}>本地断开 TikTok</button>}
+    </div>
+    <small>本地断开只清除本机 Token，不等于撤销 TikTok 侧授权。</small>
+    {error ? <p role="alert">{error}</p> : null}
+  </div>;
 }
 
 function AccountCards({
@@ -1124,18 +1304,6 @@ function YouTubePublisher({
           </button>
         </div>
       ) : null}
-    </div>
-  );
-}
-
-function PlatformPlaceholder({ name }: { name: string }) {
-  return (
-    <div>
-      <strong>{name}</strong>
-      <span>即将支持</span>
-      <button type="button" disabled>
-        即将支持
-      </button>
     </div>
   );
 }

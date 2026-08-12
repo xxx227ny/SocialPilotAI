@@ -46,6 +46,9 @@ class SocialAccount(Base):
     access_token_ciphertext: Mapped[str | None] = mapped_column(Text)
     refresh_token_ciphertext: Mapped[str | None] = mapped_column(Text)
     token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    refresh_token_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
     connection_status: Mapped[str] = mapped_column(
         String(30), nullable=False, default="CONNECTED", index=True
     )

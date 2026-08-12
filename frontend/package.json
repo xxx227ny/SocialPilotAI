@@ -14,6 +14,7 @@
     "test:video-render-queue": "node scripts/test-video-render-queue.mjs",
     "test:youtube-publish-queue": "node scripts/test-youtube-publish-queue.mjs",
     "test:instagram-binding": "node scripts/test-instagram-account-binding.mjs",
+    "test:tiktok-account-binding": "node scripts/test-tiktok-account-binding.mjs",
     "test:instagram-publish-queue": "node scripts/test-instagram-publish-queue.mjs",
     "test:system-readiness": "node scripts/test-system-readiness.mjs",
     "test:presentation-snapshot": "node scripts/test-presentation-snapshot.mjs",

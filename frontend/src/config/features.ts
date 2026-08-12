@@ -38,6 +38,10 @@ export const instagramAccountBindingEnabled = isEnabledFeatureFlag(
   import.meta.env.VITE_ENABLE_INSTAGRAM_ACCOUNT_BINDING,
 );
 
+export const tiktokAccountBindingEnabled = isEnabledFeatureFlag(
+  import.meta.env.VITE_ENABLE_TIKTOK_ACCOUNT_BINDING,
+);
+
 export const youtubePublishingEnabled = isEnabledFeatureFlag(
   import.meta.env.VITE_ENABLE_YOUTUBE_PUBLISHING,
 );

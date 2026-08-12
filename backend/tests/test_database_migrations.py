@@ -85,13 +85,13 @@ def create_legacy_runtime(path: Path) -> None:
                '720p','migration-render-1',NULL,NULL,'{now}','{now}');
             INSERT INTO video_render_artifacts VALUES
               (1,1,NULL,'artifacts/stable.mp4',
-               '{{"sha256":"{'A' * 64}","size_bytes":1234}}',NULL,'{now}','{now}');
+               '{{"sha256":"{"A" * 64}","size_bytes":1234}}',NULL,'{now}','{now}');
             INSERT INTO social_accounts VALUES
               (1,1,'youtube','migration-channel','Migration Channel','["upload"]',
                'encrypted-test-value','encrypted-test-value','{now}','CONNECTED',
                'test-key','{now}','{now}',NULL);
             INSERT INTO publish_tasks VALUES
-              (1,1,1,1,'youtube','migration-publish-1','{'B' * 64}','{'C' * 64}',
+              (1,1,1,1,'youtube','migration-publish-1','{"B" * 64}','{"C" * 64}',
                'Stable private delivery','Stable description','["Stable"]','private',
                0,1,0,'SUCCEEDED','migration-video',NULL,NULL,0,'{now}','{now}',
                NULL,NULL);
@@ -115,6 +115,7 @@ def business_snapshot(path: Path) -> str:
                 record.pop("brand_kit_version_id", None)
                 record.pop("provider_container_id", None)
                 record.pop("share_to_feed", None)
+                record.pop("refresh_token_expires_at", None)
                 payload[table_name].append(record)
     finally:
         connection.close()
@@ -218,6 +219,43 @@ def test_repeated_upgrade_at_head_is_idempotent(tmp_path: Path) -> None:
     assert result.backup_manifest_path is not None
     assert sha256_file(database) == before_hash
     assert migration_service.schema_fingerprint(database) == before_schema
+
+
+def test_tiktok_refresh_expiry_upgrade_downgrade_and_reupgrade(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "tiktok-expiry.db"
+    migration_service._run_alembic(  # noqa: SLF001
+        database, "upgrade", "0006_instagram_publish_container_identity"
+    )
+    before = business_snapshot(database)
+    migration_service._run_alembic(database, "upgrade", HEAD_REVISION)  # noqa: SLF001
+    connection = sqlite3.connect(database)
+    try:
+        columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(social_accounts)")
+        }
+    finally:
+        connection.close()
+    assert "refresh_token_expires_at" in columns
+    assert business_snapshot(database) == before
+
+    migration_service._run_alembic(  # noqa: SLF001
+        database, "downgrade", "0006_instagram_publish_container_identity"
+    )
+    connection = sqlite3.connect(database)
+    try:
+        columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(social_accounts)")
+        }
+    finally:
+        connection.close()
+    assert "refresh_token_expires_at" not in columns
+    assert business_snapshot(database) == before
+
+    migration_service._run_alembic(database, "upgrade", HEAD_REVISION)  # noqa: SLF001
+    assert current_revision(database) == HEAD_REVISION
+    assert business_snapshot(database) == before
 
 
 def test_unversioned_current_schema_is_safely_stamped_at_head(
@@ -329,9 +367,7 @@ def test_two_concurrent_upgrades_allow_only_one_to_enter(
         migration_service, "_upgrade_sqlite_database_unlocked", blocked_upgrade
     )
     with ThreadPoolExecutor(max_workers=1) as executor:
-        first = executor.submit(
-            upgrade_sqlite_database, database, tmp_path / "backups"
-        )
+        first = executor.submit(upgrade_sqlite_database, database, tmp_path / "backups")
         assert entered.wait(timeout=5)
         with pytest.raises(MigrationLockError):
             upgrade_sqlite_database(database, tmp_path / "other-backups")
@@ -475,10 +511,7 @@ def test_read_only_status_classifies_supported_database_states(tmp_path: Path) -
     engine = create_engine(sqlite_url(unversioned_head))
     Base.metadata.create_all(engine)
     engine.dispose()
-    assert (
-        get_database_migration_status(unversioned_head).state
-        == "unversioned_head"
-    )
+    assert get_database_migration_status(unversioned_head).state == "unversioned_head"
 
 
 def test_head_status_is_read_only_and_creates_no_backup(tmp_path: Path) -> None:

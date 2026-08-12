@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import (
     BindingInstagramProviderDep,
+    BindingTikTokProviderDep,
     BindingYouTubeProviderDep,
     InstagramMediaProbeDep,
     InstagramPublishingGateDep,
@@ -32,6 +33,10 @@ from app.schemas.social import (
     PublishTaskIdentityRequest,
     PublishTaskRead,
     SocialAccountRead,
+    TikTokConnectRead,
+    TikTokConnectRequest,
+    TikTokDisconnectRead,
+    TikTokDisconnectRequest,
     YouTubeConnectRead,
     YouTubeConnectRequest,
     YouTubePreflightRead,
@@ -47,6 +52,7 @@ from app.services.social_service import (
     SocialAccountService,
     YouTubePublishingService,
 )
+from app.services.tiktok_account_service import TikTokAccountService
 from app.services.youtube_publish_job_service import YouTubePublishJobService
 
 router = APIRouter()
@@ -162,6 +168,69 @@ def disconnect_instagram_account(
     settings: SettingsDep,
 ) -> InstagramDisconnectRead:
     return InstagramAccountService(db, settings, None).disconnect(
+        account_id, product_id=data.product_id
+    )
+
+
+@router.post("/social-accounts/tiktok/connect", response_model=TikTokConnectRead)
+def connect_tiktok(
+    data: TikTokConnectRequest,
+    request: Request,
+    response: Response,
+    db: DbSession,
+    settings: SettingsDep,
+    provider: BindingTikTokProviderDep,
+) -> TikTokConnectRead:
+    browser_session = request.cookies.get(OAUTH_BROWSER_COOKIE)
+    if not browser_session:
+        browser_session = secrets.token_urlsafe(32)
+        response.set_cookie(
+            OAUTH_BROWSER_COOKIE,
+            browser_session,
+            max_age=600,
+            httponly=True,
+            secure=False,
+            samesite="lax",
+            path="/api/v1/social-accounts",
+        )
+    return TikTokAccountService(db, settings, provider).connect(
+        data.product_id,
+        browser_session_digest=digest_oauth_state(browser_session),
+    )
+
+
+@router.get("/social-accounts/tiktok/callback", response_class=RedirectResponse)
+async def tiktok_callback(
+    request: Request,
+    db: DbSession,
+    settings: SettingsDep,
+    provider: BindingTikTokProviderDep,
+    state: str = Query(min_length=20, max_length=200),
+    code: str | None = Query(default=None, max_length=2000),
+    error: str | None = Query(default=None, max_length=200),
+) -> RedirectResponse:
+    location = await TikTokAccountService(db, settings, provider).callback(
+        state=state,
+        browser_session_digest=digest_oauth_state(
+            request.cookies.get(OAUTH_BROWSER_COOKIE, "")
+        ),
+        code=code,
+        error=error,
+    )
+    return RedirectResponse(location, status_code=303)
+
+
+@router.post(
+    "/social-accounts/tiktok/{account_id}/disconnect",
+    response_model=TikTokDisconnectRead,
+)
+def disconnect_tiktok_account(
+    account_id: int,
+    data: TikTokDisconnectRequest,
+    db: DbSession,
+    settings: SettingsDep,
+) -> TikTokDisconnectRead:
+    return TikTokAccountService(db, settings, None).disconnect(
         account_id, product_id=data.product_id
     )
 
