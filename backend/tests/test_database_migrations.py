@@ -113,6 +113,8 @@ def business_snapshot(path: Path) -> str:
             for row in rows:
                 record = dict(row)
                 record.pop("brand_kit_version_id", None)
+                record.pop("provider_container_id", None)
+                record.pop("share_to_feed", None)
                 payload[table_name].append(record)
     finally:
         connection.close()
@@ -177,6 +179,13 @@ def test_unversioned_runtime_is_backed_up_stamped_and_preserves_data(
     assert result.current_revision == HEAD_REVISION
     assert result.backup_manifest_path is not None
     assert business_snapshot(database) == before
+    connection = sqlite3.connect(database)
+    try:
+        assert connection.execute(
+            "SELECT provider_container_id, share_to_feed FROM publish_tasks WHERE id=1"
+        ).fetchone() == (None, 0)
+    finally:
+        connection.close()
     assert current_revision(database) == HEAD_REVISION
     engine = create_engine(sqlite_url(database))
     snapshot_columns = {

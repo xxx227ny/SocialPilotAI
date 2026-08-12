@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import (
     BindingInstagramProviderDep,
     BindingYouTubeProviderDep,
+    InstagramMediaProbeDep,
+    InstagramPublishingGateDep,
     VideoArtifactStorageDep,
     YouTubePublishingGateDep,
 )
@@ -21,6 +23,11 @@ from app.schemas.social import (
     InstagramConnectRequest,
     InstagramDisconnectRead,
     InstagramDisconnectRequest,
+    InstagramFinalizePreflightRead,
+    InstagramFinalizeRequest,
+    InstagramPublishingMetadata,
+    InstagramPublishRequest,
+    InstagramSubmitPreflightRead,
     PublishArtifactCandidateRead,
     PublishTaskIdentityRequest,
     PublishTaskRead,
@@ -32,6 +39,9 @@ from app.schemas.social import (
     YouTubePublishRequest,
 )
 from app.services.instagram_account_service import InstagramAccountService
+from app.services.instagram_publish_job_service import InstagramPublishJobService
+from app.services.instagram_publish_preflight import InstagramPublishPreflightService
+from app.services.instagram_publish_service import InstagramPublishService
 from app.services.social_security import digest_oauth_state
 from app.services.social_service import (
     SocialAccountService,
@@ -45,9 +55,7 @@ DbSession = Annotated[Session, Depends(get_db)]
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 
 
-@router.post(
-    "/social-accounts/youtube/connect", response_model=YouTubeConnectRead
-)
+@router.post("/social-accounts/youtube/connect", response_model=YouTubeConnectRead)
 def connect_youtube(
     data: YouTubeConnectRequest,
     request: Request,
@@ -174,14 +182,10 @@ def get_social_account(
     settings: SettingsDep,
     product_id: int = Query(gt=0),
 ) -> SocialAccountRead:
-    return SocialAccountService(db, settings, None).get_account(
-        account_id, product_id
-    )
+    return SocialAccountService(db, settings, None).get_account(account_id, product_id)
 
 
-@router.post(
-    "/social-accounts/{account_id}/disconnect", response_model=DisconnectRead
-)
+@router.post("/social-accounts/{account_id}/disconnect", response_model=DisconnectRead)
 async def disconnect_social_account(
     account_id: int,
     data: DisconnectRequest,
@@ -268,9 +272,7 @@ def list_publish_tasks(
     settings: SettingsDep,
     storage: VideoArtifactStorageDep,
 ) -> list[PublishTaskRead]:
-    return YouTubePublishingService(db, settings, None, storage).list_tasks(
-        product_id
-    )
+    return YouTubePublishingService(db, settings, None, storage).list_tasks(product_id)
 
 
 @router.post(
@@ -286,5 +288,121 @@ def refresh_publish_task(
     storage: VideoArtifactStorageDep,
 ) -> ExecutionJobCreateRead:
     return YouTubePublishJobService(db, settings, storage).enqueue_refresh(
+        task_id, data
+    )
+
+
+@router.get(
+    "/products/{product_id}/publishing/instagram/artifacts",
+    response_model=list[PublishArtifactCandidateRead],
+)
+def list_instagram_publish_artifacts(
+    product_id: int,
+    db: DbSession,
+    settings: SettingsDep,
+    storage: VideoArtifactStorageDep,
+    probe: InstagramMediaProbeDep,
+    gate: InstagramPublishingGateDep,
+) -> list[PublishArtifactCandidateRead]:
+    del gate
+    return InstagramPublishPreflightService(
+        db, settings, storage, probe
+    ).list_candidates(product_id)
+
+
+@router.post(
+    "/products/{product_id}/publishing/instagram/preflight",
+    response_model=InstagramSubmitPreflightRead,
+)
+def preflight_instagram_publish(
+    product_id: int,
+    data: InstagramPublishingMetadata,
+    db: DbSession,
+    settings: SettingsDep,
+    storage: VideoArtifactStorageDep,
+    probe: InstagramMediaProbeDep,
+    gate: InstagramPublishingGateDep,
+) -> InstagramSubmitPreflightRead:
+    del gate
+    return InstagramPublishPreflightService(db, settings, storage, probe).run(
+        product_id, data
+    )
+
+
+@router.post(
+    "/products/{product_id}/publishing/instagram",
+    response_model=ExecutionJobCreateRead,
+    status_code=201,
+)
+def publish_instagram_reel(
+    product_id: int,
+    data: InstagramPublishRequest,
+    db: DbSession,
+    settings: SettingsDep,
+    storage: VideoArtifactStorageDep,
+    probe: InstagramMediaProbeDep,
+    gate: InstagramPublishingGateDep,
+) -> ExecutionJobCreateRead:
+    del gate
+    return InstagramPublishJobService(db, settings, storage, probe).enqueue_submit(
+        product_id, data
+    )
+
+
+@router.post(
+    "/publish-tasks/{task_id}/instagram/refresh",
+    response_model=ExecutionJobCreateRead,
+    status_code=201,
+)
+def refresh_instagram_publish(
+    task_id: int,
+    data: PublishTaskIdentityRequest,
+    db: DbSession,
+    settings: SettingsDep,
+    storage: VideoArtifactStorageDep,
+    probe: InstagramMediaProbeDep,
+    gate: InstagramPublishingGateDep,
+) -> ExecutionJobCreateRead:
+    del gate
+    return InstagramPublishJobService(db, settings, storage, probe).enqueue_refresh(
+        task_id, data
+    )
+
+
+@router.post(
+    "/publish-tasks/{task_id}/instagram/finalize-preflight",
+    response_model=InstagramFinalizePreflightRead,
+)
+def preflight_instagram_finalize(
+    task_id: int,
+    product_id: int,
+    db: DbSession,
+    settings: SettingsDep,
+    storage: VideoArtifactStorageDep,
+    probe: InstagramMediaProbeDep,
+    gate: InstagramPublishingGateDep,
+) -> InstagramFinalizePreflightRead:
+    del gate
+    return InstagramPublishService(db, settings, storage, probe).finalize_preflight(
+        task_id, product_id
+    )
+
+
+@router.post(
+    "/publish-tasks/{task_id}/instagram/finalize",
+    response_model=ExecutionJobCreateRead,
+    status_code=201,
+)
+def finalize_instagram_publish(
+    task_id: int,
+    data: InstagramFinalizeRequest,
+    db: DbSession,
+    settings: SettingsDep,
+    storage: VideoArtifactStorageDep,
+    probe: InstagramMediaProbeDep,
+    gate: InstagramPublishingGateDep,
+) -> ExecutionJobCreateRead:
+    del gate
+    return InstagramPublishJobService(db, settings, storage, probe).enqueue_finalize(
         task_id, data
     )

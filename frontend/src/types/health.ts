@@ -24,6 +24,7 @@ export interface SystemReadinessResponse {
   wanx: SystemReadinessItem;
   google_youtube: SystemReadinessItem;
   meta_instagram: SystemReadinessItem;
+  instagram_publishing: SystemReadinessItem;
   database: DatabaseReadinessItem;
   artifact_storage: SystemReadinessItem;
   execution_worker: ExecutionWorkerReadinessItem;

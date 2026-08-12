@@ -77,14 +77,15 @@ export interface PublishTask {
   product_id: number;
   social_account_id: number;
   artifact_id: number;
-  platform: "youtube";
+  platform: "youtube" | "instagram";
   title: string;
   description: string;
   tags: string[];
-  privacy_status: "private";
+  privacy_status: "private" | "public";
   made_for_kids: boolean;
   synthetic_media: true;
   notify_subscribers: false;
+  share_to_feed: boolean;
   status: string;
   provider_video_id: string | null;
   safe_error_code: string | null;
@@ -93,6 +94,54 @@ export interface PublishTask {
   updated_at: string;
   submitted_at: string | null;
   completed_at: string | null;
+}
+
+export interface InstagramPublishingMetadata {
+  social_account_id: number;
+  artifact_id: number;
+  title: string;
+  description: string;
+  tags: string[];
+  privacy_status: "public";
+  made_for_kids: false;
+  synthetic_media: true;
+  notify_subscribers: false;
+  share_to_feed: boolean;
+}
+
+export interface InstagramPublishPreflight {
+  status: "READY" | "BLOCKED";
+  ready: boolean;
+  missing_requirements: string[];
+  input_digest: string;
+  preflight_digest: string;
+  expires_at: string;
+  product_id: number;
+  social_account_id: number;
+  artifact_id: number;
+  render_task_id: number;
+  video_project_id: number;
+  copy_matrix_id: number;
+  marketing_strategy_id: number;
+  content_type: "video/mp4" | "video/quicktime";
+  size_bytes: number;
+  sha256: string;
+  caption_length: number;
+  share_to_feed: boolean;
+  provider_calls: 0;
+  database_writes: 0;
+}
+
+export interface InstagramFinalizePreflight {
+  ready: true;
+  product_id: number;
+  social_account_id: number;
+  publish_task_id: number;
+  input_digest: string;
+  preflight_digest: string;
+  expires_at: string;
+  provider_calls: 0;
+  database_writes: 0;
 }
 
 export interface PublishExecution {

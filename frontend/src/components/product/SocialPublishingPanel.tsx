@@ -18,6 +18,7 @@ import {
 import { getApiErrorMessage } from "../../api/client";
 import {
   instagramAccountBindingEnabled,
+  instagramPublishingEnabled,
   socialAccountBindingEnabled,
   youtubePublishingEnabled,
 } from "../../config/features";
@@ -57,6 +58,7 @@ import {
   shouldReleaseInstagramConnectLock,
 } from "./instagramAccountState";
 import type { InstagramOperationIdentity } from "./instagramAccountState";
+import { InstagramPublishingPanel } from "./InstagramPublishingPanel";
 import type {
   YouTubePublishOperationIdentity,
   YouTubePublishPollOutcome,
@@ -208,6 +210,18 @@ export function SocialPublishingPanel({ productId }: { productId: number }) {
           ]);
         }}
       />
+
+      {instagramPublishingEnabled ? (
+        <InstagramPublishingPanel
+          key={`instagram-publish-${productId}`}
+          productId={productId}
+          accounts={accounts}
+          onTask={(nextTask) => setTasks((current) => [
+            nextTask,
+            ...current.filter((item) => item.id !== nextTask.id),
+          ])}
+        />
+      ) : null}
 
       {youtubePublishingEnabled ? (
         <YouTubePublisher

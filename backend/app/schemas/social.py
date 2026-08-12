@@ -73,6 +73,121 @@ class PublishArtifactCandidateRead(BaseModel):
     created_at: datetime
 
 
+class InstagramMediaSpecificationRead(BaseModel):
+    container: str
+    video_codec: str
+    fps: float
+    duration_seconds: float
+    width: int
+    height: int
+    audio_codec: str | None
+    audio_sample_rate: int | None
+
+
+class InstagramPublishingMetadata(BaseModel):
+    social_account_id: int = Field(gt=0)
+    artifact_id: int = Field(gt=0)
+    title: str = Field(min_length=1, max_length=100)
+    description: str = Field(default="", max_length=2200)
+    tags: list[str] = Field(default_factory=list, max_length=30)
+    privacy_status: Literal["public"] = "public"
+    made_for_kids: Literal[False] = False
+    synthetic_media: Literal[True] = True
+    notify_subscribers: Literal[False] = False
+    share_to_feed: bool
+
+    @field_validator("title", "description")
+    @classmethod
+    def clean_instagram_text(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("tags")
+    @classmethod
+    def clean_instagram_tags(cls, values: list[str]) -> list[str]:
+        cleaned: list[str] = []
+        seen: set[str] = set()
+        for value in values:
+            tag = value.strip().lstrip("#").strip()
+            if not tag:
+                continue
+            if any(character.isspace() for character in tag) or len(tag) > 100:
+                raise ValueError("Instagram hashtags are invalid")
+            identity = tag.casefold()
+            if identity not in seen:
+                cleaned.append(tag)
+                seen.add(identity)
+        return cleaned
+
+    @model_validator(mode="after")
+    def require_instagram_caption_contract(self) -> InstagramPublishingMetadata:
+        if not self.title:
+            raise ValueError("Local task label cannot be empty")
+        hashtags = " ".join(f"#{tag}" for tag in self.tags)
+        caption = "\n\n".join(part for part in (self.description, hashtags) if part)
+        if len(caption) > 2200:
+            raise ValueError("Instagram caption must be at most 2200 characters")
+        return self
+
+
+class InstagramSubmitPreflightRead(BaseModel):
+    status: Literal["READY", "BLOCKED"]
+    ready: bool
+    missing_requirements: list[str]
+    input_digest: str
+    preflight_digest: str
+    expires_at: datetime
+    product_id: int
+    social_account_id: int
+    professional_account_id: str
+    artifact_id: int
+    render_task_id: int
+    video_project_id: int
+    copy_matrix_id: int
+    marketing_strategy_id: int
+    content_type: Literal["video/mp4", "video/quicktime"]
+    size_bytes: int
+    sha256: str
+    safe_path_digest: str
+    media: InstagramMediaSpecificationRead
+    caption_length: int
+    share_to_feed: bool
+    provider_calls: Literal[0] = 0
+    database_writes: Literal[0] = 0
+
+
+class InstagramPublishRequest(InstagramPublishingMetadata):
+    input_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    preflight_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    preflight_expires_at: datetime
+    idempotency_key: str = Field(min_length=8, max_length=200)
+    confirm_upload: Literal[True]
+
+
+class InstagramFinalizePreflightRequest(BaseModel):
+    product_id: int = Field(gt=0)
+
+
+class InstagramFinalizePreflightRead(BaseModel):
+    ready: Literal[True] = True
+    product_id: int
+    social_account_id: int
+    publish_task_id: int
+    input_digest: str
+    preflight_digest: str
+    expires_at: datetime
+    provider_calls: Literal[0] = 0
+    database_writes: Literal[0] = 0
+
+
+class InstagramFinalizeRequest(BaseModel):
+    product_id: int = Field(gt=0)
+    finalize_request_id: str = Field(min_length=16, max_length=128)
+    input_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    preflight_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    preflight_expires_at: datetime
+    confirm_public_publish: Literal[True]
+
+
 class YouTubePublishingMetadata(BaseModel):
     social_account_id: int = Field(gt=0)
     artifact_id: int = Field(gt=0)
@@ -142,14 +257,15 @@ class PublishTaskRead(BaseModel):
     product_id: int
     social_account_id: int
     artifact_id: int
-    platform: Literal["youtube"]
+    platform: Literal["youtube", "instagram"]
     title: str
     description: str
     tags: list[str]
-    privacy_status: Literal["private"]
+    privacy_status: Literal["private", "public"]
     made_for_kids: bool
     synthetic_media: Literal[True]
     notify_subscribers: Literal[False]
+    share_to_feed: bool
     status: str
     provider_video_id: str | None
     safe_error_code: str | None

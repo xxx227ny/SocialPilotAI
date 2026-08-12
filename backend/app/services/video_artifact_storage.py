@@ -13,6 +13,7 @@ import httpx
 
 ALLOWED_VIDEO_CONTENT_TYPES = {
     "video/mp4": ".mp4",
+    "video/quicktime": ".mov",
     "video/webm": ".webm",
 }
 

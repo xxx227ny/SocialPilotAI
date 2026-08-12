@@ -5,6 +5,9 @@ import type {
   PublishTask,
   SocialAccount,
   InstagramConnectResult,
+  InstagramFinalizePreflight,
+  InstagramPublishPreflight,
+  InstagramPublishingMetadata,
   YouTubeConnectResult,
   YouTubePreflight,
   YouTubePublishingMetadata,
@@ -180,3 +183,75 @@ export async function getYouTubePublishJob(
   );
   return response.data;
 }
+
+export async function listInstagramPublishArtifacts(productId: number, signal?: AbortSignal) {
+  const response = await apiClient.get<PublishArtifactCandidate[]>(
+    `/products/${productId}/publishing/instagram/artifacts`, { signal },
+  );
+  return response.data;
+}
+
+export async function preflightInstagramPublish(
+  productId: number, data: InstagramPublishingMetadata, signal?: AbortSignal,
+) {
+  const response = await apiClient.post<InstagramPublishPreflight>(
+    `/products/${productId}/publishing/instagram/preflight`, data, { signal },
+  );
+  return response.data;
+}
+
+export async function publishInstagram(
+  productId: number,
+  data: InstagramPublishingMetadata & {
+    input_digest: string; preflight_digest: string; preflight_expires_at: string;
+    idempotency_key: string; confirm_upload: true;
+  }, signal?: AbortSignal,
+) {
+  const response = await apiClient.post<ExecutionJobCreateResult>(
+    `/products/${productId}/publishing/instagram`, data, { signal },
+  );
+  return response.data;
+}
+
+export async function refreshInstagramPublish(
+  productId: number, taskId: number, refreshRequestId: string, signal?: AbortSignal,
+) {
+  const response = await apiClient.post<ExecutionJobCreateResult>(
+    `/publish-tasks/${taskId}/instagram/refresh`,
+    { product_id: productId, refresh_request_id: refreshRequestId }, { signal },
+  );
+  return response.data;
+}
+
+export async function preflightInstagramFinalize(
+  productId: number, taskId: number, signal?: AbortSignal,
+) {
+  const response = await apiClient.post<InstagramFinalizePreflight>(
+    `/publish-tasks/${taskId}/instagram/finalize-preflight`, null,
+    { params: { product_id: productId }, signal },
+  );
+  return response.data;
+}
+
+export async function finalizeInstagramPublish(
+  taskId: number,
+  data: { product_id: number; finalize_request_id: string; input_digest: string;
+    preflight_digest: string; preflight_expires_at: string; confirm_public_publish: true },
+  signal?: AbortSignal,
+) {
+  const response = await apiClient.post<ExecutionJobCreateResult>(
+    `/publish-tasks/${taskId}/instagram/finalize`, data, { signal },
+  );
+  return response.data;
+}
+
+export async function listInstagramPublishJobs(
+  jobType: string, sourceType: string, sourceId: number, signal?: AbortSignal,
+) {
+  const response = await apiClient.get<ExecutionJob[]>("/execution-jobs", {
+    params: { job_type: jobType, source_type: sourceType, source_id: sourceId }, signal,
+  });
+  return response.data;
+}
+
+export const getInstagramPublishJob = getYouTubePublishJob;

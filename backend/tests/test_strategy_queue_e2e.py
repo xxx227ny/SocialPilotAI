@@ -147,6 +147,9 @@ def test_http_enqueue_is_provider_free_and_worker_restores_exact_result(
         qwen_provider_factory=factory,
     )
     assert registry.job_types == (
+        "instagram.publish.finalize.v1",
+        "instagram.publish.refresh.v1",
+        "instagram.publish.submit.v1",
         "qwen.copy_matrix.generate.v1",
         "qwen.strategy.generate.v1",
         "qwen.video_project.generate.v1",

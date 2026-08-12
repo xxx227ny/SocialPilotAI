@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     enable_growth_execution: bool = False
     enable_social_account_binding: bool = False
     enable_instagram_account_binding: bool = False
+    enable_instagram_publishing: bool = False
     enable_youtube_publishing: bool = False
     google_oauth_client_id: str | None = None
     google_oauth_client_secret: SecretStr | None = None
@@ -60,6 +61,8 @@ class Settings(BaseSettings):
         default=None, pattern=r"^v[0-9]+\.[0-9]+$"
     )
     instagram_request_timeout: float = Field(default=30, gt=0, le=120)
+    instagram_ffprobe_path: str = "ffprobe"
+    instagram_media_probe_timeout: float = Field(default=10, gt=0, le=60)
     wanx_api_key: SecretStr | None = None
     wanx_model: str = "wan2.7-t2v"
     wanx_region: str = "cn-beijing"

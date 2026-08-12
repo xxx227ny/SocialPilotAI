@@ -24,6 +24,7 @@ from app.schemas.system import (
     SystemReadinessRead,
 )
 from app.services.database_migration_service import HEAD_REVISION
+from app.services.instagram_media_probe import instagram_media_probe_available
 from app.services.social_security import TokenCipher
 
 WorkerProcessState = Literal["running", "missing", "unknown"]
@@ -109,9 +110,13 @@ class SystemReadinessService:
         )
         database_ready, revision_status, revision = self._database_readiness()
         artifact_ready = self._artifact_storage_ready()
-        worker_ready, worker_status, worker_reason = (
-            self._execution_worker_readiness()
+        instagram_publishing_ready = bool(
+            instagram_ready
+            and self.settings.enable_instagram_publishing
+            and artifact_ready
+            and instagram_media_probe_available(self.settings.instagram_ffprobe_path)
         )
+        worker_ready, worker_status, worker_reason = self._execution_worker_readiness()
 
         return SystemReadinessRead(
             backend=SystemComponentRead(
@@ -162,6 +167,18 @@ class SystemReadinessService:
                         "Meta / Instagram未就绪：请配置独立Gate、App ID、"
                         "App Secret、Redirect URI、固定Graph API版本和"
                         "社交Token加密密钥。"
+                    )
+                ),
+            ),
+            instagram_publishing=SystemComponentRead(
+                ready=instagram_publishing_ready,
+                message=(
+                    "Instagram Reel 发布本地配置已就绪；不代表 App Review "
+                    "或 Advanced Access 已批准。"
+                    if instagram_publishing_ready
+                    else (
+                        "Instagram Reel 发布未就绪：请检查独立发布 Gate、"
+                        "Token 加密、Artifact 存储和 ffprobe。"
                     )
                 ),
             ),

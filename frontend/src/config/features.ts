@@ -41,3 +41,7 @@ export const instagramAccountBindingEnabled = isEnabledFeatureFlag(
 export const youtubePublishingEnabled = isEnabledFeatureFlag(
   import.meta.env.VITE_ENABLE_YOUTUBE_PUBLISHING,
 );
+
+export const instagramPublishingEnabled = isEnabledFeatureFlag(
+  import.meta.env.VITE_ENABLE_INSTAGRAM_PUBLISHING,
+);

@@ -443,3 +443,47 @@ def test_cross_product_isolation_and_local_disconnect_provider_free(
     ) == before
     serialized = json.dumps(response.json())
     assert SHORT_TOKEN not in serialized and LONG_TOKEN not in serialized
+
+
+def test_reel_provider_contract_uses_bearer_and_exact_endpoints(tmp_path) -> None:
+    calls: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        assert "access_token" not in str(request.url)
+        assert request.headers["authorization"] == f"Bearer {LONG_TOKEN}"
+        if request.url.path.endswith("/media_publish"):
+            return httpx.Response(200, json={"id": "fake-media-id"})
+        if request.url.host == "rupload.facebook.com":
+            assert await request.aread() == b"fake-mov"
+            return httpx.Response(200, json={"success": True})
+        if request.method == "POST":
+            return httpx.Response(
+                200,
+                json={"id": "fake-container", "uri": "https://rupload.facebook.com/ig-api-upload/fake"},
+            )
+        return httpx.Response(200, json={"status_code": "FINISHED"})
+
+    provider = InstagramProvider(settings(), transport=httpx.MockTransport(handler))
+    media = tmp_path / "safe.mov"
+    media.write_bytes(b"fake-mov")
+    container = asyncio.run(provider.create_resumable_reel_container(
+        professional_account_id="178414000000001", access_token=LONG_TOKEN,
+        caption="safe caption", share_to_feed=True,
+    ))
+    asyncio.run(provider.upload_reel_bytes(
+        upload_uri=container.upload_uri, access_token=LONG_TOKEN,
+        path=media.resolve(), size_bytes=media.stat().st_size,
+    ))
+    status = asyncio.run(provider.get_container_status(
+        container_id=container.container_id, access_token=LONG_TOKEN,
+    ))
+    published = asyncio.run(provider.publish_reel(
+        professional_account_id="178414000000001",
+        container_id=container.container_id, access_token=LONG_TOKEN,
+    ))
+
+    assert status.status == "FINISHED"
+    assert published.media_id == "fake-media-id"
+    assert [request.method for request in calls] == ["POST", "POST", "GET", "POST"]
+    assert all(LONG_TOKEN not in str(request.url) for request in calls)

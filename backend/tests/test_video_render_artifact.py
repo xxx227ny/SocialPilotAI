@@ -1,5 +1,7 @@
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
+import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -8,6 +10,10 @@ from app.models import VideoRenderArtifact
 from app.schemas.video_render_artifact import (
     VideoRenderArtifactCreate,
     VideoRenderArtifactSchema,
+)
+from app.services.video_artifact_storage import (
+    LocalVideoArtifactStorage,
+    VideoArtifactError,
 )
 from app.services.video_render_service import VideoRenderService
 from tests.test_video_render_service import create_video_project, render_request
@@ -39,9 +45,7 @@ def artifact_data(
 def test_artifact_is_created_for_succeeded_task(db_session: Session) -> None:
     task = create_succeeded_render_task(db_session)
 
-    artifact = VideoRenderService(db_session).save_artifact(
-        task.id, artifact_data()
-    )
+    artifact = VideoRenderService(db_session).save_artifact(task.id, artifact_data())
 
     assert artifact.id is not None
     assert artifact.video_render_task_id == task.id
@@ -53,9 +57,7 @@ def test_artifact_relationship_points_to_render_task(
     db_session: Session,
 ) -> None:
     task = create_succeeded_render_task(db_session)
-    artifact = VideoRenderService(db_session).save_artifact(
-        task.id, artifact_data()
-    )
+    artifact = VideoRenderService(db_session).save_artifact(task.id, artifact_data())
 
     assert artifact.video_render_task.id == task.id
     assert task.artifact is artifact
@@ -65,9 +67,7 @@ def test_artifact_metadata_is_stored_and_serialized(
     db_session: Session,
 ) -> None:
     task = create_succeeded_render_task(db_session)
-    artifact = VideoRenderService(db_session).save_artifact(
-        task.id, artifact_data()
-    )
+    artifact = VideoRenderService(db_session).save_artifact(task.id, artifact_data())
 
     response = VideoRenderArtifactSchema.model_validate(artifact)
 
@@ -94,12 +94,7 @@ def test_artifact_can_be_queried_and_updated(db_session: Session) -> None:
     assert updated.id == created.id
     assert updated.storage_path == "oss://socialpilot/permanent/render.mp4"
     assert service.list_artifacts() == [updated]
-    assert (
-        db_session.scalar(
-            select(func.count()).select_from(VideoRenderArtifact)
-        )
-        == 1
-    )
+    assert db_session.scalar(select(func.count()).select_from(VideoRenderArtifact)) == 1
 
 
 def test_missing_artifact_returns_not_found(db_session: Session) -> None:
@@ -161,3 +156,22 @@ def test_render_task_status_transitions_are_guarded(
     )
     assert failed.status == "FAILED"
     assert failed.error_code == "PROVIDER_ERROR"
+
+
+def test_quicktime_mov_storage_and_safe_resolution(tmp_path: Path) -> None:
+    storage = LocalVideoArtifactStorage(tmp_path.resolve(), 1024)
+    stored = storage.store(
+        task_id=41, content=b"fake-quicktime-bytes", content_type="video/quicktime"
+    )
+
+    assert stored.relative_path.endswith(".mov")
+    assert stored.content_type == "video/quicktime"
+    resolved, resolved_type = storage.resolve(stored.relative_path)
+    assert resolved.read_bytes() == b"fake-quicktime-bytes"
+    assert resolved_type == "video/quicktime"
+
+    for unsafe in ("../escape.mov", stored.relative_path.replace(".mov", ".mp4")):
+        with pytest.raises(VideoArtifactError):
+            storage.resolve(unsafe)
+    with pytest.raises(VideoArtifactError):
+        storage.store(task_id=42, content=b"fake", content_type="video/mov")

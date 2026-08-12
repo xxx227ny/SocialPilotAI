@@ -5,6 +5,11 @@ from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppError
 from app.db.session import get_db
+from app.execution.handlers.instagram_publish import (
+    INSTAGRAM_PUBLISH_FINALIZE_V1,
+    INSTAGRAM_PUBLISH_REFRESH_V1,
+    INSTAGRAM_PUBLISH_SUBMIT_V1,
+)
 from app.execution.handlers.qwen_copy_matrix import QWEN_COPY_MATRIX_GENERATE_V1
 from app.execution.handlers.qwen_strategy import QWEN_STRATEGY_GENERATE_V1
 from app.execution.handlers.qwen_video_project import (
@@ -52,6 +57,9 @@ def create_execution_job(
         QWEN_VIDEO_PROJECT_GENERATE_V1,
         WANX_VIDEO_RENDER_SUBMIT_V1,
         WANX_VIDEO_RENDER_REFRESH_V1,
+        INSTAGRAM_PUBLISH_SUBMIT_V1,
+        INSTAGRAM_PUBLISH_REFRESH_V1,
+        INSTAGRAM_PUBLISH_FINALIZE_V1,
     }:
         raise AppError(
             "Provider jobs must use their confirmed business enqueue endpoint",

@@ -6,6 +6,11 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
+from app.execution.handlers.instagram_publish import (
+    InstagramPublishFinalizeV1Handler,
+    InstagramPublishRefreshV1Handler,
+    InstagramPublishSubmitV1Handler,
+)
 from app.execution.handlers.qwen_copy_matrix import QwenCopyMatrixGenerateV1Handler
 from app.execution.handlers.qwen_strategy import QwenStrategyGenerateV1Handler
 from app.execution.handlers.qwen_video_project import (
@@ -26,12 +31,17 @@ from app.providers import (
     VisualGenerationProvider,
     WanxProvider,
 )
+from app.providers.instagram_provider import InstagramProvider
 from app.providers.visual_base import (
     VisualGenerationRequest,
     VisualTaskSnapshot,
     VisualTaskSubmission,
 )
 from app.providers.youtube_provider import YouTubeProvider
+from app.services.instagram_media_probe import (
+    FFprobeInstagramMediaProbe,
+    InstagramMediaProbe,
+)
 from app.services.video_artifact_storage import (
     HttpProviderOutputFetcher,
     LocalVideoArtifactStorage,
@@ -100,6 +110,31 @@ class LazyYouTubeProvider:
         return await self._provider().get_video_status(**kwargs)
 
 
+class LazyInstagramProvider:
+    def __init__(
+        self,
+        settings: Settings,
+        provider_factory: Callable[[Settings], InstagramProvider],
+    ) -> None:
+        self.settings = settings
+        self.provider_factory = provider_factory
+
+    def _provider(self) -> InstagramProvider:
+        return self.provider_factory(self.settings)
+
+    async def create_resumable_reel_container(self, **kwargs: object):
+        return await self._provider().create_resumable_reel_container(**kwargs)
+
+    async def upload_reel_bytes(self, **kwargs: object):
+        return await self._provider().upload_reel_bytes(**kwargs)
+
+    async def get_container_status(self, **kwargs: object):
+        return await self._provider().get_container_status(**kwargs)
+
+    async def publish_reel(self, **kwargs: object):
+        return await self._provider().publish_reel(**kwargs)
+
+
 class LazyVideoArtifactStorage(VideoArtifactStorage):
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
@@ -131,6 +166,10 @@ def build_execution_handler_registry(
         [Settings], VisualGenerationProvider
     ] = WanxProvider,
     youtube_provider_factory: Callable[[Settings], YouTubeProvider] = YouTubeProvider,
+    instagram_provider_factory: Callable[
+        [Settings], InstagramProvider
+    ] = InstagramProvider,
+    instagram_media_probe: InstagramMediaProbe | None = None,
     output_fetcher: ProviderOutputFetcher | None = None,
     artifact_storage: VideoArtifactStorage | None = None,
 ) -> ExecutionHandlerRegistry:
@@ -196,4 +235,20 @@ def build_execution_handler_registry(
             artifact_storage=render_storage,
         )
     )
+    instagram_provider = LazyInstagramProvider(settings, instagram_provider_factory)
+    media_probe = instagram_media_probe or FFprobeInstagramMediaProbe(settings)
+    for handler in (
+        InstagramPublishSubmitV1Handler,
+        InstagramPublishRefreshV1Handler,
+        InstagramPublishFinalizeV1Handler,
+    ):
+        registry.register(
+            handler(
+                session_factory=session_factory,
+                provider=instagram_provider,
+                settings=settings,
+                artifact_storage=render_storage,
+                media_probe=media_probe,
+            )
+        )
     return registry

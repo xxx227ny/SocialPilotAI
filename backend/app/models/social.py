@@ -122,7 +122,9 @@ class PublishTask(Base):
         String(30), nullable=False, default="CREATED", index=True
     )
     provider_video_id: Mapped[str | None] = mapped_column(String(255), index=True)
+    provider_container_id: Mapped[str | None] = mapped_column(String(255), index=True)
     resumable_session_ciphertext: Mapped[str | None] = mapped_column(Text)
+    share_to_feed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     safe_error_code: Mapped[str | None] = mapped_column(String(100))
     uncertain: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(

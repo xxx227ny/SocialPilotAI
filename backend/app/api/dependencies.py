@@ -24,6 +24,10 @@ from app.providers.live_configuration import (
 )
 from app.providers.visual_base import VisualGenerationProvider
 from app.providers.youtube_provider import YouTubeProvider, YouTubeProviderError
+from app.services.instagram_media_probe import (
+    FFprobeInstagramMediaProbe,
+    InstagramMediaProbe,
+)
 from app.services.video_artifact_storage import (
     HttpProviderOutputFetcher,
     LocalVideoArtifactStorage,
@@ -77,9 +81,7 @@ def require_strategy_execution_enabled(
         )
 
 
-StrategyExecutionGateDep = Annotated[
-    None, Depends(require_strategy_execution_enabled)
-]
+StrategyExecutionGateDep = Annotated[None, Depends(require_strategy_execution_enabled)]
 
 
 def require_copy_execution_enabled(
@@ -92,9 +94,7 @@ def require_copy_execution_enabled(
         )
 
 
-CopyExecutionGateDep = Annotated[
-    None, Depends(require_copy_execution_enabled)
-]
+CopyExecutionGateDep = Annotated[None, Depends(require_copy_execution_enabled)]
 
 
 def require_video_project_execution_enabled(
@@ -142,9 +142,7 @@ def require_v2_copy_execution_enabled(
     _require_live_qwen_configuration(app_settings)
 
 
-V2CopyExecutionGateDep = Annotated[
-    None, Depends(require_v2_copy_execution_enabled)
-]
+V2CopyExecutionGateDep = Annotated[None, Depends(require_v2_copy_execution_enabled)]
 
 
 def require_v2_video_project_execution_enabled(
@@ -174,9 +172,7 @@ def require_growth_execution_enabled(
     _require_live_qwen_configuration(app_settings)
 
 
-GrowthExecutionGateDep = Annotated[
-    None, Depends(require_growth_execution_enabled)
-]
+GrowthExecutionGateDep = Annotated[None, Depends(require_growth_execution_enabled)]
 
 
 def require_video_render_execution_enabled(
@@ -187,9 +183,8 @@ def require_video_render_execution_enabled(
             "Video render execution is disabled by the server",
             status_code=503,
         )
-    if (
-        app_settings.require_live_provider_coherence
-        and not wanx_provider_configured(app_settings)
+    if app_settings.require_live_provider_coherence and not wanx_provider_configured(
+        app_settings
     ):
         raise AppError(
             "Wanx live provider configuration is inconsistent",
@@ -203,9 +198,8 @@ VideoRenderExecutionGateDep = Annotated[
 
 
 def _require_live_qwen_configuration(app_settings: Settings) -> None:
-    if (
-        app_settings.require_live_provider_coherence
-        and not qwen_provider_configured(app_settings)
+    if app_settings.require_live_provider_coherence and not qwen_provider_configured(
+        app_settings
     ):
         raise AppError(
             "Qwen live provider configuration is inconsistent",
@@ -217,9 +211,7 @@ def get_visual_generation_provider() -> VisualGenerationProvider:
     try:
         return WanxProvider()
     except (ProviderAuthenticationError, ProviderConfigurationError) as exc:
-        raise AppError(
-            "Wanx provider is not configured", status_code=503
-        ) from exc
+        raise AppError("Wanx provider is not configured", status_code=503) from exc
 
 
 VisualProviderDep = Annotated[
@@ -301,9 +293,7 @@ def require_youtube_publishing_enabled(
         raise AppError("YouTube publishing is disabled by the server", 503)
 
 
-YouTubePublishingGateDep = Annotated[
-    None, Depends(require_youtube_publishing_enabled)
-]
+YouTubePublishingGateDep = Annotated[None, Depends(require_youtube_publishing_enabled)]
 
 
 def get_youtube_provider(
@@ -370,4 +360,27 @@ def get_binding_instagram_provider(
 
 BindingInstagramProviderDep = Annotated[
     InstagramProvider, Depends(get_binding_instagram_provider)
+]
+
+
+def require_instagram_publishing_enabled(
+    app_settings: Annotated[Settings, Depends(get_settings)],
+) -> None:
+    if not app_settings.enable_instagram_publishing:
+        raise AppError("Instagram publishing is disabled by the server", 503)
+
+
+InstagramPublishingGateDep = Annotated[
+    None, Depends(require_instagram_publishing_enabled)
+]
+
+
+def get_instagram_media_probe(
+    app_settings: Annotated[Settings, Depends(get_settings)],
+) -> InstagramMediaProbe:
+    return FFprobeInstagramMediaProbe(app_settings)
+
+
+InstagramMediaProbeDep = Annotated[
+    InstagramMediaProbe, Depends(get_instagram_media_probe)
 ]

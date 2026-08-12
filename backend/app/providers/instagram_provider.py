@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from urllib.parse import urlencode, urlparse
 
 import httpx
@@ -40,6 +42,22 @@ class InstagramProfessionalProfile:
     account_id: str
     username: str
     account_type: str
+
+
+@dataclass(frozen=True, slots=True)
+class InstagramReelContainer:
+    container_id: str
+    upload_uri: str
+
+
+@dataclass(frozen=True, slots=True)
+class InstagramContainerStatus:
+    status: str
+
+
+@dataclass(frozen=True, slots=True)
+class InstagramPublishedReel:
+    media_id: str
 
 
 class InstagramProvider:
@@ -163,6 +181,108 @@ class InstagramProvider:
             str(account_id), str(username)[:255], normalized_type
         )
 
+    async def create_resumable_reel_container(
+        self,
+        *,
+        professional_account_id: str,
+        access_token: str,
+        caption: str,
+        share_to_feed: bool,
+    ) -> InstagramReelContainer:
+        payload = await self._request(
+            "POST",
+            (
+                f"https://graph.instagram.com/{self.version}/"
+                f"{professional_account_id}/media"
+            ),
+            data={
+                "media_type": "REELS",
+                "upload_type": "resumable",
+                "caption": caption,
+                "share_to_feed": "true" if share_to_feed else "false",
+            },
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        container_id = payload.get("id")
+        upload_uri = payload.get("uri")
+        if (
+            not isinstance(container_id, str)
+            or not container_id
+            or not isinstance(upload_uri, str)
+            or not upload_uri
+        ):
+            raise InstagramProviderError("invalid_provider_response")
+        _validate_upload_uri(upload_uri)
+        return InstagramReelContainer(container_id, upload_uri)
+
+    async def upload_reel_bytes(
+        self,
+        *,
+        upload_uri: str,
+        access_token: str,
+        path: Path,
+        size_bytes: int,
+    ) -> None:
+        _validate_upload_uri(upload_uri)
+        if (
+            not path.is_absolute()
+            or not path.is_file()
+            or path.stat().st_size != size_bytes
+        ):
+            raise InstagramProviderError("instagram_upload_input_invalid")
+        payload = await self._request(
+            "POST",
+            upload_uri,
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "offset": "0",
+                "file_size": str(size_bytes),
+                "Content-Type": "application/octet-stream",
+            },
+            content=_file_chunks(path),
+        )
+        success = payload.get("success")
+        if success not in {True, "true"}:
+            raise InstagramProviderError("instagram_upload_rejected")
+
+    async def get_container_status(
+        self, *, container_id: str, access_token: str
+    ) -> InstagramContainerStatus:
+        payload = await self._request(
+            "GET",
+            f"https://graph.instagram.com/{self.version}/{container_id}",
+            params={"fields": "status_code"},
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        value = payload.get("status_code")
+        if not isinstance(value, str):
+            raise InstagramProviderError("invalid_provider_response")
+        status = value.upper()
+        if status not in {"IN_PROGRESS", "FINISHED", "ERROR", "EXPIRED"}:
+            raise InstagramProviderError("invalid_provider_response")
+        return InstagramContainerStatus(status)
+
+    async def publish_reel(
+        self,
+        *,
+        professional_account_id: str,
+        container_id: str,
+        access_token: str,
+    ) -> InstagramPublishedReel:
+        payload = await self._request(
+            "POST",
+            (
+                f"https://graph.instagram.com/{self.version}/"
+                f"{professional_account_id}/media_publish"
+            ),
+            data={"creation_id": container_id},
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        media_id = payload.get("id")
+        if not isinstance(media_id, str) or not media_id:
+            raise InstagramProviderError("invalid_provider_response")
+        return InstagramPublishedReel(media_id)
+
     async def _request(
         self, method: str, url: str, **kwargs: object
     ) -> dict[str, object]:
@@ -186,3 +306,21 @@ class InstagramProvider:
         if not isinstance(payload, dict):
             raise InstagramProviderError("invalid_provider_response")
         return payload
+
+
+def _validate_upload_uri(value: str) -> None:
+    parsed = urlparse(value)
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname != "rupload.facebook.com"
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.fragment
+    ):
+        raise InstagramProviderError("instagram_upload_uri_invalid")
+
+
+async def _file_chunks(path: Path) -> AsyncIterator[bytes]:
+    with path.open("rb") as handle:
+        while chunk := handle.read(1024 * 1024):
+            yield chunk
