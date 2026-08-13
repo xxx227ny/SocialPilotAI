@@ -22,6 +22,7 @@ import {
   instagramAccountBindingEnabled,
   instagramPublishingEnabled,
   tiktokAccountBindingEnabled,
+  tiktokPublishingEnabled,
   socialAccountBindingEnabled,
   youtubePublishingEnabled,
 } from "../../config/features";
@@ -73,6 +74,7 @@ import {
 } from "./tiktokAccountState";
 import type { TikTokOperationIdentity } from "./tiktokAccountState";
 import { InstagramPublishingPanel } from "./InstagramPublishingPanel";
+import { TikTokPublishingPanel } from "./TikTokPublishingPanel";
 import type {
   YouTubePublishOperationIdentity,
   YouTubePublishPollOutcome,
@@ -89,6 +91,7 @@ export function shouldLoadSocialAccounts(
   tiktokAccountBinding: boolean,
   youtubePublishing: boolean,
   instagramPublishing: boolean,
+  tiktokPublishing = false,
 ): boolean {
   return (
     !isPresentation &&
@@ -96,7 +99,8 @@ export function shouldLoadSocialAccounts(
       instagramAccountBinding ||
       tiktokAccountBinding ||
       youtubePublishing ||
-      instagramPublishing)
+      instagramPublishing ||
+      tiktokPublishing)
   );
 }
 
@@ -131,6 +135,7 @@ export function SocialPublishingPanel({ productId }: { productId: number }) {
       tiktokAccountBindingEnabled,
       youtubePublishingEnabled,
       instagramPublishingEnabled,
+      tiktokPublishingEnabled,
     );
     const loadSocialData = shouldLoadSocialData(
       isPresentation,
@@ -295,6 +300,18 @@ export function SocialPublishingPanel({ productId }: { productId: number }) {
       {instagramPublishingEnabled ? (
         <InstagramPublishingPanel
           key={`instagram-publish-${productId}`}
+          productId={productId}
+          accounts={accounts}
+          onTask={(nextTask) => setTasks((current) => [
+            nextTask,
+            ...current.filter((item) => item.id !== nextTask.id),
+          ])}
+        />
+      ) : null}
+
+      {tiktokPublishingEnabled ? (
+        <TikTokPublishingPanel
+          key={`tiktok-publish-${productId}`}
           productId={productId}
           accounts={accounts}
           onTask={(nextTask) => setTasks((current) => [

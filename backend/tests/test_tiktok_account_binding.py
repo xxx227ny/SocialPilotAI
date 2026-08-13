@@ -199,6 +199,102 @@ def test_authorization_and_mocktransport_http_contract() -> None:
     assert len(requests) == 2
 
 
+def test_direct_post_provider_contract_and_upload_host_validation() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        assert request.headers["authorization"] == f"Bearer {ACCESS_TOKEN}"
+        if request.url.path.endswith("creator_info/query/"):
+            assert json.loads(request.content) == {}
+            return httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "creator_username": "safe_creator",
+                        "creator_nickname": "Creator",
+                        "privacy_level_options": ["SELF_ONLY", "PUBLIC_TO_EVERYONE"],
+                        "comment_disabled": False,
+                        "duet_disabled": True,
+                        "stitch_disabled": False,
+                        "max_video_post_duration_sec": 60,
+                    },
+                    "error": {"code": "ok"},
+                },
+            )
+        assert request.url.path.endswith("video/init/")
+        body = json.loads(request.content)
+        assert body["source_info"] == {
+            "source": "FILE_UPLOAD",
+            "video_size": 100,
+            "chunk_size": 100,
+            "total_chunk_count": 1,
+        }
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "publish_id": "fake-publish-id",
+                    "upload_url": "https://upload.tiktokapis.com/fake-session",
+                },
+                "error": {"code": "ok"},
+            },
+        )
+
+    provider = TikTokProvider(settings(), transport=httpx.MockTransport(handler))
+    info = asyncio.run(provider.query_creator_info(access_token=ACCESS_TOKEN))
+    assert info.privacy_level_options == ("SELF_ONLY", "PUBLIC_TO_EVERYONE")
+    session = asyncio.run(
+        provider.initialize_direct_post(
+            access_token=ACCESS_TOKEN,
+            caption="Safe #tag",
+            privacy_level="SELF_ONLY",
+            disable_comment=False,
+            disable_duet=True,
+            disable_stitch=False,
+            brand_content_toggle=False,
+            brand_organic_toggle=False,
+            size_bytes=100,
+            chunk_size=100,
+            total_chunks=1,
+        )
+    )
+    assert session.publish_id == "fake-publish-id"
+    assert len(requests) == 2
+
+    invalid = TikTokProvider(
+        settings(),
+        transport=httpx.MockTransport(
+            lambda _: httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "publish_id": "fake",
+                        "upload_url": "https://tiktokapis.com.evil.test/x",
+                    },
+                    "error": {"code": "ok"},
+                },
+            )
+        ),
+    )
+    with pytest.raises(TikTokProviderError):
+        asyncio.run(
+            invalid.initialize_direct_post(
+                access_token=ACCESS_TOKEN,
+                caption="Safe",
+                privacy_level="SELF_ONLY",
+                disable_comment=True,
+                disable_duet=True,
+                disable_stitch=True,
+                brand_content_toggle=False,
+                brand_organic_toggle=False,
+                size_bytes=100,
+                chunk_size=100,
+                total_chunks=1,
+            )
+        )
+
+
 @pytest.mark.parametrize(
     "mutation",
     [

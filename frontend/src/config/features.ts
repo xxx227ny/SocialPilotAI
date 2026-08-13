@@ -49,3 +49,7 @@ export const youtubePublishingEnabled = isEnabledFeatureFlag(
 export const instagramPublishingEnabled = isEnabledFeatureFlag(
   import.meta.env.VITE_ENABLE_INSTAGRAM_PUBLISHING,
 );
+
+export const tiktokPublishingEnabled = isEnabledFeatureFlag(
+  import.meta.env.VITE_ENABLE_TIKTOK_PUBLISHING,
+);

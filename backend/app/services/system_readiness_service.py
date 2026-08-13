@@ -26,6 +26,7 @@ from app.schemas.system import (
 from app.services.database_migration_service import HEAD_REVISION
 from app.services.instagram_media_probe import instagram_media_probe_available
 from app.services.social_security import TokenCipher
+from app.services.tiktok_media_probe import FFprobeTikTokMediaProbe
 
 WorkerProcessState = Literal["running", "missing", "unknown"]
 
@@ -124,6 +125,13 @@ class SystemReadinessService:
             and instagram_media_probe_available(self.settings.instagram_ffprobe_path)
         )
         worker_ready, worker_status, worker_reason = self._execution_worker_readiness()
+        tiktok_publishing_ready = bool(
+            tiktok_ready
+            and self.settings.enable_tiktok_publishing
+            and artifact_ready
+            and FFprobeTikTokMediaProbe(self.settings).available()
+            and worker_ready
+        )
 
         return SystemReadinessRead(
             backend=SystemComponentRead(
@@ -186,6 +194,19 @@ class SystemReadinessService:
                     else (
                         "TikTok 账号绑定未就绪：请检查独立 Gate、Client Key、"
                         "Client Secret、HTTPS Redirect URI 和 Token 加密密钥。"
+                    )
+                ),
+            ),
+            tiktok_publishing=SystemComponentRead(
+                ready=tiktok_publishing_ready,
+                message=(
+                    "TikTok Direct Post local prerequisites are ready; "
+                    "this does not prove Content Posting API audit approval."
+                    if tiktok_publishing_ready
+                    else (
+                        "TikTok publishing is not ready: check its independent gate, "
+                        "approved credentials, token encryption, Artifact storage, "
+                        "ffprobe, and Worker."
                     )
                 ),
             ),

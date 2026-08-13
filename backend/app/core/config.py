@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     enable_social_account_binding: bool = False
     enable_instagram_account_binding: bool = False
     enable_tiktok_account_binding: bool = False
+    enable_tiktok_publishing: bool = False
     enable_instagram_publishing: bool = False
     enable_youtube_publishing: bool = False
     google_oauth_client_id: str | None = None
@@ -66,6 +67,8 @@ class Settings(BaseSettings):
     tiktok_client_secret: SecretStr | None = None
     tiktok_oauth_redirect_uri: str | None = None
     tiktok_request_timeout: float = Field(default=30, gt=0, le=120)
+    tiktok_ffprobe_path: str = "ffprobe"
+    tiktok_media_probe_timeout: float = Field(default=10, gt=0, le=60)
     instagram_ffprobe_path: str = "ffprobe"
     instagram_media_probe_timeout: float = Field(default=10, gt=0, le=60)
     wanx_api_key: SecretStr | None = None

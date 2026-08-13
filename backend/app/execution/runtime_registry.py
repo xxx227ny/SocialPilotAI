@@ -16,6 +16,11 @@ from app.execution.handlers.qwen_strategy import QwenStrategyGenerateV1Handler
 from app.execution.handlers.qwen_video_project import (
     QwenVideoProjectGenerateV1Handler,
 )
+from app.execution.handlers.tiktok_publish import (
+    TikTokCreatorInfoV1Handler,
+    TikTokRefreshV1Handler,
+    TikTokSubmitV1Handler,
+)
 from app.execution.handlers.wanx_video_render import (
     WanxVideoRenderRefreshV1Handler,
     WanxVideoRenderSubmitV1Handler,
@@ -32,6 +37,7 @@ from app.providers import (
     WanxProvider,
 )
 from app.providers.instagram_provider import InstagramProvider
+from app.providers.tiktok_provider import TikTokProvider
 from app.providers.visual_base import (
     VisualGenerationRequest,
     VisualTaskSnapshot,
@@ -42,6 +48,7 @@ from app.services.instagram_media_probe import (
     FFprobeInstagramMediaProbe,
     InstagramMediaProbe,
 )
+from app.services.tiktok_media_probe import FFprobeTikTokMediaProbe, TikTokMediaProbe
 from app.services.video_artifact_storage import (
     HttpProviderOutputFetcher,
     LocalVideoArtifactStorage,
@@ -135,6 +142,31 @@ class LazyInstagramProvider:
         return await self._provider().publish_reel(**kwargs)
 
 
+class LazyTikTokProvider:
+    def __init__(
+        self, settings: Settings, provider_factory: Callable[[Settings], TikTokProvider]
+    ) -> None:
+        self.settings, self.provider_factory = settings, provider_factory
+
+    def _provider(self) -> TikTokProvider:
+        return self.provider_factory(self.settings)
+
+    async def refresh_access_token(self, refresh_token: str):
+        return await self._provider().refresh_access_token(refresh_token)
+
+    async def query_creator_info(self, **kwargs: object):
+        return await self._provider().query_creator_info(**kwargs)
+
+    async def initialize_direct_post(self, **kwargs: object):
+        return await self._provider().initialize_direct_post(**kwargs)
+
+    async def upload_video_chunk(self, **kwargs: object):
+        return await self._provider().upload_video_chunk(**kwargs)
+
+    async def fetch_publish_status(self, **kwargs: object):
+        return await self._provider().fetch_publish_status(**kwargs)
+
+
 class LazyVideoArtifactStorage(VideoArtifactStorage):
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
@@ -169,7 +201,9 @@ def build_execution_handler_registry(
     instagram_provider_factory: Callable[
         [Settings], InstagramProvider
     ] = InstagramProvider,
+    tiktok_provider_factory: Callable[[Settings], TikTokProvider] = TikTokProvider,
     instagram_media_probe: InstagramMediaProbe | None = None,
+    tiktok_media_probe: TikTokMediaProbe | None = None,
     output_fetcher: ProviderOutputFetcher | None = None,
     artifact_storage: VideoArtifactStorage | None = None,
 ) -> ExecutionHandlerRegistry:
@@ -249,6 +283,22 @@ def build_execution_handler_registry(
                 settings=settings,
                 artifact_storage=render_storage,
                 media_probe=media_probe,
+            )
+        )
+    tiktok_provider = LazyTikTokProvider(settings, tiktok_provider_factory)
+    tiktok_probe = tiktok_media_probe or FFprobeTikTokMediaProbe(settings)
+    for handler in (
+        TikTokCreatorInfoV1Handler,
+        TikTokSubmitV1Handler,
+        TikTokRefreshV1Handler,
+    ):
+        registry.register(
+            handler(
+                session_factory=session_factory,
+                provider=tiktok_provider,
+                settings=settings,
+                artifact_storage=render_storage,
+                media_probe=tiktok_probe,
             )
         )
     return registry

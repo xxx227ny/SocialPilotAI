@@ -8,6 +8,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Integer,
     String,
     Text,
     UniqueConstraint,
@@ -126,8 +127,20 @@ class PublishTask(Base):
     )
     provider_video_id: Mapped[str | None] = mapped_column(String(255), index=True)
     provider_container_id: Mapped[str | None] = mapped_column(String(255), index=True)
+    provider_publish_id: Mapped[str | None] = mapped_column(String(255), index=True)
     resumable_session_ciphertext: Mapped[str | None] = mapped_column(Text)
     share_to_feed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    disable_comment: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    disable_duet: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    disable_stitch: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    brand_content_toggle: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    brand_organic_toggle: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
     safe_error_code: Mapped[str | None] = mapped_column(String(100))
     uncertain: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(
@@ -141,3 +154,36 @@ class PublishTask(Base):
 
     social_account: Mapped[SocialAccount] = relationship(back_populates="publish_tasks")
     artifact: Mapped[VideoRenderArtifact] = relationship()
+
+
+class TikTokCreatorInfoSnapshot(Base):
+    __tablename__ = "tiktok_creator_info_snapshots"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    product_id: Mapped[int] = mapped_column(
+        ForeignKey("products.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    social_account_id: Mapped[int] = mapped_column(
+        ForeignKey("social_accounts.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    request_digest: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    provider_identity_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    creator_username: Mapped[str] = mapped_column(String(255), nullable=False)
+    creator_nickname: Mapped[str] = mapped_column(String(255), nullable=False)
+    privacy_level_options: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    comment_disabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    duet_disabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    stitch_disabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    max_video_post_duration_sec: Mapped[int] = mapped_column(Integer, nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+
+    product: Mapped[Product] = relationship()
+    social_account: Mapped[SocialAccount] = relationship()

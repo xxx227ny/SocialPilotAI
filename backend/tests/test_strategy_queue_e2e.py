@@ -91,9 +91,7 @@ def create_source(client: TestClient) -> tuple[dict, dict]:
 
 
 def preflight(client: TestClient, task_id: int) -> dict:
-    response = client.get(
-        f"/api/v1/marketing-tasks/{task_id}/strategy-preflight"
-    )
+    response = client.get(f"/api/v1/marketing-tasks/{task_id}/strategy-preflight")
     assert response.status_code == 200
     assert response.json()["ready_for_execution"] is True
     return response.json()
@@ -153,6 +151,9 @@ def test_http_enqueue_is_provider_free_and_worker_restores_exact_result(
         "qwen.copy_matrix.generate.v1",
         "qwen.strategy.generate.v1",
         "qwen.video_project.generate.v1",
+        "tiktok.publish.creator_info.v1",
+        "tiktok.publish.refresh.v1",
+        "tiktok.publish.submit.v1",
         "wanx.video_render.refresh.v1",
         "wanx.video_render.submit.v1",
         "youtube.publish.refresh.v1",
@@ -181,15 +182,12 @@ def test_http_enqueue_is_provider_free_and_worker_restores_exact_result(
     assert job["result_entity_type"] == "marketing_strategy"
     assert job["result_entity_id"] is not None
     exact = client.get(
-        f"/api/v1/marketing-tasks/{task['id']}/strategies/"
-        f"{job['result_entity_id']}"
+        f"/api/v1/marketing-tasks/{task['id']}/strategies/{job['result_entity_id']}"
     )
     assert exact.status_code == 200
     assert exact.json()["id"] == job["result_entity_id"]
 
-    restarted = worker(
-        db_session, factory, "strategy-e2e-worker-restarted"
-    ).run_once()
+    restarted = worker(db_session, factory, "strategy-e2e-worker-restarted").run_once()
     assert restarted.status == WorkerRunStatus.NO_JOB
     assert factory.state == {"constructed": 1, "calls": 1}
     assert db_session.scalar(select(func.count(MarketingStrategy.id))) == 1

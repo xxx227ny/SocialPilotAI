@@ -25,6 +25,7 @@ export interface SystemReadinessResponse {
   google_youtube: SystemReadinessItem;
   meta_instagram: SystemReadinessItem;
   tiktok: SystemReadinessItem;
+  tiktok_publishing: SystemReadinessItem;
   instagram_publishing: SystemReadinessItem;
   database: DatabaseReadinessItem;
   artifact_storage: SystemReadinessItem;

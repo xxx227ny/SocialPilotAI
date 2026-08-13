@@ -116,6 +116,12 @@ def business_snapshot(path: Path) -> str:
                 record.pop("provider_container_id", None)
                 record.pop("share_to_feed", None)
                 record.pop("refresh_token_expires_at", None)
+                record.pop("provider_publish_id", None)
+                record.pop("disable_comment", None)
+                record.pop("disable_duet", None)
+                record.pop("disable_stitch", None)
+                record.pop("brand_content_toggle", None)
+                record.pop("brand_organic_toggle", None)
                 payload[table_name].append(record)
     finally:
         connection.close()

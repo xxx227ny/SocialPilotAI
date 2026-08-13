@@ -11,6 +11,8 @@ from app.api.dependencies import (
     BindingYouTubeProviderDep,
     InstagramMediaProbeDep,
     InstagramPublishingGateDep,
+    TikTokMediaProbeDep,
+    TikTokPublishingGateDep,
     VideoArtifactStorageDep,
     YouTubePublishingGateDep,
 )
@@ -35,8 +37,14 @@ from app.schemas.social import (
     SocialAccountRead,
     TikTokConnectRead,
     TikTokConnectRequest,
+    TikTokCreatorInfoRequest,
+    TikTokCreatorInfoSnapshotRead,
     TikTokDisconnectRead,
     TikTokDisconnectRequest,
+    TikTokPublishingMetadata,
+    TikTokPublishRequest,
+    TikTokRefreshRequest,
+    TikTokSubmitPreflightRead,
     YouTubeConnectRead,
     YouTubeConnectRequest,
     YouTubePreflightRead,
@@ -53,6 +61,9 @@ from app.services.social_service import (
     YouTubePublishingService,
 )
 from app.services.tiktok_account_service import TikTokAccountService
+from app.services.tiktok_publish_job_service import TikTokPublishJobService
+from app.services.tiktok_publish_preflight import TikTokPublishPreflightService
+from app.services.tiktok_publish_service import TikTokPublishService
 from app.services.youtube_publish_job_service import YouTubePublishJobService
 
 router = APIRouter()
@@ -473,5 +484,120 @@ def finalize_instagram_publish(
 ) -> ExecutionJobCreateRead:
     del gate
     return InstagramPublishJobService(db, settings, storage, probe).enqueue_finalize(
+        task_id, data
+    )
+
+
+@router.post(
+    "/products/{product_id}/publishing/tiktok/creator-info",
+    response_model=ExecutionJobCreateRead,
+    status_code=201,
+)
+def query_tiktok_creator_info(
+    product_id: int,
+    data: TikTokCreatorInfoRequest,
+    db: DbSession,
+    settings: SettingsDep,
+    storage: VideoArtifactStorageDep,
+    probe: TikTokMediaProbeDep,
+    gate: TikTokPublishingGateDep,
+) -> ExecutionJobCreateRead:
+    del gate
+    return TikTokPublishJobService(db, settings, storage, probe).enqueue_creator_info(
+        product_id, data
+    )
+
+
+@router.get(
+    "/tiktok-creator-info-snapshots/{snapshot_id}",
+    response_model=TikTokCreatorInfoSnapshotRead,
+)
+def get_tiktok_creator_info_snapshot(
+    snapshot_id: int,
+    product_id: int,
+    social_account_id: int,
+    db: DbSession,
+    settings: SettingsDep,
+    gate: TikTokPublishingGateDep,
+) -> TikTokCreatorInfoSnapshotRead:
+    del gate
+    return TikTokPublishService(db, settings).get_snapshot(
+        snapshot_id, product_id, social_account_id
+    )
+
+
+@router.get(
+    "/products/{product_id}/publishing/tiktok/artifacts",
+    response_model=list[PublishArtifactCandidateRead],
+)
+def list_tiktok_publish_artifacts(
+    product_id: int,
+    db: DbSession,
+    settings: SettingsDep,
+    storage: VideoArtifactStorageDep,
+    probe: TikTokMediaProbeDep,
+    gate: TikTokPublishingGateDep,
+) -> list[PublishArtifactCandidateRead]:
+    del gate
+    return TikTokPublishPreflightService(db, settings, storage, probe).list_candidates(
+        product_id
+    )
+
+
+@router.post(
+    "/products/{product_id}/publishing/tiktok/preflight",
+    response_model=TikTokSubmitPreflightRead,
+)
+def preflight_tiktok_publish(
+    product_id: int,
+    data: TikTokPublishingMetadata,
+    db: DbSession,
+    settings: SettingsDep,
+    storage: VideoArtifactStorageDep,
+    probe: TikTokMediaProbeDep,
+    gate: TikTokPublishingGateDep,
+) -> TikTokSubmitPreflightRead:
+    del gate
+    return TikTokPublishPreflightService(db, settings, storage, probe).run(
+        product_id, data
+    )
+
+
+@router.post(
+    "/products/{product_id}/publishing/tiktok",
+    response_model=ExecutionJobCreateRead,
+    status_code=201,
+)
+def publish_tiktok_video(
+    product_id: int,
+    data: TikTokPublishRequest,
+    db: DbSession,
+    settings: SettingsDep,
+    storage: VideoArtifactStorageDep,
+    probe: TikTokMediaProbeDep,
+    gate: TikTokPublishingGateDep,
+) -> ExecutionJobCreateRead:
+    del gate
+    return TikTokPublishJobService(db, settings, storage, probe).enqueue_submit(
+        product_id, data
+    )
+
+
+@router.post(
+    "/publish-tasks/{task_id}/tiktok/refresh",
+    response_model=ExecutionJobCreateRead,
+    status_code=201,
+)
+def refresh_tiktok_publish(
+    task_id: int,
+    data: TikTokRefreshRequest,
+    db: DbSession,
+    settings: SettingsDep,
+    storage: VideoArtifactStorageDep,
+    probe: TikTokMediaProbeDep,
+    gate: TikTokPublishingGateDep,
+) -> ExecutionJobCreateRead:
+    del gate
+    return TikTokPublishJobService(db, settings, storage, probe).enqueue_refresh(
         task_id, data
     )

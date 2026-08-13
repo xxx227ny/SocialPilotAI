@@ -12,6 +12,9 @@ import type {
   YouTubeConnectResult,
   YouTubePreflight,
   YouTubePublishingMetadata,
+  TikTokCreatorInfoSnapshot,
+  TikTokPublishingMetadata,
+  TikTokPublishPreflight,
 } from "../types/social";
 
 export async function connectYouTube(
@@ -282,3 +285,48 @@ export async function listInstagramPublishJobs(
 }
 
 export const getInstagramPublishJob = getYouTubePublishJob;
+
+export async function queryTikTokCreatorInfo(productId: number, socialAccountId: number, signal?: AbortSignal) {
+  const response = await apiClient.post<ExecutionJobCreateResult>(
+    `/products/${productId}/publishing/tiktok/creator-info`,
+    { social_account_id: socialAccountId, request_id: crypto.randomUUID() },
+    { signal });
+  return response.data;
+}
+
+export async function getTikTokCreatorInfoSnapshot(
+  snapshotId: number, productId: number, socialAccountId: number,
+  signal?: AbortSignal,
+) {
+  const response = await apiClient.get<TikTokCreatorInfoSnapshot>(
+    `/tiktok-creator-info-snapshots/${snapshotId}`,
+    { params: { product_id: productId, social_account_id: socialAccountId }, signal });
+  return response.data;
+}
+
+export async function listTikTokPublishArtifacts(productId: number, signal?: AbortSignal) {
+  const response = await apiClient.get<PublishArtifactCandidate[]>(
+    `/products/${productId}/publishing/tiktok/artifacts`, { signal });
+  return response.data;
+}
+
+export async function preflightTikTokPublish(productId: number, data: TikTokPublishingMetadata, signal?: AbortSignal) {
+  const response = await apiClient.post<TikTokPublishPreflight>(
+    `/products/${productId}/publishing/tiktok/preflight`, data, { signal });
+  return response.data;
+}
+
+export async function publishTikTok(productId: number, data: TikTokPublishingMetadata & {
+  input_digest: string; preflight_digest: string; preflight_expires_at: string; confirm_upload: true;
+}, signal?: AbortSignal) {
+  const response = await apiClient.post<ExecutionJobCreateResult>(
+    `/products/${productId}/publishing/tiktok`, data, { signal });
+  return response.data;
+}
+
+export async function refreshTikTokPublish(productId: number, taskId: number, refreshRequestId: string, signal?: AbortSignal) {
+  const response = await apiClient.post<ExecutionJobCreateResult>(
+    `/publish-tasks/${taskId}/tiktok/refresh`,
+    { product_id: productId, refresh_request_id: refreshRequestId }, { signal });
+  return response.data;
+}

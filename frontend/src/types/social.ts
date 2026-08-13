@@ -83,7 +83,7 @@ export interface PublishTask {
   product_id: number;
   social_account_id: number;
   artifact_id: number;
-  platform: "youtube" | "instagram";
+  platform: "youtube" | "instagram" | "tiktok";
   title: string;
   description: string;
   tags: string[];
@@ -94,12 +94,45 @@ export interface PublishTask {
   share_to_feed: boolean;
   status: string;
   provider_video_id: string | null;
+  provider_publish_id: string | null;
   safe_error_code: string | null;
   uncertain: boolean;
   created_at: string;
   updated_at: string;
   submitted_at: string | null;
   completed_at: string | null;
+  disable_comment: boolean;
+  disable_duet: boolean;
+  disable_stitch: boolean;
+  brand_content_toggle: boolean;
+  brand_organic_toggle: boolean;
+}
+
+export interface TikTokCreatorInfoSnapshot {
+  id: number; product_id: number; social_account_id: number;
+  creator_username: string; creator_nickname: string;
+  privacy_level_options: string[]; comment_disabled: boolean;
+  duet_disabled: boolean; stitch_disabled: boolean;
+  max_video_post_duration_sec: number; fetched_at: string; expires_at: string;
+}
+
+export interface TikTokPublishingMetadata {
+  social_account_id: number; creator_info_snapshot_id: number; artifact_id: number;
+  title: string;
+  description: string; tags: string[]; privacy_status: string;
+  disable_comment: boolean; disable_duet: boolean; disable_stitch: boolean;
+  brand_content_toggle: boolean; brand_organic_toggle: boolean;
+}
+
+export interface TikTokPublishPreflight {
+  status: "READY" | "BLOCKED"; ready: boolean; missing_requirements: string[];
+  input_digest: string; preflight_digest: string; expires_at: string;
+  product_id: number; social_account_id: number; creator_info_snapshot_id: number;
+  artifact_id: number; render_task_id: number; video_project_id: number;
+  copy_matrix_id: number; marketing_strategy_id: number;
+  content_type: "video/mp4" | "video/quicktime"; size_bytes: number; sha256: string;
+  safe_path_digest: string;
+  caption_length_utf16: number; provider_calls: 0; database_writes: 0;
 }
 
 export interface InstagramPublishingMetadata {

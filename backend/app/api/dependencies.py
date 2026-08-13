@@ -29,6 +29,7 @@ from app.services.instagram_media_probe import (
     FFprobeInstagramMediaProbe,
     InstagramMediaProbe,
 )
+from app.services.tiktok_media_probe import FFprobeTikTokMediaProbe, TikTokMediaProbe
 from app.services.video_artifact_storage import (
     HttpProviderOutputFetcher,
     LocalVideoArtifactStorage,
@@ -419,3 +420,22 @@ def get_binding_tiktok_provider(
 BindingTikTokProviderDep = Annotated[
     TikTokProvider, Depends(get_binding_tiktok_provider)
 ]
+
+
+def require_tiktok_publishing_enabled(
+    app_settings: Annotated[Settings, Depends(get_settings)],
+) -> None:
+    if not app_settings.enable_tiktok_publishing:
+        raise AppError("TikTok publishing is disabled by the server", 503)
+
+
+TikTokPublishingGateDep = Annotated[None, Depends(require_tiktok_publishing_enabled)]
+
+
+def get_tiktok_media_probe(
+    app_settings: Annotated[Settings, Depends(get_settings)],
+) -> TikTokMediaProbe:
+    return FFprobeTikTokMediaProbe(app_settings)
+
+
+TikTokMediaProbeDep = Annotated[TikTokMediaProbe, Depends(get_tiktok_media_probe)]

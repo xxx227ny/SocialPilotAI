@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import OAuthSession, PublishTask, SocialAccount
+from app.models.social import TikTokCreatorInfoSnapshot
 
 
 class SocialRepository:
@@ -63,3 +64,8 @@ class SocialRepository:
             .order_by(PublishTask.created_at.desc(), PublishTask.id.desc())
         )
         return list(self.session.scalars(statement).all())
+
+    def get_tiktok_creator_snapshot(
+        self, snapshot_id: int
+    ) -> TikTokCreatorInfoSnapshot | None:
+        return self.session.get(TikTokCreatorInfoSnapshot, snapshot_id)
