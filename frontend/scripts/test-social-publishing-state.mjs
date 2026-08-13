@@ -55,13 +55,15 @@ try {
   );
 
   for (const [label, gates, expected] of [
-    ["YouTube only", [false, true, false, false, false, false], true],
-    ["Instagram only", [false, false, true, false, false, false], true],
-    ["TikTok only", [false, false, false, true, false, false], true],
-    ["all off", [false, false, false, false, false, false], false],
-    ["Presentation YouTube", [true, true, false, false, false, false], false],
-    ["Presentation Instagram", [true, false, true, false, false, false], false],
-    ["Presentation TikTok", [true, false, false, true, false, false], false],
+    ["YouTube only", [false, true, false, false, false, false, false, false], true],
+    ["Instagram only", [false, false, true, false, false, false, false, false], true],
+    ["TikTok only", [false, false, false, true, false, false, false, false], true],
+    ["Pinterest only", [false, false, false, false, false, false, false, true], true],
+    ["all off", [false, false, false, false, false, false, false, false], false],
+    ["Presentation YouTube", [true, true, false, false, false, false, false, false], false],
+    ["Presentation Instagram", [true, false, true, false, false, false, false, false], false],
+    ["Presentation TikTok", [true, false, false, true, false, false, false, false], false],
+    ["Presentation Pinterest", [true, false, false, false, false, false, false, true], false],
   ]) {
     assert.equal(
       panelState.shouldLoadSocialAccounts(...gates),

@@ -7,7 +7,7 @@ export type SocialConnectionStatus =
 export interface SocialAccount {
   id: number;
   product_id: number;
-  platform: "youtube" | "instagram" | "tiktok";
+  platform: "youtube" | "instagram" | "tiktok" | "pinterest";
   provider_account_id: string;
   display_name: string;
   scopes: string[];
@@ -30,6 +30,11 @@ export interface InstagramConnectResult {
 }
 
 export interface TikTokConnectResult {
+  authorization_url: string;
+  expires_at: string;
+}
+
+export interface PinterestConnectResult {
   authorization_url: string;
   expires_at: string;
 }
@@ -83,7 +88,7 @@ export interface PublishTask {
   product_id: number;
   social_account_id: number;
   artifact_id: number;
-  platform: "youtube" | "instagram" | "tiktok";
+  platform: "youtube" | "instagram" | "tiktok" | "pinterest";
   title: string;
   description: string;
   tags: string[];

@@ -2,9 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   connectInstagram,
+  connectPinterest,
   connectTikTok,
   connectYouTube,
   disconnectInstagramAccount,
+  disconnectPinterestAccount,
   disconnectTikTokAccount,
   disconnectSocialAccount,
   getPublishTask,
@@ -21,6 +23,7 @@ import { getApiErrorMessage } from "../../api/client";
 import {
   instagramAccountBindingEnabled,
   instagramPublishingEnabled,
+  pinterestAccountBindingEnabled,
   tiktokAccountBindingEnabled,
   tiktokPublishingEnabled,
   socialAccountBindingEnabled,
@@ -73,6 +76,12 @@ import {
   tiktokScopeSummary,
 } from "./tiktokAccountState";
 import type { TikTokOperationIdentity } from "./tiktokAccountState";
+import {
+  canStartPinterestOperation, cancelPinterestOperations, pinterestScopeSummary,
+  coordinatePinterestConnect, coordinatePinterestDisconnect,
+  readPinterestOAuthStatus,
+} from "./pinterestAccountState";
+import type { PinterestOperationIdentity } from "./pinterestAccountState";
 import { InstagramPublishingPanel } from "./InstagramPublishingPanel";
 import { TikTokPublishingPanel } from "./TikTokPublishingPanel";
 import type {
@@ -92,12 +101,14 @@ export function shouldLoadSocialAccounts(
   youtubePublishing: boolean,
   instagramPublishing: boolean,
   tiktokPublishing = false,
+  pinterestAccountBinding = false,
 ): boolean {
   return (
     !isPresentation &&
     (youtubeAccountBinding ||
       instagramAccountBinding ||
       tiktokAccountBinding ||
+      pinterestAccountBinding ||
       youtubePublishing ||
       instagramPublishing ||
       tiktokPublishing)
@@ -136,6 +147,7 @@ export function SocialPublishingPanel({ productId }: { productId: number }) {
       youtubePublishingEnabled,
       instagramPublishingEnabled,
       tiktokPublishingEnabled,
+      pinterestAccountBindingEnabled,
     );
     const loadSocialData = shouldLoadSocialData(
       isPresentation,
@@ -193,6 +205,7 @@ export function SocialPublishingPanel({ productId }: { productId: number }) {
   );
   const instagramOAuthStatus = readInstagramOAuthStatus(window.location.search);
   const tiktokOAuthStatus = readTikTokOAuthStatus(window.location.search);
+  const pinterestOAuthStatus = readPinterestOAuthStatus(window.location.search);
 
   return (
     <section className="social-publishing" data-testid="social-publishing">
@@ -255,6 +268,9 @@ export function SocialPublishingPanel({ productId }: { productId: number }) {
           TikTok 授权未完成；页面未接收 Provider 错误或敏感信息。
         </p>
       ) : null}
+      {pinterestOAuthStatus === "connected" ? <p className="social-publishing__notice is-success">Pinterest account connected.</p> : null}
+      {pinterestOAuthStatus === "denied" ? <p className="social-publishing__notice is-error">Pinterest authorization was cancelled; no Token was saved.</p> : null}
+      {pinterestOAuthStatus === "failed" ? <p className="social-publishing__notice is-error">Pinterest authorization did not complete; no provider details are shown.</p> : null}
       {message ? (
         <p className="social-publishing__notice is-error" role="alert">
           {message}
@@ -296,6 +312,9 @@ export function SocialPublishingPanel({ productId }: { productId: number }) {
           ]);
         }}
       />
+
+      <PinterestAccountCard key={`pinterest-${productId}`} productId={productId}
+        accounts={accounts} onChanged={(account) => setAccounts((current) => [account, ...current.filter((item) => item.id !== account.id)])} />
 
       {instagramPublishingEnabled ? (
         <InstagramPublishingPanel
@@ -594,6 +613,61 @@ function TikTokAccountCard({
           disabled={state === "working"}>本地断开 TikTok</button>}
     </div>
     <small>本地断开只清除本机 Token，不等于撤销 TikTok 侧授权。</small>
+    {error ? <p role="alert">{error}</p> : null}
+  </div>;
+}
+
+function PinterestAccountCard({ productId, accounts, onChanged }: {
+  productId: number; accounts: SocialAccount[]; onChanged: (account: SocialAccount) => void;
+}) {
+  const account = findPlatformAccount(accounts, "pinterest");
+  const [state, setState] = useState<ActionState>("idle");
+  const [error, setError] = useState("");
+  const operationIdRef = useRef(0);
+  const connectRef = useRef<PinterestOperationIdentity | null>(null);
+  const disconnectRef = useRef<PinterestOperationIdentity | null>(null);
+  const operationStoreRef = useRef({ connect: null as PinterestOperationIdentity | null,
+    disconnect: null as PinterestOperationIdentity | null });
+  useEffect(() => () => {
+    operationIdRef.current += 1;
+    cancelPinterestOperations({ connect: connectRef.current, disconnect: disconnectRef.current });
+    connectRef.current = null; disconnectRef.current = null;
+    operationStoreRef.current.connect = null;
+    operationStoreRef.current.disconnect = null;
+  }, [productId, account?.id]);
+
+  async function connect() {
+    if (!pinterestAccountBindingEnabled || !canStartPinterestOperation(operationStoreRef.current.connect, operationStoreRef.current.disconnect)) return;
+    const identity: PinterestOperationIdentity = { productId, accountId: account?.id ?? null, operationId: ++operationIdRef.current, controller: new AbortController() };
+    connectRef.current = identity; setState("working"); setError("");
+    await coordinatePinterestConnect({ store: operationStoreRef.current, identity,
+      request: (signal) => connectPinterest(productId, signal),
+      navigate: (url) => window.location.assign(url),
+      onError: (caught) => { setError(getApiErrorMessage(caught,
+        "Unable to start Pinterest authorization.")); setState("failed"); },
+    });
+    connectRef.current = operationStoreRef.current.connect;
+  }
+  async function disconnect() {
+    if (!account || operationStoreRef.current.connect || operationStoreRef.current.disconnect) return;
+    if (!window.confirm("Disconnect Pinterest locally? This does not revoke authorization at Pinterest.")) return;
+    const identity: PinterestOperationIdentity = { productId, accountId: account.id, operationId: ++operationIdRef.current, controller: new AbortController() };
+    disconnectRef.current = identity; setState("working"); setError("");
+    await coordinatePinterestDisconnect({ store: operationStoreRef.current, identity,
+      request: (signal) => disconnectPinterestAccount(productId, account.id, signal),
+      onSuccess: (changed) => { onChanged(changed as SocialAccount); setState("idle"); },
+      onError: (caught) => { setError(getApiErrorMessage(caught,
+        "Pinterest local disconnect failed.")); setState("failed"); },
+    });
+    disconnectRef.current = operationStoreRef.current.disconnect;
+  }
+  return <div className="social-account-card social-account-card--pinterest">
+    <div><span>Pinterest</span><strong>{account?.display_name ?? "Not connected"}</strong>
+      <small>{account ? `${connectionLabel(account.connection_status)} · ${pinterestScopeSummary(account.scopes)}` : pinterestAccountBindingEnabled ? "将读取账号身份和 Boards，并读取和创建 Pins；本阶段尚不创建 Pin，真正发布仍需 Stage 4A6 独立 Preflight 与显式确认。" : "Pinterest account binding Gate is disabled"}</small></div>
+    <div className="social-account-card__actions">{!canLocallyDisconnectAccount(account) ?
+      <button type="button" onClick={() => void connect()} disabled={!pinterestAccountBindingEnabled || state === "working"}>{state === "working" ? "Connecting…" : "Connect Pinterest"}</button> :
+      <button type="button" onClick={() => void disconnect()} disabled={state === "working"}>Disconnect Pinterest locally</button>}</div>
+    <small>Local disconnect clears local Tokens only; it does not revoke Pinterest authorization.</small>
     {error ? <p role="alert">{error}</p> : null}
   </div>;
 }

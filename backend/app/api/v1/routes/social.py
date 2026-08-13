@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import (
     BindingInstagramProviderDep,
+    BindingPinterestProviderDep,
     BindingTikTokProviderDep,
     BindingYouTubeProviderDep,
     InstagramMediaProbeDep,
@@ -31,6 +32,10 @@ from app.schemas.social import (
     InstagramPublishingMetadata,
     InstagramPublishRequest,
     InstagramSubmitPreflightRead,
+    PinterestConnectRead,
+    PinterestConnectRequest,
+    PinterestDisconnectRead,
+    PinterestDisconnectRequest,
     PublishArtifactCandidateRead,
     PublishTaskIdentityRequest,
     PublishTaskRead,
@@ -55,6 +60,7 @@ from app.services.instagram_account_service import InstagramAccountService
 from app.services.instagram_publish_job_service import InstagramPublishJobService
 from app.services.instagram_publish_preflight import InstagramPublishPreflightService
 from app.services.instagram_publish_service import InstagramPublishService
+from app.services.pinterest_account_service import PinterestAccountService
 from app.services.social_security import digest_oauth_state
 from app.services.social_service import (
     SocialAccountService,
@@ -242,6 +248,68 @@ def disconnect_tiktok_account(
     settings: SettingsDep,
 ) -> TikTokDisconnectRead:
     return TikTokAccountService(db, settings, None).disconnect(
+        account_id, product_id=data.product_id
+    )
+
+
+@router.post("/social-accounts/pinterest/connect", response_model=PinterestConnectRead)
+def connect_pinterest(
+    data: PinterestConnectRequest,
+    request: Request,
+    response: Response,
+    db: DbSession,
+    settings: SettingsDep,
+    provider: BindingPinterestProviderDep,
+) -> PinterestConnectRead:
+    browser_session = request.cookies.get(OAUTH_BROWSER_COOKIE)
+    if not browser_session:
+        browser_session = secrets.token_urlsafe(32)
+        response.set_cookie(
+            OAUTH_BROWSER_COOKIE,
+            browser_session,
+            max_age=600,
+            httponly=True,
+            secure=False,
+            samesite="lax",
+            path="/api/v1/social-accounts",
+        )
+    return PinterestAccountService(db, settings, provider).connect(
+        data.product_id, browser_session_digest=digest_oauth_state(browser_session)
+    )
+
+
+@router.get("/social-accounts/pinterest/callback", response_class=RedirectResponse)
+async def pinterest_callback(
+    request: Request,
+    db: DbSession,
+    settings: SettingsDep,
+    provider: BindingPinterestProviderDep,
+    state: str = Query(min_length=20, max_length=200),
+    code: str | None = Query(default=None, max_length=2000),
+    error: str | None = Query(default=None, max_length=200),
+) -> RedirectResponse:
+    location = await PinterestAccountService(db, settings, provider).callback(
+        state=state,
+        browser_session_digest=digest_oauth_state(
+            request.cookies.get(OAUTH_BROWSER_COOKIE, "")
+        ),
+        code=code,
+        error=error,
+    )
+    return RedirectResponse(location, status_code=303)
+
+
+@router.post(
+    "/social-accounts/pinterest/{account_id}/disconnect",
+    response_model=PinterestDisconnectRead,
+)
+def disconnect_pinterest_account(
+    account_id: int,
+    data: PinterestDisconnectRequest,
+    db: DbSession,
+    settings: SettingsDep,
+) -> PinterestDisconnectRead:
+    return PinterestAccountService(db, settings, None).disconnect(
         account_id, product_id=data.product_id
     )
 

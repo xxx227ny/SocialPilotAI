@@ -22,6 +22,7 @@ from app.providers.live_configuration import (
     safe_error_message,
     wanx_provider_configured,
 )
+from app.providers.pinterest_provider import PinterestProvider, PinterestProviderError
 from app.providers.tiktok_provider import TikTokProvider, TikTokProviderError
 from app.providers.visual_base import VisualGenerationProvider
 from app.providers.youtube_provider import YouTubeProvider, YouTubeProviderError
@@ -419,6 +420,40 @@ def get_binding_tiktok_provider(
 
 BindingTikTokProviderDep = Annotated[
     TikTokProvider, Depends(get_binding_tiktok_provider)
+]
+
+
+def require_pinterest_account_binding_enabled(
+    app_settings: Annotated[Settings, Depends(get_settings)],
+) -> None:
+    if not app_settings.enable_pinterest_account_binding:
+        raise AppError("Pinterest account binding is disabled by the server", 503)
+
+
+PinterestAccountBindingGateDep = Annotated[
+    None, Depends(require_pinterest_account_binding_enabled)
+]
+
+
+def get_pinterest_provider(
+    app_settings: Annotated[Settings, Depends(get_settings)],
+) -> PinterestProvider:
+    try:
+        return PinterestProvider(app_settings)
+    except PinterestProviderError:
+        raise AppError("Pinterest provider is not configured", 503) from None
+
+
+def get_binding_pinterest_provider(
+    gate: PinterestAccountBindingGateDep,
+    provider: Annotated[PinterestProvider, Depends(get_pinterest_provider)],
+) -> PinterestProvider:
+    del gate
+    return provider
+
+
+BindingPinterestProviderDep = Annotated[
+    PinterestProvider, Depends(get_binding_pinterest_provider)
 ]
 
 

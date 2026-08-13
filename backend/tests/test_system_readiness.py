@@ -66,6 +66,11 @@ def ready_settings(artifact_root: str) -> Settings:
         tiktok_oauth_redirect_uri=(
             "https://app.example/api/v1/social-accounts/tiktok/callback"
         ),
+        pinterest_client_id="fake-pinterest-client-id",
+        pinterest_client_secret="fake-pinterest-client-secret",
+        pinterest_oauth_redirect_uri=(
+            "https://app.example/api/v1/social-accounts/pinterest/callback"
+        ),
         social_token_encryption_key=Fernet.generate_key().decode("ascii"),
         video_artifact_storage_root=artifact_root,
         execution_worker_status_file=str(worker_status),
@@ -77,6 +82,7 @@ def ready_settings(artifact_root: str) -> Settings:
         enable_youtube_publishing=True,
         enable_instagram_account_binding=True,
         enable_tiktok_account_binding=True,
+        enable_pinterest_account_binding=True,
     )
 
 
@@ -114,6 +120,7 @@ def test_readiness_is_provider_free_read_only_and_secret_safe(
             "google_youtube",
             "meta_instagram",
             "tiktok",
+            "pinterest",
             "database",
             "artifact_storage",
             "execution_worker",
@@ -136,6 +143,8 @@ def test_readiness_is_provider_free_read_only_and_secret_safe(
         "fake-instagram-app-secret",
         "fake-tiktok-client-key",
         "fake-tiktok-client-secret",
+        "fake-pinterest-client-id",
+        "fake-pinterest-client-secret",
         settings.social_token_encryption_key.get_secret_value(),
     ):
         assert secret not in serialized
@@ -172,6 +181,7 @@ def test_readiness_explains_missing_local_configuration(
     assert body["google_youtube"]["ready"] is False
     assert body["meta_instagram"]["ready"] is False
     assert body["tiktok"]["ready"] is False
+    assert body["pinterest"]["ready"] is False
     assert body["artifact_storage"]["ready"] is False
     assert body["execution_worker"]["ready"] is False
     assert body["execution_worker"]["status"] == "not_running"

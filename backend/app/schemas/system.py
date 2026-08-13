@@ -28,6 +28,7 @@ class SystemReadinessRead(BaseModel):
     google_youtube: SystemComponentRead
     meta_instagram: SystemComponentRead
     tiktok: SystemComponentRead
+    pinterest: SystemComponentRead
     tiktok_publishing: SystemComponentRead
     instagram_publishing: SystemComponentRead
     database: DatabaseSystemComponentRead

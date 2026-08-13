@@ -17,6 +17,7 @@ for (const label of [
   "Wanx",
   "Google / YouTube",
   "Meta / Instagram",
+  "Pinterest OAuth",
   "Database",
   "Artifact Storage",
   "Execution Worker",
@@ -32,6 +33,7 @@ assert.doesNotMatch(types, /api_key|client_secret|access_token|refresh_token/i);
 assert.match(types, /provider_calls: 0/);
 assert.match(types, /meta_instagram: SystemReadinessItem/);
 assert.match(types, /tiktok: SystemReadinessItem/);
+assert.match(types, /pinterest: SystemReadinessItem/);
 assert.match(types, /instagram_publishing: SystemReadinessItem/);
 assert.match(component, /TikTok Login Kit/);
 assert.match(types, /database_writes: 0/);

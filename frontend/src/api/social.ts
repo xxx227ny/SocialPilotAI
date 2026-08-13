@@ -6,6 +6,7 @@ import type {
   SocialAccount,
   InstagramConnectResult,
   TikTokConnectResult,
+  PinterestConnectResult,
   InstagramFinalizePreflight,
   InstagramPublishPreflight,
   InstagramPublishingMetadata,
@@ -78,6 +79,23 @@ export async function disconnectTikTokAccount(
     { product_id: productId, confirm_disconnect: true },
     { signal },
   );
+  return response.data.account;
+}
+
+export async function connectPinterest(productId: number, signal?: AbortSignal) {
+  const response = await apiClient.post<PinterestConnectResult>(
+    "/social-accounts/pinterest/connect", { product_id: productId }, { signal },
+  );
+  return response.data;
+}
+
+export async function disconnectPinterestAccount(
+  productId: number, accountId: number, signal?: AbortSignal,
+) {
+  const response = await apiClient.post<{
+    account: SocialAccount; local_only: true; pinterest_authorization_revoked: false;
+  }>(`/social-accounts/pinterest/${accountId}/disconnect`,
+    { product_id: productId, confirm_disconnect: true }, { signal });
   return response.data.account;
 }
 

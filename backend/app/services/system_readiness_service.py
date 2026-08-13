@@ -116,6 +116,13 @@ class SystemReadinessService:
             and self._valid_https_uri(self.settings.tiktok_oauth_redirect_uri)
             and self._valid_token_cipher()
         )
+        pinterest_ready = bool(
+            self.settings.enable_pinterest_account_binding
+            and self._text(self.settings.pinterest_client_id)
+            and self._secret(self.settings.pinterest_client_secret)
+            and self._valid_https_uri(self.settings.pinterest_oauth_redirect_uri)
+            and self._valid_token_cipher()
+        )
         database_ready, revision_status, revision = self._database_readiness()
         artifact_ready = self._artifact_storage_ready()
         instagram_publishing_ready = bool(
@@ -194,6 +201,19 @@ class SystemReadinessService:
                     else (
                         "TikTok 账号绑定未就绪：请检查独立 Gate、Client Key、"
                         "Client Secret、HTTPS Redirect URI 和 Token 加密密钥。"
+                    )
+                ),
+            ),
+            pinterest=SystemComponentRead(
+                ready=pinterest_ready,
+                message=(
+                    "Pinterest local OAuth configuration is ready; this does not prove "
+                    "app review, access tier, scope approval, or account binding."
+                    if pinterest_ready
+                    else (
+                        "Pinterest account binding is not ready: configure its "
+                        "independent Gate, Client ID, Client Secret, exact HTTPS "
+                        "Redirect URI, and social Token encryption key."
                     )
                 ),
             ),

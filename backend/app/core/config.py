@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     enable_social_account_binding: bool = False
     enable_instagram_account_binding: bool = False
     enable_tiktok_account_binding: bool = False
+    enable_pinterest_account_binding: bool = False
     enable_tiktok_publishing: bool = False
     enable_instagram_publishing: bool = False
     enable_youtube_publishing: bool = False
@@ -67,6 +68,10 @@ class Settings(BaseSettings):
     tiktok_client_secret: SecretStr | None = None
     tiktok_oauth_redirect_uri: str | None = None
     tiktok_request_timeout: float = Field(default=30, gt=0, le=120)
+    pinterest_client_id: str | None = None
+    pinterest_client_secret: SecretStr | None = None
+    pinterest_oauth_redirect_uri: str | None = None
+    pinterest_request_timeout: float = Field(default=30, gt=0, le=120)
     tiktok_ffprobe_path: str = "ffprobe"
     tiktok_media_probe_timeout: float = Field(default=10, gt=0, le=60)
     instagram_ffprobe_path: str = "ffprobe"

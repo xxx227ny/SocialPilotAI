@@ -33,12 +33,21 @@ class TikTokConnectRead(BaseModel):
     expires_at: datetime
 
 
+class PinterestConnectRequest(BaseModel):
+    product_id: int = Field(gt=0)
+
+
+class PinterestConnectRead(BaseModel):
+    authorization_url: str
+    expires_at: datetime
+
+
 class SocialAccountRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     product_id: int
-    platform: Literal["youtube", "instagram", "tiktok"]
+    platform: Literal["youtube", "instagram", "tiktok", "pinterest"]
     provider_account_id: str
     display_name: str
     scopes: list[str]
@@ -81,6 +90,17 @@ class TikTokDisconnectRead(BaseModel):
     account: SocialAccountRead
     local_only: Literal[True] = True
     tiktok_authorization_revoked: Literal[False] = False
+
+
+class PinterestDisconnectRequest(BaseModel):
+    product_id: int = Field(gt=0)
+    confirm_disconnect: Literal[True]
+
+
+class PinterestDisconnectRead(BaseModel):
+    account: SocialAccountRead
+    local_only: Literal[True] = True
+    pinterest_authorization_revoked: Literal[False] = False
 
 
 class PublishArtifactCandidateRead(BaseModel):
