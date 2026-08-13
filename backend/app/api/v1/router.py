@@ -15,6 +15,7 @@ from app.api.v1.routes.products import router as products_router
 from app.api.v1.routes.social import router as social_router
 from app.api.v1.routes.strategies import router as strategies_router
 from app.api.v1.routes.system import router as system_router
+from app.api.v1.routes.video_compositions import router as video_compositions_router
 from app.api.v1.routes.video_renders import router as video_renders_router
 from app.api.v1.routes.videos import router as videos_router
 
@@ -35,4 +36,5 @@ api_router.include_router(strategy_copy_router, tags=["copy-matrix"])
 api_router.include_router(growth_router, tags=["growth-copilot"])
 api_router.include_router(videos_router, tags=["content-studio"])
 api_router.include_router(video_renders_router, tags=["video-render-tasks"])
+api_router.include_router(video_compositions_router, tags=["video-compositions"])
 api_router.include_router(dashboard_router, tags=["demo-dashboard"])

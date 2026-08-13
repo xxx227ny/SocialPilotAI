@@ -261,6 +261,96 @@ def test_tiktok_refresh_expiry_upgrade_downgrade_and_reupgrade(
 
     migration_service._run_alembic(database, "upgrade", HEAD_REVISION)  # noqa: SLF001
     assert current_revision(database) == HEAD_REVISION
+
+
+def test_video_composition_upgrade_preserves_0008_business_data(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "from-0008.db"
+    migration_service._run_alembic(  # noqa: SLF001
+        database, "upgrade", "0008_tiktok_direct_post"
+    )
+    now = datetime.now(UTC).isoformat()
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "INSERT INTO products "
+            "(id,name,category,description,selling_points,target_markets,"
+            "created_at,updated_at,brand_kit_version_id) "
+            "VALUES (1,'P','C','D','[\"Portable\"]','[\"US\"]',?,?,NULL)",
+            (now, now),
+        )
+        connection.execute(
+            "INSERT INTO marketing_strategies VALUES "
+            "(1,1,'Position','[\"Insight\"]','[\"Angle\"]',"
+            "'[\"Risk\"]','[\"Evidence\"]',?)",
+            (now,),
+        )
+        copies = json.dumps(
+            [
+                {"platform": platform, "caption": "Copy"}
+                for platform in ("TikTok", "Instagram", "Facebook")
+            ]
+        )
+        connection.execute(
+            "INSERT INTO copy_matrices VALUES (1,1,1,?,?)", (copies, now)
+        )
+        scenes = json.dumps(
+            [
+                {
+                    "sequence": 1,
+                    "duration_seconds": 15,
+                    "shot_type": "hero",
+                    "visual_description": "Product",
+                    "action": "Show",
+                    "narration": "Placeholder",
+                }
+            ]
+        )
+        connection.execute(
+            "INSERT INTO video_projects VALUES "
+            "(1,1,1,1,'TikTok','Video','Concept',15,'9:16',?,"
+            "'CTA','planned',?,?)",
+            (scenes, now, now),
+        )
+        connection.execute(
+            "INSERT INTO video_render_tasks VALUES "
+            "(1,1,1,'SUCCEEDED','fake','task','prompt',15,'9:16',"
+            "'720P','render-key',NULL,NULL,?,?)",
+            (now, now),
+        )
+        sha = "a" * 64
+        metadata = json.dumps(
+            {"content_type": "video/mp4", "size_bytes": 5, "sha256": sha}
+        )
+        connection.execute(
+            "INSERT INTO video_render_artifacts VALUES "
+            "(1,1,NULL,'render-task-1.mp4',?,NULL,?,?)",
+            (metadata, now, now),
+        )
+        connection.commit()
+    before = business_snapshot(database)
+    migration_service._run_alembic(  # noqa: SLF001
+        database, "upgrade", "0009_video_compositions"
+    )
+    assert current_revision(database) == "0009_video_compositions"
+    assert business_snapshot(database) == before
+    with sqlite3.connect(database) as connection:
+        for table in (
+            "video_compositions",
+            "video_composition_shots",
+            "video_composition_artifacts",
+        ):
+            assert (
+                connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] == 0
+            )
+    migration_service._run_alembic(  # noqa: SLF001
+        database, "downgrade", "0008_tiktok_direct_post"
+    )
+    assert business_snapshot(database) == before
+    migration_service._run_alembic(  # noqa: SLF001
+        database, "upgrade", "0009_video_compositions"
+    )
+    assert business_snapshot(database) == before
     assert business_snapshot(database) == before
 
 

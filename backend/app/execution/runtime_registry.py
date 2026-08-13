@@ -21,6 +21,7 @@ from app.execution.handlers.tiktok_publish import (
     TikTokRefreshV1Handler,
     TikTokSubmitV1Handler,
 )
+from app.execution.handlers.video_composition import VideoCompositionRenderV1Handler
 from app.execution.handlers.wanx_video_render import (
     WanxVideoRenderRefreshV1Handler,
     WanxVideoRenderSubmitV1Handler,
@@ -250,6 +251,12 @@ def build_execution_handler_registry(
             settings=settings,
             output_fetcher=render_fetcher,
             artifact_storage=render_storage,
+        )
+    )
+    registry.register(
+        VideoCompositionRenderV1Handler(
+            session_factory=session_factory,
+            settings=settings,
         )
     )
     youtube_provider = LazyYouTubeProvider(settings, youtube_provider_factory)

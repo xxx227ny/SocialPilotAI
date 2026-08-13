@@ -10,6 +10,7 @@ import { ProductCreateForm } from "../components/product/ProductCreateForm";
 import { SocialPublishingPanel } from "../components/product/SocialPublishingPanel";
 import { InitialVideoProjectPanel } from "../components/video/InitialVideoProjectPanel";
 import { VideoRenderPreflightPanel } from "../components/video/VideoRenderPreflightPanel";
+import { VideoCompositionPanel } from "../components/video/VideoCompositionPanel";
 import { usePresentationMode } from "../context/PresentationModeContext";
 import type { PlatformCopy } from "../types/copy";
 import type { Product } from "../types/product";
@@ -410,6 +411,7 @@ function ProductDetail({
         product={product}
         videoProjectId={liveVideoProjectId}
       />
+      <VideoCompositionPanel product={product} videoProjectId={liveVideoProjectId} />
 
       <SocialPublishingPanel productId={product.id} />
 

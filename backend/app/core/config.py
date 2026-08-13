@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     enable_video_project_execution: bool = False
     enable_v2_video_project_execution: bool = False
     enable_video_render_execution: bool = False
+    enable_video_composition: bool = False
     enable_growth_execution: bool = False
     enable_social_account_binding: bool = False
     enable_instagram_account_binding: bool = False
@@ -84,6 +85,10 @@ class Settings(BaseSettings):
     wanx_timeout: float = Field(default=30, gt=0, le=300)
     enable_live_wanx_demo: bool = False
     video_artifact_storage_root: str | None = None
+    video_composition_temp_root: str | None = None
+    video_composition_ffmpeg_path: str = "ffmpeg"
+    video_composition_ffprobe_path: str = "ffprobe"
+    video_composition_process_timeout: float = Field(default=180, gt=0, le=900)
     execution_worker_status_file: str | None = None
     execution_worker_stale_seconds: int = Field(default=15, ge=5, le=300)
     video_artifact_max_bytes: int = Field(default=50_000_000, gt=0, le=500_000_000)

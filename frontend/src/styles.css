@@ -3274,3 +3274,8 @@ textarea { font: inherit; }
     display: grid;
   }
 }
+.video-composition-panel { display: grid; gap: 12px; padding: 18px; border: 1px solid #dfe4ec; border-radius: 16px; margin-top: 18px; }
+.video-composition-panel label { display: grid; gap: 6px; }
+.composition-timeline { display: flex; flex-wrap: wrap; gap: 8px; }
+.composition-timeline span { padding: 6px 10px; border-radius: 999px; background: #eef3f8; }
+.video-composition-panel video { width: min(360px, 100%); aspect-ratio: 9 / 16; background: #000; }

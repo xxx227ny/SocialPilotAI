@@ -26,6 +26,10 @@ export const videoRenderExecutionEnabled = isEnabledFeatureFlag(
   import.meta.env.VITE_ENABLE_VIDEO_RENDER_EXECUTION,
 );
 
+export const videoCompositionEnabled = isEnabledFeatureFlag(
+  import.meta.env.VITE_ENABLE_VIDEO_COMPOSITION,
+);
+
 export const growthExecutionEnabled = isEnabledFeatureFlag(
   import.meta.env.VITE_ENABLE_GROWTH_EXECUTION,
 );

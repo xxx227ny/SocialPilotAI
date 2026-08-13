@@ -8,6 +8,10 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import Settings, get_settings
+from app.execution.handlers.video_composition import (
+    VideoCompositionRenderV1Handler,
+    VideoCompositionRenderV1Input,
+)
 from app.execution.runtime_registry import build_execution_handler_registry
 from app.execution.worker import ExecutionWorker, WorkerRunStatus
 from app.main import app
@@ -154,11 +158,16 @@ def test_http_enqueue_is_provider_free_and_worker_restores_exact_result(
         "tiktok.publish.creator_info.v1",
         "tiktok.publish.refresh.v1",
         "tiktok.publish.submit.v1",
+        "video.composition.render.v1",
         "wanx.video_render.refresh.v1",
         "wanx.video_render.submit.v1",
         "youtube.publish.refresh.v1",
         "youtube.publish.submit.v1",
     )
+    composition_handler = registry.resolve("video.composition.render.v1")
+    assert isinstance(composition_handler, VideoCompositionRenderV1Handler)
+    assert composition_handler.input_schema is VideoCompositionRenderV1Input
+    assert registry.job_types.count("video.composition.render.v1") == 1
     assert factory.state == {"constructed": 0, "calls": 0}
 
     first = enqueue(client, task["id"], product["id"], checked)
@@ -225,6 +234,24 @@ def test_generic_queue_cannot_bypass_strategy_confirmation(
             "idempotency_key": "unsafe-generic-strategy-job",
             "input_payload": {},
             "cost_confirmed": False,
+        },
+    )
+    assert response.status_code == 409
+
+
+def test_generic_queue_cannot_create_video_composition_job(
+    client: TestClient,
+) -> None:
+    response = client.post(
+        "/api/v1/execution-jobs",
+        json={
+            "job_type": "video.composition.render.v1",
+            "source_type": "video_composition",
+            "source_id": 1,
+            "input_digest": "a" * 64,
+            "idempotency_key": "unsafe-generic-composition-job",
+            "input_payload": {},
+            "cost_confirmed": True,
         },
     )
     assert response.status_code == 409
