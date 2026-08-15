@@ -235,7 +235,9 @@ def test_tiktok_refresh_expiry_upgrade_downgrade_and_reupgrade(
         database, "upgrade", "0006_instagram_publish_container_identity"
     )
     before = business_snapshot(database)
-    migration_service._run_alembic(database, "upgrade", HEAD_REVISION)  # noqa: SLF001
+    migration_service._run_alembic(  # noqa: SLF001
+        database, "upgrade", HEAD_REVISION
+    )
     connection = sqlite3.connect(database)
     try:
         columns = {
@@ -259,7 +261,9 @@ def test_tiktok_refresh_expiry_upgrade_downgrade_and_reupgrade(
     assert "refresh_token_expires_at" not in columns
     assert business_snapshot(database) == before
 
-    migration_service._run_alembic(database, "upgrade", HEAD_REVISION)  # noqa: SLF001
+    migration_service._run_alembic(  # noqa: SLF001
+        database, "upgrade", HEAD_REVISION
+    )
     assert current_revision(database) == HEAD_REVISION
 
 
@@ -352,6 +356,92 @@ def test_video_composition_upgrade_preserves_0008_business_data(
     )
     assert business_snapshot(database) == before
     assert business_snapshot(database) == before
+
+
+def test_video_enhancement_upgrade_preserves_0009_composition_data(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "from-0009.db"
+    migration_service._run_alembic(  # noqa: SLF001
+        database, "upgrade", "0009_video_compositions"
+    )
+    now = datetime.now(UTC).isoformat()
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "INSERT INTO products "
+            "(id,name,category,description,selling_points,target_markets,"
+            "created_at,updated_at,brand_kit_version_id) "
+            "VALUES (1,'P','C','D','[\"Stable\"]','[\"US\"]',?,?,NULL)",
+            (now, now),
+        )
+        connection.execute(
+            "INSERT INTO marketing_strategies VALUES "
+            "(1,1,'Position','[\"Insight\"]','[\"Angle\"]',"
+            "'[\"Risk\"]','[\"Evidence\"]',?)",
+            (now,),
+        )
+        connection.execute(
+            "INSERT INTO copy_matrices VALUES (1,1,1,'[]',?)", (now,)
+        )
+        connection.execute(
+            "INSERT INTO video_projects VALUES "
+            "(1,1,1,1,'TikTok','Video','Concept',15,'9:16','[]',"
+            "'CTA','planned',?,?)",
+            (now, now),
+        )
+        connection.execute(
+            "INSERT INTO video_compositions VALUES "
+            "(1,1,1,?,?,?,1,15000,'9:16',1080,1920,30,1,'SUCCEEDED',"
+            "NULL,?,?,?)",
+            ("a" * 64, "b" * 64, "composition-key", now, now, now),
+        )
+        connection.execute(
+            "INSERT INTO video_composition_artifacts VALUES "
+            "(1,1,'composition.mp4','video/mp4',100,?,15000,1080,1920,30,1,"
+            "'h264','yuv420p','aac',48000,'mp4',?,?)",
+            ("c" * 64, "b" * 64, now),
+        )
+        connection.commit()
+        before = {
+            "composition": connection.execute(
+                "SELECT * FROM video_compositions"
+            ).fetchall(),
+            "artifact": connection.execute(
+                "SELECT * FROM video_composition_artifacts"
+            ).fetchall(),
+        }
+    migration_result = upgrade_sqlite_database(database, tmp_path / "backups")
+    assert migration_result.previous_revision == "0009_video_compositions"
+    assert current_revision(database) == HEAD_REVISION
+    with sqlite3.connect(database) as connection:
+        composition_rows = connection.execute(
+            "SELECT * FROM video_compositions"
+        ).fetchall()
+        assert composition_rows == before["composition"]
+        assert connection.execute(
+            "SELECT * FROM video_composition_artifacts"
+        ).fetchall() == before["artifact"]
+        for table in (
+            "video_composition_audio_artifacts",
+            "video_composition_enhancements",
+            "video_composition_subtitle_artifacts",
+            "video_composition_enhancement_artifacts",
+        ):
+            count = connection.execute(
+                f"SELECT COUNT(*) FROM {table}"
+            ).fetchone()[0]
+            assert count == 0
+    migration_service._run_alembic(  # noqa: SLF001
+        database, "downgrade", "0009_video_compositions"
+    )
+    assert current_revision(database) == "0009_video_compositions"
+    with sqlite3.connect(database) as connection:
+        composition_rows = connection.execute(
+            "SELECT * FROM video_compositions"
+        ).fetchall()
+        assert composition_rows == before["composition"]
+    migration_service._run_alembic(database, "upgrade", HEAD_REVISION)  # noqa: SLF001
+    assert current_revision(database) == HEAD_REVISION
 
 
 def test_unversioned_current_schema_is_safely_stamped_at_head(

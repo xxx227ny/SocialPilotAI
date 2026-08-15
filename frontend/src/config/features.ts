@@ -30,6 +30,10 @@ export const videoCompositionEnabled = isEnabledFeatureFlag(
   import.meta.env.VITE_ENABLE_VIDEO_COMPOSITION,
 );
 
+export const videoCompositionEnhancementEnabled = isEnabledFeatureFlag(
+  import.meta.env.VITE_ENABLE_VIDEO_COMPOSITION_ENHANCEMENT,
+);
+
 export const growthExecutionEnabled = isEnabledFeatureFlag(
   import.meta.env.VITE_ENABLE_GROWTH_EXECUTION,
 );

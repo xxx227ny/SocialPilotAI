@@ -22,6 +22,9 @@ from app.execution.handlers.tiktok_publish import (
     TikTokSubmitV1Handler,
 )
 from app.execution.handlers.video_composition import VideoCompositionRenderV1Handler
+from app.execution.handlers.video_composition_enhancement import (
+    VideoCompositionEnhanceV1Handler,
+)
 from app.execution.handlers.wanx_video_render import (
     WanxVideoRenderRefreshV1Handler,
     WanxVideoRenderSubmitV1Handler,
@@ -255,6 +258,12 @@ def build_execution_handler_registry(
     )
     registry.register(
         VideoCompositionRenderV1Handler(
+            session_factory=session_factory,
+            settings=settings,
+        )
+    )
+    registry.register(
+        VideoCompositionEnhanceV1Handler(
             session_factory=session_factory,
             settings=settings,
         )

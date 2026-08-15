@@ -4,6 +4,7 @@ import hashlib
 import threading
 import time
 from collections.abc import Callable, Generator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -254,6 +255,176 @@ def test_heartbeat_renews_lease_and_thread_is_joined(
         thread.name == f"execution-heartbeat-{job_id}"
         for thread in threading.enumerate()
     )
+
+
+def test_background_and_handler_heartbeats_are_serialized_and_complete_result(
+    worker_sessions: sessionmaker[Session], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    background_entered = threading.Event()
+    release_background = threading.Event()
+    synchronous_requested = threading.Event()
+    synchronous_entered = threading.Event()
+    state_lock = threading.Lock()
+    active = 0
+    maximum_active = 0
+    original_heartbeat = ExecutionQueueService.heartbeat
+
+    def controlled_heartbeat(self, job_id, data):
+        nonlocal active, maximum_active
+        is_background = threading.current_thread().name.startswith(
+            "execution-heartbeat-"
+        )
+        with state_lock:
+            active += 1
+            maximum_active = max(maximum_active, active)
+        try:
+            if is_background:
+                background_entered.set()
+                assert release_background.wait(timeout=5)
+            else:
+                synchronous_entered.set()
+            return original_heartbeat(self, job_id, data)
+        finally:
+            with state_lock:
+                active -= 1
+
+    monkeypatch.setattr(
+        ExecutionQueueService,
+        "heartbeat",
+        controlled_heartbeat,
+    )
+
+    def synchronized_handler(
+        context: ExecutionContext, _: FakeInput
+    ) -> HandlerResult:
+        assert background_entered.wait(timeout=5)
+        synchronous_requested.set()
+        context.before_provider_call(may_submit_external=False)
+        return HandlerResult.succeeded(
+            provider_name="fake",
+            result_entity_type="fake_result",
+            result_entity_id=42,
+        )
+
+    handler = FakeHandler("fake.serial-heartbeat", synchronized_handler)
+    job_id = create_job(
+        worker_sessions,
+        job_data("serial-heartbeat", handler.job_type),
+    )
+    execution_worker = worker(worker_sessions, registry_with(handler))
+    results: list[WorkerRunResult] = []
+    run_thread = threading.Thread(
+        target=lambda: results.append(execution_worker.run_once())
+    )
+    run_thread.start()
+    assert background_entered.wait(timeout=5)
+    assert synchronous_requested.wait(timeout=5)
+    assert not synchronous_entered.is_set()
+    release_background.set()
+    run_thread.join(timeout=5)
+
+    assert not run_thread.is_alive()
+    assert synchronous_entered.is_set()
+    assert maximum_active == 1
+    assert results == [WorkerRunResult(WorkerRunStatus.SUCCEEDED, job_id)]
+    job = get_job(worker_sessions, job_id)
+    assert job.status == "SUCCEEDED"
+    assert job.result_entity_type == "fake_result"
+    assert job.result_entity_id == 42
+    assert job.attempts[0].status == "SUCCEEDED"
+    assert execution_worker.has_live_heartbeat is False
+
+
+def test_expired_lease_remains_authoritative_and_cannot_complete(
+    worker_sessions: sessionmaker[Session],
+) -> None:
+    handler_started = threading.Event()
+    release_handler = threading.Event()
+    irreversible_boundary_reached = threading.Event()
+
+    def expired_handler(
+        context: ExecutionContext, _: FakeInput
+    ) -> HandlerResult:
+        handler_started.set()
+        assert release_handler.wait(timeout=5)
+        context.before_provider_call(may_submit_external=True)
+        irreversible_boundary_reached.set()
+        return HandlerResult.succeeded()
+
+    handler = FakeHandler("fake.expired-lease", expired_handler)
+    job_id = create_job(
+        worker_sessions,
+        job_data("expired-lease", handler.job_type),
+    )
+    execution_worker = ExecutionWorker(
+        session_factory=worker_sessions,
+        registry=registry_with(handler),
+        worker_id="worker-expired-lease",
+        lease_seconds=5,
+        heartbeat_interval_seconds=4,
+    )
+    results: list[WorkerRunResult] = []
+    run_thread = threading.Thread(
+        target=lambda: results.append(execution_worker.run_once())
+    )
+    run_thread.start()
+    assert handler_started.wait(timeout=5)
+    with worker_sessions() as session:
+        session.execute(
+            update(ExecutionJob)
+            .where(ExecutionJob.id == job_id)
+            .values(lease_expires_at=datetime.now(UTC) - timedelta(seconds=1))
+        )
+        session.commit()
+    release_handler.set()
+    run_thread.join(timeout=5)
+
+    assert not run_thread.is_alive()
+    assert results == [WorkerRunResult(WorkerRunStatus.LEASE_LOST, job_id)]
+    assert not irreversible_boundary_reached.is_set()
+    job = get_job(worker_sessions, job_id)
+    assert job.status == "QUEUED"
+    assert job.result_entity_id is None
+    assert job.attempts[0].status == "LEASE_EXPIRED"
+    assert execution_worker.has_live_heartbeat is False
+
+
+def test_authoritative_heartbeat_failure_blocks_provider_boundary(
+    worker_sessions: sessionmaker[Session], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    provider_boundary_reached = threading.Event()
+
+    def rejected_heartbeat(*_args, **_kwargs):
+        raise AppError("Execution job lease is owned by another worker", 409)
+
+    monkeypatch.setattr(
+        ExecutionQueueService,
+        "heartbeat",
+        rejected_heartbeat,
+    )
+
+    def guarded_handler(
+        context: ExecutionContext, _: FakeInput
+    ) -> HandlerResult:
+        context.before_provider_call(may_submit_external=True)
+        provider_boundary_reached.set()
+        return HandlerResult.succeeded()
+
+    handler = FakeHandler("fake.rejected-heartbeat", guarded_handler)
+    job_id = create_job(
+        worker_sessions,
+        job_data("rejected-heartbeat", handler.job_type),
+    )
+    execution_worker = worker(worker_sessions, registry_with(handler))
+    result = execution_worker.run_once()
+
+    assert result == WorkerRunResult(WorkerRunStatus.LEASE_LOST, job_id)
+    assert not provider_boundary_reached.is_set()
+    job = get_job(worker_sessions, job_id)
+    assert job.status == "RUNNING"
+    assert job.result_entity_id is None
+    assert job.attempts[0].status == "RUNNING"
+    assert execution_worker.has_live_heartbeat is False
 
 
 def test_lost_lease_cannot_overwrite_replacement_owner_result(

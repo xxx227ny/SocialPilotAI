@@ -14,7 +14,11 @@ from app.models.video import VideoProject
 from app.models.video_composition import (
     VideoComposition,
     VideoCompositionArtifact,
+    VideoCompositionAudioArtifact,
+    VideoCompositionEnhancement,
+    VideoCompositionEnhancementArtifact,
     VideoCompositionShot,
+    VideoCompositionSubtitleArtifact,
 )
 from app.models.video_render import VideoRenderTask
 from app.models.video_render_artifact import VideoRenderArtifact
@@ -41,4 +45,8 @@ __all__ = [
     "VideoComposition",
     "VideoCompositionShot",
     "VideoCompositionArtifact",
+    "VideoCompositionAudioArtifact",
+    "VideoCompositionEnhancement",
+    "VideoCompositionEnhancementArtifact",
+    "VideoCompositionSubtitleArtifact",
 ]

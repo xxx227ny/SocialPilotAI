@@ -13,6 +13,7 @@
     "test:video-queue": "node scripts/test-video-project-queue.mjs",
     "test:video-render-queue": "node scripts/test-video-render-queue.mjs",
     "test:video-composition-queue": "node scripts/test-video-composition-queue.mjs",
+    "test:video-composition-enhancement": "node scripts/test-video-composition-enhancement.mjs",
     "test:youtube-publish-queue": "node scripts/test-youtube-publish-queue.mjs",
     "test:instagram-binding": "node scripts/test-instagram-account-binding.mjs",
     "test:tiktok-account-binding": "node scripts/test-tiktok-account-binding.mjs",

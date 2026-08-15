@@ -16,6 +16,7 @@ import type { Product } from "../../types/product";
 import type { VideoProject, VideoRenderArtifact } from "../../types/video";
 import type { CompositionShotInput, VideoCompositionArtifact, VideoCompositionPreflight } from "../../types/videoComposition";
 import { exactCompositionResult, selectionIdentity, shouldPollComposition } from "./videoCompositionState";
+import { VideoCompositionEnhancementPanel } from "./VideoCompositionEnhancementPanel";
 
 export function VideoCompositionPanel({ product, videoProjectId }: { product: Product; videoProjectId?: number }) {
   const { isPresentation } = usePresentationMode();
@@ -102,7 +103,7 @@ export function VideoCompositionPanel({ product, videoProjectId }: { product: Pr
     <button type="button" onClick={() => void runPreflight()} disabled={selectedShots.length < 3 || submitLock.current}>Provider-free Preflight</button>
     {preflight && <><label><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />确认本地CPU与磁盘写入</label><button type="button" disabled={!confirmed || submitLock.current} onClick={() => void submit()}>创建15秒成片</button></>}
     {job && <p>Job #{job.id} · {job.status}</p>}
-    {result && <><p>Composition Artifact #{result.id} · {result.duration_ms}ms · {result.video_codec}/{result.audio_codec}</p><video controls src={compositionArtifactContentUrl(result.id)} /></>}
+    {result && <><p>Composition Artifact #{result.id} · {result.duration_ms}ms · {result.video_codec}/{result.audio_codec}</p><video controls src={compositionArtifactContentUrl(result.id)} /><VideoCompositionEnhancementPanel product={product} artifact={result} /></>}
     {job?.status === "SUCCEEDED" && !result && <button type="button" onClick={() => setJob({ ...job })} disabled={resultLock.current}>重新读取精确成片记录</button>}
     {message && <p role="status">{message}</p>}
   </section>;

@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     enable_v2_video_project_execution: bool = False
     enable_video_render_execution: bool = False
     enable_video_composition: bool = False
+    enable_video_composition_enhancement: bool = False
     enable_growth_execution: bool = False
     enable_social_account_binding: bool = False
     enable_instagram_account_binding: bool = False

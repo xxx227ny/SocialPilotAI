@@ -210,6 +210,18 @@ def require_video_composition_enabled(
 VideoCompositionGateDep = Annotated[None, Depends(require_video_composition_enabled)]
 
 
+def require_video_composition_enhancement_enabled(
+    app_settings: Annotated[Settings, Depends(get_settings)],
+) -> None:
+    if not app_settings.enable_video_composition_enhancement:
+        raise AppError("Video composition enhancement is disabled by the server", 503)
+
+
+VideoCompositionEnhancementGateDep = Annotated[
+    None, Depends(require_video_composition_enhancement_enabled)
+]
+
+
 def _require_live_qwen_configuration(app_settings: Settings) -> None:
     if app_settings.require_live_provider_coherence and not qwen_provider_configured(
         app_settings

@@ -74,6 +74,7 @@ class ExecutionWorker:
         self._stop_event = Event()
         self._run_lock = Lock()
         self._thread_lock = Lock()
+        self._heartbeat_lock = Lock()
         self._heartbeat_thread: Thread | None = None
 
     @property
@@ -289,20 +290,23 @@ class ExecutionWorker:
         external_submission_possible: bool,
         lease_lost: Event,
     ) -> None:
-        try:
-            with self._session_factory() as session:
-                ExecutionQueueService(session).heartbeat(
-                    job_id,
-                    ExecutionJobHeartbeatRequest(
-                        worker_id=self._worker_id,
-                        lease_seconds=self._lease_seconds,
-                        provider_call_count=provider_call_count,
-                        external_submission_possible=external_submission_possible,
-                    ),
-                )
-        except Exception as error:
-            lease_lost.set()
-            raise LeaseLostError("Execution heartbeat could not renew lease") from error
+        with self._heartbeat_lock:
+            try:
+                with self._session_factory() as session:
+                    ExecutionQueueService(session).heartbeat(
+                        job_id,
+                        ExecutionJobHeartbeatRequest(
+                            worker_id=self._worker_id,
+                            lease_seconds=self._lease_seconds,
+                            provider_call_count=provider_call_count,
+                            external_submission_possible=external_submission_possible,
+                        ),
+                    )
+            except Exception as error:
+                lease_lost.set()
+                raise LeaseLostError(
+                    "Execution heartbeat could not renew lease"
+                ) from error
 
     def _set_heartbeat_thread(self, thread: Thread | None) -> None:
         with self._thread_lock:

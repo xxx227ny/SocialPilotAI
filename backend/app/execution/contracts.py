@@ -86,6 +86,15 @@ class ExecutionContext:
                 self._external_submission_possible,
             )
 
+    def before_irreversible_local_persist(self) -> None:
+        """Persist the boundary between local output and identity storage."""
+        self.checkpoint()
+        with self._state_lock:
+            self._external_submission_possible = True
+            call_count = self._provider_call_count
+        self._heartbeat(call_count, True)
+        self.checkpoint()
+
 
 @dataclass(frozen=True, slots=True)
 class HandlerResult:

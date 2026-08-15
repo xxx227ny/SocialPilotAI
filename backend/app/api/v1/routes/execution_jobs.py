@@ -21,6 +21,9 @@ from app.execution.handlers.tiktok_publish import (
     TIKTOK_PUBLISH_SUBMIT_V1,
 )
 from app.execution.handlers.video_composition import VIDEO_COMPOSITION_RENDER_V1
+from app.execution.handlers.video_composition_enhancement import (
+    VIDEO_COMPOSITION_ENHANCE_V1,
+)
 from app.execution.handlers.wanx_video_render import (
     WANX_VIDEO_RENDER_REFRESH_V1,
     WANX_VIDEO_RENDER_SUBMIT_V1,
@@ -70,6 +73,7 @@ def create_execution_job(
         TIKTOK_PUBLISH_SUBMIT_V1,
         TIKTOK_PUBLISH_REFRESH_V1,
         VIDEO_COMPOSITION_RENDER_V1,
+        VIDEO_COMPOSITION_ENHANCE_V1,
     }:
         raise AppError(
             "Provider jobs must use their confirmed business enqueue endpoint",
