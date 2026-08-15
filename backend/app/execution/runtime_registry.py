@@ -6,6 +6,9 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
+from app.execution.handlers.batch_video_variant import (
+    BatchVideoVariantPrepareV1Handler,
+)
 from app.execution.handlers.instagram_publish import (
     InstagramPublishFinalizeV1Handler,
     InstagramPublishRefreshV1Handler,
@@ -212,6 +215,9 @@ def build_execution_handler_registry(
     artifact_storage: VideoArtifactStorage | None = None,
 ) -> ExecutionHandlerRegistry:
     registry = ExecutionHandlerRegistry()
+    registry.register(
+        BatchVideoVariantPrepareV1Handler(session_factory=session_factory)
+    )
     registry.register(
         QwenStrategyGenerateV1Handler(
             session_factory=session_factory,

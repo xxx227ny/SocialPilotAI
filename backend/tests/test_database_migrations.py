@@ -158,6 +158,69 @@ def test_empty_database_upgrades_to_complete_head_schema(tmp_path: Path) -> None
     assert "alembic_version" in tables
 
 
+def test_stage3c_0010_database_upgrades_to_0011_and_preserves_data(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "stage3c-from-0010.db"
+    migration_service._run_alembic(  # noqa: SLF001
+        database, "upgrade", "0010_video_composition_enhancements"
+    )
+    now = datetime.now(UTC).isoformat()
+    connection = sqlite3.connect(database)
+    try:
+        connection.execute(
+            "INSERT INTO products "
+            "(id,name,category,description,selling_points,target_markets,"
+            "created_at,updated_at,brand_kit_version_id) "
+            "VALUES (?,?,?,?,?,?,?,?,NULL)",
+            (1, "Stage3C preserved", "Test", "Exact", '["Stable"]', "[]", now, now),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    result = upgrade_sqlite_database(database, tmp_path / "backups")
+    connection = sqlite3.connect(database)
+    try:
+        product = connection.execute(
+            "SELECT name, selling_points FROM products WHERE id=1"
+        ).fetchone()
+        tables = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
+    finally:
+        connection.close()
+    assert result.previous_revision == "0010_video_composition_enhancements"
+    assert result.current_revision == "0011_batch_video_jobs"
+    assert product == ("Stage3C preserved", '["Stable"]')
+    assert {"batch_video_jobs", "batch_video_variants"}.issubset(tables)
+    assert current_revision(database) == HEAD_REVISION
+
+
+def test_stage3c_temporary_downgrade_returns_to_0010(tmp_path: Path) -> None:
+    database = tmp_path / "stage3c-downgrade.db"
+    migration_service._run_alembic(database, "upgrade", "0011_batch_video_jobs")  # noqa: SLF001
+    migration_service._run_alembic(  # noqa: SLF001
+        database, "downgrade", "0010_video_composition_enhancements"
+    )
+    connection = sqlite3.connect(database)
+    try:
+        tables = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
+    finally:
+        connection.close()
+    assert "batch_video_jobs" not in tables
+    assert "batch_video_variants" not in tables
+    assert current_revision(database) == "0010_video_composition_enhancements"
+
+
 def test_head_revision_matches_all_current_model_schema(tmp_path: Path) -> None:
     migrated = tmp_path / "migrated.db"
     modeled = tmp_path / "modeled.db"
@@ -380,9 +443,7 @@ def test_video_enhancement_upgrade_preserves_0009_composition_data(
             "'[\"Risk\"]','[\"Evidence\"]',?)",
             (now,),
         )
-        connection.execute(
-            "INSERT INTO copy_matrices VALUES (1,1,1,'[]',?)", (now,)
-        )
+        connection.execute("INSERT INTO copy_matrices VALUES (1,1,1,'[]',?)", (now,))
         connection.execute(
             "INSERT INTO video_projects VALUES "
             "(1,1,1,1,'TikTok','Video','Concept',15,'9:16','[]',"
@@ -418,18 +479,17 @@ def test_video_enhancement_upgrade_preserves_0009_composition_data(
             "SELECT * FROM video_compositions"
         ).fetchall()
         assert composition_rows == before["composition"]
-        assert connection.execute(
-            "SELECT * FROM video_composition_artifacts"
-        ).fetchall() == before["artifact"]
+        assert (
+            connection.execute("SELECT * FROM video_composition_artifacts").fetchall()
+            == before["artifact"]
+        )
         for table in (
             "video_composition_audio_artifacts",
             "video_composition_enhancements",
             "video_composition_subtitle_artifacts",
             "video_composition_enhancement_artifacts",
         ):
-            count = connection.execute(
-                f"SELECT COUNT(*) FROM {table}"
-            ).fetchone()[0]
+            count = connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
             assert count == 0
     migration_service._run_alembic(  # noqa: SLF001
         database, "downgrade", "0009_video_compositions"

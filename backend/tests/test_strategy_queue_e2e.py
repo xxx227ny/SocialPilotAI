@@ -158,6 +158,7 @@ def test_http_enqueue_is_provider_free_and_worker_restores_exact_result(
         "tiktok.publish.creator_info.v1",
         "tiktok.publish.refresh.v1",
         "tiktok.publish.submit.v1",
+        "video.batch.variant.prepare.v1",
         "video.composition.enhance.v1",
         "video.composition.render.v1",
         "wanx.video_render.refresh.v1",

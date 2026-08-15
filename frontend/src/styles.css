@@ -1355,6 +1355,14 @@ textarea { font: inherit; }
 .demo-context-bar li[aria-hidden="true"] { color: #53637d; font-size: 13px; }
 
 .video-blueprint-page { max-width: 1540px; }
+.batch-video-panel { margin-top: 22px; padding: 28px; border: 1px solid #7568e555; border-radius: 18px; background: #101a31; }
+.batch-video-panel header span { color: #9187ed; font-size: 11px; font-weight: 850; letter-spacing: 1.4px; }
+.batch-video-panel__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.batch-video-panel fieldset, .batch-video-panel label { display: grid; gap: 8px; }
+.batch-video-panel fieldset label { display: flex; align-items: center; gap: 8px; }
+.batch-video-panel__actions { display: flex; gap: 10px; margin: 14px 0; }
+.batch-video-panel table { width: 100%; border-collapse: collapse; }
+.batch-video-panel th, .batch-video-panel td { padding: 9px; border-bottom: 1px solid #ffffff18; text-align: left; }
 .video-blueprint-hero { min-height: 330px; display: grid; grid-template-columns: minmax(0, .82fr) minmax(420px, 1.18fr); gap: 42px; align-items: center; padding: 42px 46px; overflow: hidden; background: radial-gradient(circle at 85% 22%, #6b59d750, transparent 28%), radial-gradient(circle at 65% 90%, #3f8db038, transparent 30%), linear-gradient(120deg, #101d36, #17284c 62%, #30255c); border: 1px solid #ffffff14; border-radius: 22px; }
 .video-blueprint-hero > div:first-child > span { color: #a39af8; font-size: 12px; font-weight: 850; letter-spacing: 2px; }
 .video-blueprint-hero h1 { margin: 10px 0 10px; color: #fff; font-size: clamp(42px, 3.4vw, 52px); letter-spacing: -1.4px; }

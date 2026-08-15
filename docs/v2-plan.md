@@ -22,8 +22,17 @@ V2 is not the final commercial product. Work proceeds through one reviewed stage
 
 - Authentication, billing, subscriptions, or multi-tenancy.
 - Social publishing, ad-account OAuth, automatic ad execution, or automatic budget changes.
-- Unlimited or batch generation.
-- TTS, subtitles, or a general media suite.
+- Unlimited generation remains out of scope. Stage 3C permits bounded,
+  Provider-free batch orchestration only; it does not generate media.
+- A general media suite remains out of scope. Existing approved subtitle and
+  audio-composition stages do not imply downstream batch production is complete.
+
+## Stage 3C boundary
+
+Stage 3C adds bounded BatchVideoJob orchestration and stable per-variant identities.
+It performs no AI, TTS, FFmpeg, rendering, review, publishing, or external writes.
+Scripts, visual assets, voice, final rendering, human review, bundles, and batch
+delivery remain incomplete downstream stages with separate Provider and cost approval.
 - Complex cloud storage before cost, privacy, retention, and download authorization review.
 - Replacing the modular monolith with microservices.
 - Modifying the freeze tag/history, public release copy, or private submission materials.

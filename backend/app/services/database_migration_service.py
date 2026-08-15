@@ -28,7 +28,8 @@ BRAND_KIT_REVISION = "0003_brand_kit_versions"
 EXECUTION_QUEUE_REVISION = "0004_execution_queue"
 TIKTOK_ACCOUNT_REVISION = "0007_tiktok_refresh_token_expiry"
 VIDEO_COMPOSITION_REVISION = "0009_video_compositions"
-HEAD_REVISION = "0010_video_composition_enhancements"
+VIDEO_COMPOSITION_ENHANCEMENT_REVISION = "0010_video_composition_enhancements"
+HEAD_REVISION = "0011_batch_video_jobs"
 UNVERSIONED = "unversioned"
 MANIFEST_VERSION = 1
 ALEMBIC_INI = Path(__file__).resolve().parents[2] / "alembic.ini"
@@ -247,6 +248,7 @@ def expected_schema_fingerprint(revision: str) -> str:
         EXECUTION_QUEUE_REVISION,
         TIKTOK_ACCOUNT_REVISION,
         VIDEO_COMPOSITION_REVISION,
+        VIDEO_COMPOSITION_ENHANCEMENT_REVISION,
         HEAD_REVISION,
     }:
         raise ValueError(f"Unknown expected revision: {revision}")
@@ -521,6 +523,10 @@ def _classify_unversioned_schema(path: Path) -> str:
         return "execution_queue_runtime"
     if fingerprint == expected_schema_fingerprint(TIKTOK_ACCOUNT_REVISION):
         return "tiktok_account_runtime"
+    if fingerprint == expected_schema_fingerprint(
+        VIDEO_COMPOSITION_ENHANCEMENT_REVISION
+    ):
+        return "video_composition_enhancement_runtime"
     if fingerprint == expected_schema_fingerprint(HEAD_REVISION):
         return "unversioned_head"
     raise IncompatibleSchemaError(
@@ -604,6 +610,7 @@ def get_database_migration_status(database_path: Path) -> DatabaseMigrationStatu
             EXECUTION_QUEUE_REVISION,
             TIKTOK_ACCOUNT_REVISION,
             VIDEO_COMPOSITION_REVISION,
+            VIDEO_COMPOSITION_ENHANCEMENT_REVISION,
             HEAD_REVISION,
         }:
             raise IncompatibleSchemaError("Unsupported Alembic revision")
@@ -627,6 +634,9 @@ def get_database_migration_status(database_path: Path) -> DatabaseMigrationStatu
             EXECUTION_QUEUE_REVISION: "execution_queue_runtime",
             TIKTOK_ACCOUNT_REVISION: "tiktok_account_runtime",
             VIDEO_COMPOSITION_REVISION: "video_composition_runtime",
+            VIDEO_COMPOSITION_ENHANCEMENT_REVISION: (
+                "video_composition_enhancement_runtime"
+            ),
         }
         return DatabaseMigrationStatus(
             state=state_by_revision[revision],
@@ -678,6 +688,9 @@ def _upgrade_sqlite_database_unlocked(
                     "brand_kit_runtime": BRAND_KIT_REVISION,
                     "execution_queue_runtime": EXECUTION_QUEUE_REVISION,
                     "tiktok_account_runtime": TIKTOK_ACCOUNT_REVISION,
+                    "video_composition_enhancement_runtime": (
+                        VIDEO_COMPOSITION_ENHANCEMENT_REVISION
+                    ),
                     "unversioned_head": HEAD_REVISION,
                 }[schema_state]
                 _run_alembic(database, "stamp", stamp_revision)
@@ -691,6 +704,7 @@ def _upgrade_sqlite_database_unlocked(
                     EXECUTION_QUEUE_REVISION,
                     TIKTOK_ACCOUNT_REVISION,
                     VIDEO_COMPOSITION_REVISION,
+                    VIDEO_COMPOSITION_ENHANCEMENT_REVISION,
                     HEAD_REVISION,
                 }:
                     raise IncompatibleSchemaError(

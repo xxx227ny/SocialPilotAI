@@ -4,6 +4,8 @@ import { listPublishTasks } from "../api/social";
 import { getVideoRenderArtifacts } from "../api/videos";
 import { DemoContextBar } from "../components/showcase/DemoContextBar";
 import { LiveWanxGenerationPanel } from "../components/video/LiveWanxGenerationPanel";
+import { BatchVideoJobPanel } from "../components/video/BatchVideoJobPanel";
+import { shouldMountBatchVideoFlow } from "../components/video/batchVideoJobState";
 import { VideoHero } from "../components/video/VideoHero";
 import { VideoStoryboard } from "../components/video/VideoStoryboard";
 import { VerifiedWanxOutput } from "../components/video/VerifiedWanxOutput";
@@ -17,6 +19,7 @@ import { useDemoSnapshot } from "../hooks/useDemoSnapshot";
 import { usePresentationMode } from "../context/PresentationModeContext";
 import type { PublishTask } from "../types/social";
 import type { VideoRenderArtifact } from "../types/video";
+import { batchVideoJobsEnabled } from "../config/features";
 
 export function ContentStudioPage() {
   const { snapshot, loading, error } = useDemoSnapshot();
@@ -29,6 +32,10 @@ export function ContentStudioPage() {
   const productId = snapshot?.product.id;
   const liveWanxEnabled = isLiveWanxDemoEnabled(
     import.meta.env.VITE_ENABLE_LIVE_WANX_DEMO,
+  );
+  const showBatchVideoJobs = shouldMountBatchVideoFlow(
+    batchVideoJobsEnabled,
+    isPresentation,
   );
 
   const loadArtifacts = useCallback(async () => {
@@ -105,6 +112,7 @@ export function ContentStudioPage() {
               onArtifactReady={loadArtifacts}
             />
           )}
+          {showBatchVideoJobs && <BatchVideoJobPanel />}
           <section className="video-blueprint-cta">
             <div><span>END CARD</span><h2>从生活方式故事走向购买行动</h2></div>
             <strong>{snapshot.video_project.cta}</strong>

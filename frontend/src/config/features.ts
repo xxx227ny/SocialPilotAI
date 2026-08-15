@@ -1,4 +1,4 @@
-function isEnabledFeatureFlag(value: string | undefined): boolean {
+export function isEnabledFeatureFlag(value: string | undefined): boolean {
   return value?.trim().toLowerCase() === "true";
 }
 
@@ -32,6 +32,10 @@ export const videoCompositionEnabled = isEnabledFeatureFlag(
 
 export const videoCompositionEnhancementEnabled = isEnabledFeatureFlag(
   import.meta.env.VITE_ENABLE_VIDEO_COMPOSITION_ENHANCEMENT,
+);
+
+export const batchVideoJobsEnabled = isEnabledFeatureFlag(
+  import.meta.env.VITE_ENABLE_BATCH_VIDEO_JOBS,
 );
 
 export const growthExecutionEnabled = isEnabledFeatureFlag(

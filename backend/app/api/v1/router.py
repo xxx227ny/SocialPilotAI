@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from app.api.v1.routes.batch_video_jobs import router as batch_video_jobs_router
 from app.api.v1.routes.brand_kits import router as brand_kits_router
 from app.api.v1.routes.copies import router as copies_router
 from app.api.v1.routes.copies import strategy_copy_router
@@ -24,6 +25,7 @@ api_router.include_router(health_router, tags=["system"])
 api_router.include_router(system_router, tags=["system"])
 api_router.include_router(products_router, tags=["products"])
 api_router.include_router(brand_kits_router, tags=["brand-kits"])
+api_router.include_router(batch_video_jobs_router, tags=["batch-video-jobs"])
 api_router.include_router(execution_jobs_router, tags=["execution-jobs"])
 api_router.include_router(social_router, tags=["social-publishing"])
 api_router.include_router(marketing_tasks_router, tags=["marketing-tasks"])
