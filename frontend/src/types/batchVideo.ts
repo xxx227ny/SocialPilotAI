@@ -59,6 +59,8 @@ export interface BatchVideoVariant {
   execution_job_id: number;
   status: BatchVariantStatus;
   safe_error_code: string | null;
+  active_script_version_id: number | null;
+  script_version_sequence: number;
 }
 
 export interface BatchVideoCreateResult {

@@ -37,6 +37,9 @@ export const videoCompositionEnhancementEnabled = isEnabledFeatureFlag(
 export const batchVideoJobsEnabled = isEnabledFeatureFlag(
   import.meta.env.VITE_ENABLE_BATCH_VIDEO_JOBS,
 );
+export const videoScriptVersionsEnabled = isEnabledFeatureFlag(
+  import.meta.env.VITE_ENABLE_VIDEO_SCRIPT_VERSIONS,
+);
 
 export const growthExecutionEnabled = isEnabledFeatureFlag(
   import.meta.env.VITE_ENABLE_GROWTH_EXECUTION,

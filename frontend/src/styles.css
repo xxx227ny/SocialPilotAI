@@ -3287,3 +3287,28 @@ textarea { font: inherit; }
 .composition-timeline { display: flex; flex-wrap: wrap; gap: 8px; }
 .composition-timeline span { padding: 6px 10px; border-radius: 999px; background: #eef3f8; }
 .video-composition-panel video { width: min(360px, 100%); aspect-ratio: 9 / 16; background: #000; }
+.video-script-panel {
+  margin-top: 1.5rem;
+  padding: 1.25rem;
+  border: 1px solid rgba(74, 144, 226, 0.35);
+  border-radius: 1rem;
+  background: rgba(7, 18, 38, 0.92);
+}
+
+.video-script-panel header,
+.video-script-panel div {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.video-script-panel label,
+.video-script-panel fieldset {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0.75rem 0;
+}
+
+.video-script-panel textarea {
+  min-height: 4rem;
+}

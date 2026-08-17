@@ -19,7 +19,7 @@ import { useDemoSnapshot } from "../hooks/useDemoSnapshot";
 import { usePresentationMode } from "../context/PresentationModeContext";
 import type { PublishTask } from "../types/social";
 import type { VideoRenderArtifact } from "../types/video";
-import { batchVideoJobsEnabled } from "../config/features";
+import { batchVideoJobsEnabled, videoScriptVersionsEnabled } from "../config/features";
 
 export function ContentStudioPage() {
   const { snapshot, loading, error } = useDemoSnapshot();
@@ -88,6 +88,7 @@ export function ContentStudioPage() {
   return (
     <div className="competition-page video-blueprint-page">
       <DemoContextBar />
+      {showBatchVideoJobs && <BatchVideoJobPanel scriptVersionsEnabled={videoScriptVersionsEnabled} />}
       {loading ? (
         <PageState title="正在读取视频蓝图" detail="只读取预置方案，不触发视频策划或任何 AI 调用。" />
       ) : snapshot?.video_project ? (
@@ -112,7 +113,6 @@ export function ContentStudioPage() {
               onArtifactReady={loadArtifacts}
             />
           )}
-          {showBatchVideoJobs && <BatchVideoJobPanel />}
           <section className="video-blueprint-cta">
             <div><span>END CARD</span><h2>从生活方式故事走向购买行动</h2></div>
             <strong>{snapshot.video_project.cta}</strong>

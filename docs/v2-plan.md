@@ -142,3 +142,6 @@ Without approval, do not run real smoke, submit paid tasks, poll provider APIs, 
 ## Stage reporting
 
 Use [Progress Log](progress-log.md) for exact execution evidence and update [Development Roadmap](development-roadmap.md) only after verified work. The next-stage recommendation must name exactly one substage.
+### Stage 3D：Provider-free版本化脚本与分镜
+
+Stage 3D为`BatchVideoVariant`增加不可变、可编辑和可激活的脚本/分镜版本历史。它只覆盖人工创建与精确`VideoProject`导入，所有版本均为`UNREVIEWED`，不表示内容已审核或可发布。Qwen脚本生成、视觉素材、TTS、渲染、批量审核和平台交付仍是后续能力；本阶段不会调用Provider或生成媒体。

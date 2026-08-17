@@ -23,6 +23,10 @@ from app.models.video_composition import (
 )
 from app.models.video_render import VideoRenderTask
 from app.models.video_render_artifact import VideoRenderArtifact
+from app.models.video_script_version import (
+    VideoScriptVersion,
+    VideoStoryboardSceneVersion,
+)
 
 __all__ = [
     "AdCampaign",
@@ -45,6 +49,8 @@ __all__ = [
     "VideoProject",
     "VideoRenderTask",
     "VideoRenderArtifact",
+    "VideoScriptVersion",
+    "VideoStoryboardSceneVersion",
     "VideoComposition",
     "VideoCompositionShot",
     "VideoCompositionArtifact",

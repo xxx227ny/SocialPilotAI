@@ -161,6 +161,18 @@ class BatchVideoVariant(Base):
         DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
     )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    active_script_version_id: Mapped[int | None] = mapped_column(
+        ForeignKey(
+            "video_script_versions.id",
+            ondelete="RESTRICT",
+            use_alter=True,
+            name="fk_batch_video_variants_active_script_version",
+        ),
+        index=True,
+    )
+    script_version_sequence: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
 
     batch: Mapped[BatchVideoJob] = relationship(back_populates="variants")
     execution_job = relationship("ExecutionJob", foreign_keys=[execution_job_id])

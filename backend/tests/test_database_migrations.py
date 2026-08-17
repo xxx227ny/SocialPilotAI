@@ -158,7 +158,7 @@ def test_empty_database_upgrades_to_complete_head_schema(tmp_path: Path) -> None
     assert "alembic_version" in tables
 
 
-def test_stage3c_0010_database_upgrades_to_0011_and_preserves_data(
+def test_stage3d_0010_database_upgrades_to_0012_and_preserves_data(
     tmp_path: Path,
 ) -> None:
     database = tmp_path / "stage3c-from-0010.db"
@@ -194,7 +194,7 @@ def test_stage3c_0010_database_upgrades_to_0011_and_preserves_data(
     finally:
         connection.close()
     assert result.previous_revision == "0010_video_composition_enhancements"
-    assert result.current_revision == "0011_batch_video_jobs"
+    assert result.current_revision == "0012_video_script_versions"
     assert product == ("Stage3C preserved", '["Stable"]')
     assert {"batch_video_jobs", "batch_video_variants"}.issubset(tables)
     assert current_revision(database) == HEAD_REVISION
@@ -758,6 +758,65 @@ def test_read_only_status_classifies_supported_database_states(tmp_path: Path) -
     Base.metadata.create_all(engine)
     engine.dispose()
     assert get_database_migration_status(unversioned_head).state == "unversioned_head"
+
+
+def test_stage3d_0011_upgrades_to_0012_with_existing_batch_unchanged(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "stage3d-from-0011.db"
+    migration_service._run_alembic(database, "upgrade", "0011_batch_video_jobs")  # noqa: SLF001
+    connection = sqlite3.connect(database)
+    before = connection.execute("SELECT COUNT(*) FROM batch_video_variants").fetchone()[
+        0
+    ]
+    connection.close()
+    result = upgrade_sqlite_database(database, tmp_path / "stage3d-backups")
+    connection = sqlite3.connect(database)
+    try:
+        columns = {
+            row[1]: row
+            for row in connection.execute("PRAGMA table_info(batch_video_variants)")
+        }
+        after = connection.execute(
+            "SELECT COUNT(*) FROM batch_video_variants"
+        ).fetchone()[0]
+    finally:
+        connection.close()
+    assert result.previous_revision == "0011_batch_video_jobs"
+    assert result.current_revision == "0012_video_script_versions"
+    assert before == after
+    assert columns["script_version_sequence"][4] == "'0'"
+    assert columns["active_script_version_id"][3] == 0
+
+
+def test_stage3d_temporary_downgrade_removes_active_reference_before_history(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "stage3d-downgrade.db"
+    migration_service._run_alembic(database, "upgrade", "0012_video_script_versions")  # noqa: SLF001
+    migration_service._run_alembic(database, "downgrade", "0011_batch_video_jobs")  # noqa: SLF001
+    connection = sqlite3.connect(database)
+    try:
+        tables = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
+        columns = {
+            row[1]
+            for row in connection.execute("PRAGMA table_info(batch_video_variants)")
+        }
+        revision = connection.execute(
+            "SELECT version_num FROM alembic_version"
+        ).fetchone()[0]
+    finally:
+        connection.close()
+    assert revision == "0011_batch_video_jobs"
+    assert "video_script_versions" not in tables
+    assert "video_storyboard_scene_versions" not in tables
+    assert "active_script_version_id" not in columns
+    assert "script_version_sequence" not in columns
 
 
 def test_head_status_is_read_only_and_creates_no_backup(tmp_path: Path) -> None:
