@@ -218,6 +218,11 @@ class VideoCompositionAudioArtifact(Base):
         CheckConstraint("size_bytes > 0", name="ck_composition_audio_size"),
         CheckConstraint("duration_ms > 0", name="ck_composition_audio_duration"),
         CheckConstraint(
+            "natural_duration_ms IS NULL OR "
+            "(natural_duration_ms > 0 AND natural_duration_ms <= duration_ms)",
+            name="ck_composition_audio_natural_duration",
+        ),
+        CheckConstraint(
             "content_type IN ('audio/wav','audio/mpeg','audio/mp4','audio/x-m4a')",
             name="ck_composition_audio_content_type",
         ),
@@ -244,6 +249,7 @@ class VideoCompositionAudioArtifact(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now
     )
+    natural_duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     composition: Mapped[VideoComposition] = relationship()
 

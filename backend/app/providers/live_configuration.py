@@ -6,6 +6,7 @@ import socket
 import ssl
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit, urlunsplit
 
@@ -25,21 +26,24 @@ from app.providers.base import (
 SUPPORTED_REGIONS = {"cn-beijing"}
 QWEN_REGION_ENDPOINT_TEMPLATES = {
     "cn-beijing": (
-        "https://{workspace_id}.cn-beijing.maas.aliyuncs.com/"
-        "compatible-mode/v1"
+        "https://{workspace_id}.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
     ),
 }
 WANX_REGION_ENDPOINT_TEMPLATES = {
-    "cn-beijing": (
-        "https://{workspace_id}.cn-beijing.maas.aliyuncs.com/api/v1"
-    ),
+    "cn-beijing": ("https://{workspace_id}.cn-beijing.maas.aliyuncs.com/api/v1"),
 }
 WANX_REGION_HOSTS = {
     region: template.removeprefix("https://").removesuffix("/api/v1")
     for region, template in WANX_REGION_ENDPOINT_TEMPLATES.items()
 }
-QWEN_MODELS = {"qwen-plus"}
+QWEN_MODELS = {"qwen-plus", "qwen3.7-plus"}
 WANX_MODELS = {"wan2.7-t2v"}
+TOKEN_PLAN_QWEN_ENDPOINT = (
+    "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
+)
+TOKEN_PLAN_MULTIMODAL_ENDPOINT = (
+    "https://token-plan.cn-beijing.maas.aliyuncs.com/api/v1"
+)
 
 ProviderName = Literal["qwen", "wanx"]
 CONNECTION_FAILURE_CODES = frozenset(
@@ -119,18 +123,22 @@ def audit_live_provider_configuration(
         region=settings.wanx_region,
         templates=WANX_REGION_ENDPOINT_TEMPLATES,
     )
+    qwen_token_plan = qwen_endpoint == TOKEN_PLAN_QWEN_ENDPOINT
+    wanx_token_plan = wanx_endpoint == TOKEN_PLAN_MULTIMODAL_ENDPOINT
+    qwen_endpoint_valid = qwen_endpoint_valid or qwen_token_plan
+    wanx_endpoint_valid = wanx_endpoint_valid or wanx_token_plan
     qwen = _provider_readiness(
         provider="qwen",
         credentials_configured=bool(effective_qwen_api_key(settings)),
-        workspace_configured=bool(_text(settings.qwen_workspace_id)),
+        workspace_configured=bool(_text(settings.qwen_workspace_id)) or qwen_token_plan,
         region_supported=_text(settings.qwen_region) in SUPPORTED_REGIONS,
         endpoint_valid=qwen_endpoint_valid,
         model_configured=_text(settings.qwen_model) in QWEN_MODELS,
     )
     wanx = _provider_readiness(
         provider="wanx",
-        credentials_configured=bool(_secret(settings.wanx_api_key)),
-        workspace_configured=bool(_text(settings.wanx_workspace_id)),
+        credentials_configured=bool(effective_wanx_api_key(settings)),
+        workspace_configured=bool(_text(settings.wanx_workspace_id)) or wanx_token_plan,
         region_supported=_text(settings.wanx_region) in SUPPORTED_REGIONS,
         endpoint_valid=wanx_endpoint_valid,
         model_configured=_text(settings.wanx_model) in WANX_MODELS,
@@ -153,15 +161,13 @@ def qwen_missing_requirements(settings: Settings) -> tuple[str, ...]:
     if settings.require_live_provider_coherence:
         return audit_live_provider_configuration(settings).qwen.missing_requirements
     return (
-        ()
-        if effective_qwen_api_key(settings)
-        else ("qwen_credentials_configuration",)
+        () if effective_qwen_api_key(settings) else ("qwen_credentials_configuration",)
     )
 
 
 def wanx_provider_configured(settings: Settings) -> bool:
     if not settings.require_live_provider_coherence:
-        return bool(_secret(settings.wanx_api_key)) and bool(
+        return bool(effective_wanx_api_key(settings)) and bool(
             (settings.wanx_endpoint or "").strip()
             or (
                 _text(settings.wanx_workspace_id)
@@ -175,7 +181,7 @@ def wanx_missing_requirements(settings: Settings) -> tuple[str, ...]:
     if settings.require_live_provider_coherence:
         return audit_live_provider_configuration(settings).wanx.missing_requirements
     missing: list[str] = []
-    if not _secret(settings.wanx_api_key):
+    if not effective_wanx_api_key(settings):
         missing.append("wanx_credentials_configuration")
     if not (
         (settings.wanx_endpoint or "").strip()
@@ -190,7 +196,18 @@ def wanx_missing_requirements(settings: Settings) -> tuple[str, ...]:
 
 def effective_qwen_api_key(settings: Settings) -> str:
     """Return QWEN_API_KEY, or its deprecated DASHSCOPE-only alias."""
-    return _secret(settings.qwen_api_key) or _secret(settings.dashscope_api_key)
+    return (
+        _secret(settings.qwen_api_key)
+        or _secret(settings.dashscope_api_key)
+        or _secret_file(settings.token_plan_api_key_file)
+    )
+
+
+def effective_wanx_api_key(settings: Settings) -> str:
+    """Use an explicit Wanx key or the shared Token Plan key file."""
+    return _secret(settings.wanx_api_key) or _secret_file(
+        settings.token_plan_api_key_file
+    )
 
 
 def controlled_qwen_endpoint(value: str | None) -> str:
@@ -330,16 +347,12 @@ def safe_error_message(metadata: ProviderFailureMetadata) -> str:
         "network_unreachable": "Qwen network is unreachable",
         "tls_handshake_failed": "Qwen TLS handshake failed",
         "tls_certificate_failed": "Qwen TLS certificate verification failed",
-        "connection_reset_before_request": (
-            "Qwen connection reset before request"
-        ),
+        "connection_reset_before_request": ("Qwen connection reset before request"),
         "connection_failed_unknown": "Qwen provider connection failed",
         "proxy_unavailable": "Qwen proxy connection failed",
         "invalid_provider_output": "Qwen returned invalid provider output",
     }
-    return messages.get(
-        metadata.safe_error_code or "", "Qwen generation failed"
-    )
+    return messages.get(metadata.safe_error_code or "", "Qwen generation failed")
 
 
 def provider_public_http_status(metadata: ProviderFailureMetadata) -> int:
@@ -364,8 +377,7 @@ def public_provider_failure(
             "schema"
             if "validation" in phase
             else "connect"
-            if metadata.safe_error_code
-            in CONNECTION_FAILURE_CODES
+            if metadata.safe_error_code in CONNECTION_FAILURE_CODES
             else "response"
         )
     return SafeProviderFailure(
@@ -525,9 +537,7 @@ def _classify_connect_failure(error: BaseException) -> str:
     numbers = _safe_error_numbers(error)
     if numbers.intersection({errno.ECONNREFUSED, 10061}):
         return "tcp_connection_refused"
-    if numbers.intersection(
-        {errno.ENETUNREACH, errno.EHOSTUNREACH, 10051, 10065}
-    ):
+    if numbers.intersection({errno.ENETUNREACH, errno.EHOSTUNREACH, 10051, 10065}):
         return "network_unreachable"
     if numbers.intersection({errno.ECONNRESET, 10054}):
         return "connection_reset_before_request"
@@ -559,3 +569,17 @@ def _secret(value: object) -> str:
 
 def _text(value: object) -> str:
     return value.strip() if isinstance(value, str) else ""
+
+
+def _secret_file(value: object) -> str:
+    if not isinstance(value, str) or not value.strip():
+        return ""
+    path = Path(value.strip())
+    if not path.is_absolute():
+        return ""
+    try:
+        if not path.is_file() or path.stat().st_size > 16_384:
+            return ""
+        return path.read_text(encoding="utf-8-sig").strip()
+    except OSError:
+        return ""

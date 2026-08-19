@@ -44,10 +44,12 @@ class VideoRenderTask(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
     )
-
-    video_project: Mapped[VideoProject] = relationship(
-        back_populates="render_tasks"
+    source_product_asset_id: Mapped[int | None] = mapped_column(
+        ForeignKey("product_assets.id", ondelete="RESTRICT"), index=True
     )
+    source_product_asset_sha256: Mapped[str | None] = mapped_column(String(64))
+
+    video_project: Mapped[VideoProject] = relationship(back_populates="render_tasks")
     artifact: Mapped[VideoRenderArtifact | None] = relationship(
         back_populates="video_render_task",
         cascade="all, delete-orphan",

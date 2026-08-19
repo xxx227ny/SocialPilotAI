@@ -123,6 +123,10 @@ def business_snapshot(path: Path) -> str:
                 record.pop("disable_stitch", None)
                 record.pop("brand_content_toggle", None)
                 record.pop("brand_organic_toggle", None)
+                record.pop("source_script_version_id", None)
+                record.pop("source_script_content_digest", None)
+                record.pop("source_product_asset_id", None)
+                record.pop("source_product_asset_sha256", None)
                 payload[table_name].append(record)
     finally:
         connection.close()
@@ -252,6 +256,14 @@ def test_unversioned_runtime_is_backed_up_stamped_and_preserves_data(
     assert business_snapshot(database) == before
     connection = sqlite3.connect(database)
     try:
+        assert connection.execute(
+            "SELECT source_script_version_id, source_script_content_digest "
+            "FROM video_projects WHERE id=1"
+        ).fetchone() == (None, None)
+        assert connection.execute(
+            "SELECT source_product_asset_id, source_product_asset_sha256 "
+            "FROM video_render_tasks WHERE id=1"
+        ).fetchone() == (None, None)
         assert connection.execute(
             "SELECT provider_container_id, share_to_feed FROM publish_tasks WHERE id=1"
         ).fetchone() == (None, 0)
@@ -912,3 +924,75 @@ def test_status_reports_lock_conflict_without_deleting_unknown_lock(
     assert status.upgrade_required is False
     assert lock.read_text(encoding="utf-8") == '{"token":"unknown-owner"}'
     assert sha256_file(database) == before_hash
+
+
+def test_stage3f_head_contains_product_media_bridge_columns(tmp_path: Path) -> None:
+    database = tmp_path / "stage3f-head.db"
+    migration_service._run_alembic(database, "upgrade", HEAD_REVISION)  # noqa: SLF001
+    connection = sqlite3.connect(database)
+    try:
+        product_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(product_assets)")
+        }
+        project_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(video_projects)")
+        }
+        render_columns = {
+            row[1]
+            for row in connection.execute("PRAGMA table_info(video_render_tasks)")
+        }
+        audio_columns = {
+            row[1]
+            for row in connection.execute(
+                "PRAGMA table_info(video_composition_audio_artifacts)"
+            )
+        }
+        audio_schema = connection.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' "
+            "AND name='video_composition_audio_artifacts'"
+        ).fetchone()[0]
+    finally:
+        connection.close()
+    assert HEAD_REVISION == "0014_product_media_video_bridge"
+    assert {
+        "content_type",
+        "size_bytes",
+        "sha256",
+        "width",
+        "height",
+        "storage_identity",
+    } <= product_columns
+    assert {
+        "source_script_version_id",
+        "source_script_content_digest",
+    } <= project_columns
+    assert {"source_product_asset_id", "source_product_asset_sha256"} <= render_columns
+    assert "natural_duration_ms" in audio_columns
+    assert "ck_composition_audio_natural_duration" in audio_schema
+
+
+def test_stage3f_upgrade_preserves_old_voiceover_with_unknown_natural_duration(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "stage3f-old-voiceover.db"
+    migration_service._run_alembic(  # noqa: SLF001
+        database, "upgrade", "0013_qwen_video_script_jobs"
+    )
+    with sqlite3.connect(database) as connection:
+        connection.execute("PRAGMA foreign_keys=OFF")
+        connection.execute(
+            "INSERT INTO video_composition_audio_artifacts "
+            "(id, product_id, video_project_id, composition_id, kind, storage_path, "
+            "content_type, size_bytes, sha256, duration_ms, created_at) "
+            "VALUES (1,1,1,1,'voiceover','old.wav','audio/wav',44,?,12630,?)",
+            ("a" * 64, datetime.now(UTC).isoformat()),
+        )
+        connection.commit()
+
+    migration_service._run_alembic(database, "upgrade", HEAD_REVISION)  # noqa: SLF001
+
+    with sqlite3.connect(database) as connection:
+        assert connection.execute(
+            "SELECT duration_ms, natural_duration_ms "
+            "FROM video_composition_audio_artifacts WHERE id=1"
+        ).fetchone() == (12630, None)

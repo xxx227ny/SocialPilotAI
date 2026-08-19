@@ -14,6 +14,7 @@ from app.execution.handlers.instagram_publish import (
     InstagramPublishRefreshV1Handler,
     InstagramPublishSubmitV1Handler,
 )
+from app.execution.handlers.product_image_render import ProductImageRenderV1Handler
 from app.execution.handlers.qwen_copy_matrix import QwenCopyMatrixGenerateV1Handler
 from app.execution.handlers.qwen_strategy import QwenStrategyGenerateV1Handler
 from app.execution.handlers.qwen_video_project import (
@@ -29,6 +30,8 @@ from app.execution.handlers.video_composition import VideoCompositionRenderV1Han
 from app.execution.handlers.video_composition_enhancement import (
     VideoCompositionEnhanceV1Handler,
 )
+from app.execution.handlers.voiceover_tts import VoiceoverGenerateV1Handler
+from app.execution.handlers.wanx_product_image import WanxProductImageGenerateV1Handler
 from app.execution.handlers.wanx_video_render import (
     WanxVideoRenderRefreshV1Handler,
     WanxVideoRenderSubmitV1Handler,
@@ -51,12 +54,14 @@ from app.providers.visual_base import (
     VisualTaskSnapshot,
     VisualTaskSubmission,
 )
+from app.providers.wanx_image_provider import WanxImageProvider
 from app.providers.youtube_provider import YouTubeProvider
 from app.services.instagram_media_probe import (
     FFprobeInstagramMediaProbe,
     InstagramMediaProbe,
 )
 from app.services.tiktok_media_probe import FFprobeTikTokMediaProbe, TikTokMediaProbe
+from app.services.tts_provider import QwenAudioTtsProvider, TtsProvider
 from app.services.video_artifact_storage import (
     HttpProviderOutputFetcher,
     LocalVideoArtifactStorage,
@@ -214,6 +219,10 @@ def build_execution_handler_registry(
     tiktok_media_probe: TikTokMediaProbe | None = None,
     output_fetcher: ProviderOutputFetcher | None = None,
     artifact_storage: VideoArtifactStorage | None = None,
+    tts_provider_factory: Callable[[Settings], TtsProvider] = QwenAudioTtsProvider,
+    wanx_image_provider_factory: Callable[[Settings], WanxImageProvider] = (
+        WanxImageProvider
+    ),
 ) -> ExecutionHandlerRegistry:
     registry = ExecutionHandlerRegistry()
     registry.register(
@@ -280,6 +289,23 @@ def build_execution_handler_registry(
         VideoCompositionEnhanceV1Handler(
             session_factory=session_factory,
             settings=settings,
+        )
+    )
+    registry.register(
+        ProductImageRenderV1Handler(session_factory=session_factory, settings=settings)
+    )
+    registry.register(
+        VoiceoverGenerateV1Handler(
+            session_factory=session_factory,
+            settings=settings,
+            provider=tts_provider_factory(settings),
+        )
+    )
+    registry.register(
+        WanxProductImageGenerateV1Handler(
+            session_factory=session_factory,
+            settings=settings,
+            provider_factory=wanx_image_provider_factory,
         )
     )
     youtube_provider = LazyYouTubeProvider(settings, youtube_provider_factory)

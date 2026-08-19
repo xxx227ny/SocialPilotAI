@@ -159,9 +159,12 @@ def test_http_enqueue_is_provider_free_and_worker_restores_exact_result(
         "tiktok.publish.creator_info.v1",
         "tiktok.publish.refresh.v1",
         "tiktok.publish.submit.v1",
+        "tts.voiceover.generate.v1",
         "video.batch.variant.prepare.v1",
         "video.composition.enhance.v1",
         "video.composition.render.v1",
+        "video.product_image.render.v1",
+        "wanx.product_image.generate.v1",
         "wanx.video_render.refresh.v1",
         "wanx.video_render.submit.v1",
         "youtube.publish.refresh.v1",
@@ -172,6 +175,9 @@ def test_http_enqueue_is_provider_free_and_worker_restores_exact_result(
     assert composition_handler.input_schema is VideoCompositionRenderV1Input
     assert registry.job_types.count("video.composition.render.v1") == 1
     assert registry.job_types.count("video.composition.enhance.v1") == 1
+    assert registry.job_types.count("video.product_image.render.v1") == 1
+    assert registry.job_types.count("tts.voiceover.generate.v1") == 1
+    assert registry.job_types.count("wanx.product_image.generate.v1") == 1
     assert factory.state == {"constructed": 0, "calls": 0}
 
     first = enqueue(client, task["id"], product["id"], checked)

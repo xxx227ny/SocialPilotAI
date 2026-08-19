@@ -43,6 +43,9 @@ export const videoScriptVersionsEnabled = isEnabledFeatureFlag(
 export const qwenVideoScriptGenerationEnabled = isEnabledFeatureFlag(
   import.meta.env.VITE_ENABLE_QWEN_VIDEO_SCRIPT_GENERATION,
 );
+export const realProductVideoEnabled = isEnabledFeatureFlag(
+  import.meta.env.VITE_ENABLE_REAL_PRODUCT_VIDEO,
+);
 
 export const growthExecutionEnabled = isEnabledFeatureFlag(
   import.meta.env.VITE_ENABLE_GROWTH_EXECUTION,

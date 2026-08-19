@@ -11,6 +11,7 @@ import { SocialPublishingPanel } from "../components/product/SocialPublishingPan
 import { InitialVideoProjectPanel } from "../components/video/InitialVideoProjectPanel";
 import { VideoRenderPreflightPanel } from "../components/video/VideoRenderPreflightPanel";
 import { VideoCompositionPanel } from "../components/video/VideoCompositionPanel";
+import { RealProductVideoPanel } from "../components/video/RealProductVideoPanel";
 import { usePresentationMode } from "../context/PresentationModeContext";
 import type { PlatformCopy } from "../types/copy";
 import type { Product } from "../types/product";
@@ -412,6 +413,7 @@ function ProductDetail({
         videoProjectId={liveVideoProjectId}
       />
       <VideoCompositionPanel product={product} videoProjectId={liveVideoProjectId} />
+      <RealProductVideoPanel product={product} />
 
       <SocialPublishingPanel productId={product.id} />
 

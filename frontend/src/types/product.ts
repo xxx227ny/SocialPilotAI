@@ -4,6 +4,11 @@ export interface ProductAsset {
   file_name: string;
   file_path: string;
   file_type: string;
+  content_type: string | null;
+  size_bytes: number | null;
+  sha256: string | null;
+  width: number | null;
+  height: number | null;
   created_at: string;
 }
 

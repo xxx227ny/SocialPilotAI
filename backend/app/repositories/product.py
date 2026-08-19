@@ -45,3 +45,24 @@ class ProductRepository:
         self.session.commit()
         self.session.refresh(asset)
         return asset
+
+    def get_asset(self, product_id: int, asset_id: int) -> ProductAsset | None:
+        return self.session.scalar(
+            select(ProductAsset).where(
+                ProductAsset.id == asset_id, ProductAsset.product_id == product_id
+            )
+        )
+
+    def get_asset_by_sha(self, product_id: int, sha256: str) -> ProductAsset | None:
+        return self.session.scalar(
+            select(ProductAsset).where(
+                ProductAsset.product_id == product_id,
+                ProductAsset.sha256 == sha256,
+            )
+        )
+
+    def persist_asset(self, asset: ProductAsset) -> ProductAsset:
+        self.session.add(asset)
+        self.session.commit()
+        self.session.refresh(asset)
+        return asset

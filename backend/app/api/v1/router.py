@@ -12,6 +12,9 @@ from app.api.v1.routes.marketing_tasks import router as marketing_tasks_router
 from app.api.v1.routes.presentation_snapshots import (
     router as presentation_snapshots_router,
 )
+from app.api.v1.routes.product_marketing_videos import (
+    router as product_marketing_videos_router,
+)
 from app.api.v1.routes.products import router as products_router
 from app.api.v1.routes.social import router as social_router
 from app.api.v1.routes.strategies import router as strategies_router
@@ -27,6 +30,7 @@ api_router = APIRouter()
 api_router.include_router(health_router, tags=["system"])
 api_router.include_router(system_router, tags=["system"])
 api_router.include_router(products_router, tags=["products"])
+api_router.include_router(product_marketing_videos_router, tags=["real-product-video"])
 api_router.include_router(brand_kits_router, tags=["brand-kits"])
 api_router.include_router(batch_video_jobs_router, tags=["batch-video-jobs"])
 api_router.include_router(execution_jobs_router, tags=["execution-jobs"])

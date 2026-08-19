@@ -3,7 +3,15 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    JSON,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -17,6 +25,12 @@ if TYPE_CHECKING:
 
 class VideoProject(Base):
     __tablename__ = "video_projects"
+    __table_args__ = (
+        UniqueConstraint(
+            "source_script_version_id",
+            name="uq_video_projects_source_script_version",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     product_id: Mapped[int] = mapped_column(
@@ -39,15 +53,18 @@ class VideoProject(Base):
     aspect_ratio: Mapped[str] = mapped_column(String(20), nullable=False)
     scenes: Mapped[list[dict[str, object]]] = mapped_column(JSON, nullable=False)
     cta: Mapped[str] = mapped_column(Text, nullable=False)
-    status: Mapped[str] = mapped_column(
-        String(50), nullable=False, default="planned"
-    )
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="planned")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
     )
+    source_script_version_id: Mapped[int | None] = mapped_column(
+        ForeignKey("video_script_versions.id", ondelete="RESTRICT"),
+        index=True,
+    )
+    source_script_content_digest: Mapped[str | None] = mapped_column(String(64))
 
     product: Mapped[Product] = relationship(back_populates="video_projects")
     marketing_strategy: Mapped[MarketingStrategy] = relationship(

@@ -3,6 +3,7 @@ import type {
   ProductCreatePayload,
   ProductUpdatePayload,
 } from "../types/product";
+import type { UploadedProductImage } from "../types/productMarketingVideo";
 import { apiClient } from "./client";
 
 export async function listProducts(): Promise<Product[]> {
@@ -32,5 +33,20 @@ export async function updateProduct(
   payload: ProductUpdatePayload,
 ): Promise<Product> {
   const response = await apiClient.patch<Product>(`/products/${productId}`, payload);
+  return response.data;
+}
+
+export async function uploadProductImage(
+  productId: number,
+  file: File,
+  signal?: AbortSignal,
+): Promise<UploadedProductImage> {
+  const body = new FormData();
+  body.append("file", file, file.name);
+  const response = await apiClient.post<UploadedProductImage>(
+    `/products/${productId}/image-assets`,
+    body,
+    { signal },
+  );
   return response.data;
 }

@@ -15,6 +15,7 @@ from app.providers.live_configuration import (
     WANX_REGION_HOSTS,
     audit_live_provider_configuration,
     controlled_wanx_endpoint,
+    effective_wanx_api_key,
     metadata_for_http_failure,
     metadata_for_transport_failure,
     provider_error_from_metadata,
@@ -48,13 +49,9 @@ class WanxProvider(VisualGenerationProvider):
         *,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
-        if (
-            app_settings.wanx_api_key is None
-            or not app_settings.wanx_api_key.get_secret_value().strip()
-        ):
-            raise ProviderAuthenticationError(
-                "Wanx API credentials are not configured"
-            )
+        api_key = effective_wanx_api_key(app_settings)
+        if not api_key:
+            raise ProviderAuthenticationError("Wanx API credentials are not configured")
 
         configuration = audit_live_provider_configuration(app_settings)
         if (
@@ -66,14 +63,11 @@ class WanxProvider(VisualGenerationProvider):
             )
         if app_settings.wanx_endpoint and (
             not controlled_wanx_endpoint(app_settings.wanx_endpoint)
-            or (
-                not configuration.wanx.endpoint_valid
-                and transport is None
-            )
+            or (not configuration.wanx.endpoint_valid and transport is None)
         ):
             raise ProviderConfigurationError("Wanx endpoint is invalid")
 
-        self.api_key = app_settings.wanx_api_key.get_secret_value().strip()
+        self.api_key = api_key
         self.model = app_settings.wanx_model
         self.endpoint = (
             configuration.wanx_endpoint
@@ -87,9 +81,7 @@ class WanxProvider(VisualGenerationProvider):
         self.timeout = app_settings.wanx_timeout
         self.transport = transport
 
-    async def submit(
-        self, request: VisualGenerationRequest
-    ) -> VisualTaskSubmission:
+    async def submit(self, request: VisualGenerationRequest) -> VisualTaskSubmission:
         self._validate_request(request)
         payload = await self._request(
             "POST",
@@ -117,9 +109,7 @@ class WanxProvider(VisualGenerationProvider):
         task_id = provider_task_id.strip()
         if not task_id:
             raise ProviderModelError("Wanx task ID cannot be empty")
-        payload = await self._request(
-            "GET", f"/tasks/{quote(task_id, safe='')}"
-        )
+        payload = await self._request("GET", f"/tasks/{quote(task_id, safe='')}")
         output = self._require_output(payload)
         returned_task_id = self._require_text(output, "task_id")
         status = self._parse_status(output)
@@ -195,16 +185,12 @@ class WanxProvider(VisualGenerationProvider):
                 "authentication_failed": "Wanx authentication failed",
                 "permission_denied": "Wanx permission denied",
                 "rate_or_quota_limited": "Wanx request was rate limited",
-                "endpoint_or_model_not_found": (
-                    "Wanx endpoint or model was not found"
-                ),
+                "endpoint_or_model_not_found": ("Wanx endpoint or model was not found"),
                 "invalid_request": "Wanx request parameters are invalid",
                 "provider_service_error": "Wanx service is unavailable",
             }
             error.args = (
-                messages.get(
-                    metadata.safe_error_code or "", "Wanx request failed"
-                ),
+                messages.get(metadata.safe_error_code or "", "Wanx request failed"),
             )
             raise error
         try:

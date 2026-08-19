@@ -2,6 +2,7 @@ import os
 import sys
 from decimal import Decimal
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -22,6 +23,7 @@ class Settings(BaseSettings):
     debug: bool = False
     database_url: str = "sqlite:///./socialpilot.db"
     qwen_api_key: SecretStr | None = None
+    token_plan_api_key_file: str | None = None
     # Deprecated one-way alias for QWEN_API_KEY. Never used by Wanx.
     dashscope_api_key: SecretStr | None = None
     qwen_workspace_id: str | None = None
@@ -95,6 +97,13 @@ class Settings(BaseSettings):
     wanx_workspace_id: str | None = None
     wanx_endpoint: str | None = None
     wanx_timeout: float = Field(default=30, gt=0, le=300)
+    wanx_image_endpoint: str = (
+        "https://token-plan.cn-beijing.maas.aliyuncs.com/api/v1/"
+        "services/aigc/multimodal-generation/generation"
+    )
+    wanx_image_model: str = "wan2.7-image-pro"
+    wanx_image_timeout: float = Field(default=180, gt=0, le=300)
+    wanx_image_estimated_cost: Decimal = Field(default=Decimal("0.10"), ge=0)
     enable_live_wanx_demo: bool = False
     video_artifact_storage_root: str | None = None
     video_composition_temp_root: str | None = None
@@ -104,6 +113,16 @@ class Settings(BaseSettings):
     execution_worker_status_file: str | None = None
     execution_worker_stale_seconds: int = Field(default=15, ge=5, le=300)
     video_artifact_max_bytes: int = Field(default=50_000_000, gt=0, le=500_000_000)
+    enable_real_product_video: bool = False
+    product_asset_storage_root: str | None = None
+    product_asset_max_bytes: int = Field(default=15_000_000, gt=0, le=50_000_000)
+    qwen_tts_endpoint: str = (
+        "https://token-plan.cn-beijing.maas.aliyuncs.com/api/v1/"
+        "services/audio/tts/SpeechSynthesizer"
+    )
+    qwen_tts_model: str = "qwen-audio-3.0-tts-plus"
+    qwen_tts_voice: str = "longanhuan_v3.6"
+    qwen_tts_timeout: float = Field(default=120, gt=0, le=300)
     cors_origins: list[str] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
@@ -151,6 +170,9 @@ def _local_env_file() -> str | None:
     disabled = os.getenv("SOCIALPILOT_DISABLE_DOTENV", "").lower()
     if disabled in {"1", "true", "yes"} or "pytest" in sys.modules:
         return None
+    token_plan = Path(".env.token-plan")
+    if token_plan.is_file():
+        return str(token_plan)
     return ".env"
 
 

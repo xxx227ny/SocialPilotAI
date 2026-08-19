@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:token-plan": "vite --mode token-plan",
     "build": "tsc -b && vite build",
+    "build:token-plan": "tsc -b && vite build --mode token-plan",
     "test:social": "node scripts/test-social-publishing-state.mjs",
     "test:live-wanx": "node scripts/test-live-wanx.mjs",
     "test:presentation-artifact": "node scripts/test-presentation-artifact.mjs",
@@ -16,6 +18,7 @@
     "test:video-composition-enhancement": "node scripts/test-video-composition-enhancement.mjs",
     "test:batch-video-job": "node scripts/test-batch-video-job.mjs",
     "test:video-script-version": "node scripts/test-video-script-version.mjs",
+    "test:real-product-video": "node scripts/test-real-product-video.mjs",
     "test:youtube-publish-queue": "node scripts/test-youtube-publish-queue.mjs",
     "test:instagram-binding": "node scripts/test-instagram-account-binding.mjs",
     "test:tiktok-account-binding": "node scripts/test-tiktok-account-binding.mjs",
