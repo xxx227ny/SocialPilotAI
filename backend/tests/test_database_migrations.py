@@ -23,6 +23,7 @@ from app.services.database_migration_service import (
     get_database_migration_status,
     migration_lock_path,
     restore_backup,
+    schema_fingerprint,
     sha256_file,
     upgrade_sqlite_database,
 )
@@ -158,7 +159,7 @@ def test_empty_database_upgrades_to_complete_head_schema(tmp_path: Path) -> None
     assert "alembic_version" in tables
 
 
-def test_stage3d_0010_database_upgrades_to_0012_and_preserves_data(
+def test_stage3e_0010_database_upgrades_to_0013_and_preserves_data(
     tmp_path: Path,
 ) -> None:
     database = tmp_path / "stage3c-from-0010.db"
@@ -194,7 +195,7 @@ def test_stage3d_0010_database_upgrades_to_0012_and_preserves_data(
     finally:
         connection.close()
     assert result.previous_revision == "0010_video_composition_enhancements"
-    assert result.current_revision == "0012_video_script_versions"
+    assert result.current_revision == HEAD_REVISION
     assert product == ("Stage3C preserved", '["Stable"]')
     assert {"batch_video_jobs", "batch_video_variants"}.issubset(tables)
     assert current_revision(database) == HEAD_REVISION
@@ -760,7 +761,7 @@ def test_read_only_status_classifies_supported_database_states(tmp_path: Path) -
     assert get_database_migration_status(unversioned_head).state == "unversioned_head"
 
 
-def test_stage3d_0011_upgrades_to_0012_with_existing_batch_unchanged(
+def test_stage3d_0011_upgrades_through_0013_with_existing_batch_unchanged(
     tmp_path: Path,
 ) -> None:
     database = tmp_path / "stage3d-from-0011.db"
@@ -783,7 +784,7 @@ def test_stage3d_0011_upgrades_to_0012_with_existing_batch_unchanged(
     finally:
         connection.close()
     assert result.previous_revision == "0011_batch_video_jobs"
-    assert result.current_revision == "0012_video_script_versions"
+    assert result.current_revision == HEAD_REVISION
     assert before == after
     assert columns["script_version_sequence"][4] == "'0'"
     assert columns["active_script_version_id"][3] == 0
@@ -817,6 +818,46 @@ def test_stage3d_temporary_downgrade_removes_active_reference_before_history(
     assert "video_storyboard_scene_versions" not in tables
     assert "active_script_version_id" not in columns
     assert "script_version_sequence" not in columns
+
+
+def test_stage3e_0012_upgrade_and_temporary_downgrade_preserve_history(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "stage3e-from-0012.db"
+    migration_service._run_alembic(database, "upgrade", "0012_video_script_versions")  # noqa: SLF001
+    before = schema_fingerprint(database)
+    migration_service._run_alembic(database, "upgrade", HEAD_REVISION)  # noqa: SLF001
+    connection = sqlite3.connect(database)
+    try:
+        version_columns = {
+            row[1]
+            for row in connection.execute("PRAGMA table_info(video_script_versions)")
+        }
+        attempt_columns = {
+            row[1]
+            for row in connection.execute("PRAGMA table_info(execution_attempts)")
+        }
+        batch_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(batch_video_jobs)")
+        }
+    finally:
+        connection.close()
+    assert current_revision(database) == HEAD_REVISION
+    assert {
+        "source_execution_job_id",
+        "prompt_snapshot_json",
+        "prompt_digest",
+        "provider_name",
+        "provider_model",
+        "provider_response_digest",
+    }.issubset(version_columns)
+    assert "provider_submission_state" in attempt_columns
+    assert {"qwen_script_call_quota", "qwen_script_calls_reserved"}.issubset(
+        batch_columns
+    )
+    migration_service._run_alembic(database, "downgrade", "0012_video_script_versions")  # noqa: SLF001
+    assert current_revision(database) == "0012_video_script_versions"
+    assert schema_fingerprint(database) == before
 
 
 def test_head_status_is_read_only_and_creates_no_backup(tmp_path: Path) -> None:

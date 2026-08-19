@@ -1,4 +1,4 @@
-import type { VideoScriptActivation, VideoScriptCreateResult, VideoScriptDraft, VideoScriptPreflight, VideoScriptVersion } from "../../types/videoScriptVersion";
+import type { QwenScriptJob, QwenScriptJobCreateResult, QwenScriptPreflight, QwenScriptPreflightRequest, VideoScriptActivation, VideoScriptCreateResult, VideoScriptDraft, VideoScriptPreflight, VideoScriptVersion } from "../../types/videoScriptVersion";
 
 export interface ScriptApi {
   preflight: (variantId: number, draft: VideoScriptDraft, signal: AbortSignal) => Promise<VideoScriptPreflight>;
@@ -54,4 +54,41 @@ export async function activateExactScript(api: ScriptApi, variantId: number, ver
 }
 export function compareExactVersions(left: VideoScriptVersion, right: VideoScriptVersion) {
   return { titleChanged: left.title !== right.title, conceptChanged: left.concept !== right.concept, hookChanged: left.hook !== right.hook, ctaChanged: left.cta !== right.cta, scenesChanged: JSON.stringify(left.scenes) !== JSON.stringify(right.scenes) };
+}
+
+export interface QwenScriptApi {
+  preflight: (variantId: number, request: QwenScriptPreflightRequest, signal: AbortSignal) => Promise<QwenScriptPreflight>;
+  create: (variantId: number, request: QwenScriptPreflightRequest, checked: QwenScriptPreflight, signal: AbortSignal) => Promise<QwenScriptJobCreateResult>;
+  readJob: (jobId: number, signal: AbortSignal) => Promise<QwenScriptJob>;
+  readVersion: (variantId: number, versionId: number, signal: AbortSignal) => Promise<VideoScriptVersion>;
+}
+export const qwenCostLabel = (checked: QwenScriptPreflight) => checked.estimated_cost_min === null || checked.estimated_cost_max === null
+  ? "费用估算尚未配置，不能入队"
+  : `${checked.estimated_cost_min}–${checked.estimated_cost_max} ${checked.currency}（${checked.cost_estimate_basis}）`;
+export const shouldPollQwenJob = (job: QwenScriptJob) => job.status === "QUEUED" || job.status === "RUNNING";
+export const exactQwenResultVersionId = (job: QwenScriptJob) => job.status === "SUCCEEDED" && job.result_entity_type === "video_script_version" ? job.result_entity_id : null;
+export async function confirmAndCreateQwenJob(api: QwenScriptApi, variantId: number, request: QwenScriptPreflightRequest, checked: QwenScriptPreflight, confirmed: boolean, signal: AbortSignal) {
+  if (!confirmed) throw new Error("Qwen cost confirmation is required");
+  if (!checked.ready_for_execution || checked.estimated_cost_min === null || checked.estimated_cost_max === null || checked.cost_estimate_basis === null) throw new Error("Qwen Preflight is not ready");
+  return { checked, created: await api.create(variantId, request, checked, signal) };
+}
+export async function recoverExactQwenJob(api: QwenScriptApi, variantId: number, jobId: number, signal: AbortSignal) {
+  const job = await api.readJob(jobId, signal);
+  if (job.job_type !== "qwen.video_script.generate.v1" || job.source_type !== "batch_video_variant" || job.source_id !== variantId) throw new Error("Qwen Job identity mismatch");
+  const versionId = exactQwenResultVersionId(job);
+  const version = versionId === null ? null : await api.readVersion(variantId, versionId, signal);
+  return { job, version };
+}
+export async function pollQwenJobSerial(options: { api: QwenScriptApi; variantId: number; jobId: number; signal: AbortSignal; delay: (signal: AbortSignal) => Promise<void>; update: (job: QwenScriptJob, version: VideoScriptVersion | null) => void; failure: () => void; }) {
+  while (!options.signal.aborted) {
+    try {
+      const { job, version } = await recoverExactQwenJob(options.api, options.variantId, options.jobId, options.signal);
+      options.update(job, version);
+      if (!shouldPollQwenJob(job)) return;
+      await options.delay(options.signal);
+    } catch {
+      if (!options.signal.aborted) options.failure();
+      return;
+    }
+  }
 }

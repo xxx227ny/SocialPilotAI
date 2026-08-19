@@ -40,6 +40,9 @@ export const batchVideoJobsEnabled = isEnabledFeatureFlag(
 export const videoScriptVersionsEnabled = isEnabledFeatureFlag(
   import.meta.env.VITE_ENABLE_VIDEO_SCRIPT_VERSIONS,
 );
+export const qwenVideoScriptGenerationEnabled = isEnabledFeatureFlag(
+  import.meta.env.VITE_ENABLE_QWEN_VIDEO_SCRIPT_GENERATION,
+);
 
 export const growthExecutionEnabled = isEnabledFeatureFlag(
   import.meta.env.VITE_ENABLE_GROWTH_EXECUTION,

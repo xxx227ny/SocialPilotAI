@@ -48,6 +48,11 @@ class BatchVideoJob(Base):
             "'PARTIAL_FAILED','FAILED','CANCELLED','MIXED_TERMINAL')",
             name="ck_batch_video_jobs_status",
         ),
+        CheckConstraint(
+            "qwen_script_calls_reserved >= 0 AND "
+            "qwen_script_calls_reserved <= qwen_script_call_quota",
+            name="ck_batch_video_jobs_qwen_script_quota",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -80,6 +85,12 @@ class BatchVideoJob(Base):
         DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
     )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    qwen_script_call_quota: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
+    qwen_script_calls_reserved: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
 
     variants: Mapped[list[BatchVideoVariant]] = relationship(
         back_populates="batch",

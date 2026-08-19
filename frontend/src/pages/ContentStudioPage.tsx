@@ -19,7 +19,7 @@ import { useDemoSnapshot } from "../hooks/useDemoSnapshot";
 import { usePresentationMode } from "../context/PresentationModeContext";
 import type { PublishTask } from "../types/social";
 import type { VideoRenderArtifact } from "../types/video";
-import { batchVideoJobsEnabled, videoScriptVersionsEnabled } from "../config/features";
+import { batchVideoJobsEnabled, qwenVideoScriptGenerationEnabled, videoScriptVersionsEnabled } from "../config/features";
 
 export function ContentStudioPage() {
   const { snapshot, loading, error } = useDemoSnapshot();
@@ -88,7 +88,7 @@ export function ContentStudioPage() {
   return (
     <div className="competition-page video-blueprint-page">
       <DemoContextBar />
-      {showBatchVideoJobs && <BatchVideoJobPanel scriptVersionsEnabled={videoScriptVersionsEnabled} />}
+      {showBatchVideoJobs && <BatchVideoJobPanel scriptVersionsEnabled={videoScriptVersionsEnabled} qwenScriptEnabled={qwenVideoScriptGenerationEnabled} />}
       {loading ? (
         <PageState title="正在读取视频蓝图" detail="只读取预置方案，不触发视频策划或任何 AI 调用。" />
       ) : snapshot?.video_project ? (

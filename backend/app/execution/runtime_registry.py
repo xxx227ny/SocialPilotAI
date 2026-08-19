@@ -19,6 +19,7 @@ from app.execution.handlers.qwen_strategy import QwenStrategyGenerateV1Handler
 from app.execution.handlers.qwen_video_project import (
     QwenVideoProjectGenerateV1Handler,
 )
+from app.execution.handlers.qwen_video_script import QwenVideoScriptGenerateV1Handler
 from app.execution.handlers.tiktok_publish import (
     TikTokCreatorInfoV1Handler,
     TikTokRefreshV1Handler,
@@ -234,6 +235,13 @@ def build_execution_handler_registry(
     )
     registry.register(
         QwenVideoProjectGenerateV1Handler(
+            session_factory=session_factory,
+            provider=LazyQwenProvider(settings, qwen_provider_factory),
+            settings=settings,
+        )
+    )
+    registry.register(
+        QwenVideoScriptGenerateV1Handler(
             session_factory=session_factory,
             provider=LazyQwenProvider(settings, qwen_provider_factory),
             settings=settings,

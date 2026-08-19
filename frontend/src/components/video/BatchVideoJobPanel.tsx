@@ -41,7 +41,7 @@ const workflowApi: BatchWorkflowApi = {
   control: controlBatchVideoJob,
 };
 
-export function BatchVideoJobPanel({ scriptVersionsEnabled = false }: { scriptVersionsEnabled?: boolean }) {
+export function BatchVideoJobPanel({ scriptVersionsEnabled = false, qwenScriptEnabled = false }: { scriptVersionsEnabled?: boolean; qwenScriptEnabled?: boolean }) {
   const [products, setProducts] = useState<BatchProductOption[]>([]);
   const [productIds, setProductIds] = useState<number[]>([]);
   const [platforms, setPlatforms] = useState<BatchPlatform[]>(ALL_PLATFORMS);
@@ -196,7 +196,7 @@ export function BatchVideoJobPanel({ scriptVersionsEnabled = false }: { scriptVe
       <p><strong>{total}</strong> 个独立变体 · 15秒 · 9:16 · zh-CN</p>
       <div className="batch-video-panel__actions"><button disabled={total === 0} onClick={() => void submit()}>Preflight并创建</button><input aria-label="精确Batch ID" value={batchIdInput} onChange={(event) => setBatchIdInput(event.target.value)} /><button onClick={() => void refresh()}>按ID恢复</button></div>
       {message && <p role="status">{message}</p>}
-      {result && <><div className="batch-video-panel__actions"><button onClick={() => void control("pause")}>暂停</button><button onClick={() => void control("resume")}>恢复</button><button onClick={() => void control("cancel")}>取消</button></div><table><thead><tr><th>ID</th><th>商品</th><th>平台</th><th>变体</th><th>状态</th><th>脚本</th></tr></thead><tbody>{result.variants.map((variant) => <tr key={variant.id}><td>{variant.id}</td><td>{variant.product_id}</td><td>{variant.platform}</td><td>{variant.variant_index}</td><td>{variant.status}</td><td>{scriptVersionsEnabled && variant.status === "READY_FOR_SCRIPT" && <button onClick={()=>setScriptVariantId(variant.id)}>编辑脚本</button>}</td></tr>)}</tbody></table>{scriptVariantId !== null && <VideoScriptVersionPanel variant={result.variants.find(item=>item.id===scriptVariantId)!} onClose={()=>setScriptVariantId(null)}/>}</>}
+      {result && <><div className="batch-video-panel__actions"><button onClick={() => void control("pause")}>暂停</button><button onClick={() => void control("resume")}>恢复</button><button onClick={() => void control("cancel")}>取消</button></div><table><thead><tr><th>ID</th><th>商品</th><th>平台</th><th>变体</th><th>状态</th><th>脚本</th></tr></thead><tbody>{result.variants.map((variant) => <tr key={variant.id}><td>{variant.id}</td><td>{variant.product_id}</td><td>{variant.platform}</td><td>{variant.variant_index}</td><td>{variant.status}</td><td>{scriptVersionsEnabled && variant.status === "READY_FOR_SCRIPT" && <button onClick={()=>setScriptVariantId(variant.id)}>编辑脚本</button>}</td></tr>)}</tbody></table>{scriptVariantId !== null && <VideoScriptVersionPanel variant={result.variants.find(item=>item.id===scriptVariantId)!} onClose={()=>setScriptVariantId(null)} qwenEnabled={qwenScriptEnabled}/>}</>}
     </section>
   );
 }

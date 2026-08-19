@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -14,13 +14,18 @@ from app.models import (
 )
 from app.repositories.video_script_version import VideoScriptVersionRepository
 from app.schemas.video_script_version import (
+    QwenScriptPreflightRead,
+    QwenScriptProviderOutput,
     VideoScriptActivateRead,
     VideoScriptCreateRead,
     VideoScriptCreateRequest,
     VideoScriptDraftRequest,
     VideoScriptVersionRead,
 )
-from app.services.video_script_preflight import VideoScriptPreflightService
+from app.services.video_script_preflight import (
+    VideoScriptPreflightService,
+    stable_digest,
+)
 
 
 class VideoScriptVersionService:
@@ -146,6 +151,150 @@ class VideoScriptVersionService:
             self._read(item, variant.active_script_version_id)
             for item in self.repo.list(variant_id)
         ]
+
+    def create_qwen_generated(
+        self,
+        *,
+        checked: QwenScriptPreflightRead,
+        output: QwenScriptProviderOutput,
+        execution_job_id: int,
+        prompt_snapshot: dict[str, object],
+        prompt_digest: str,
+        provider_response_digest: str,
+    ) -> VideoScriptVersionRead:
+        existing = self.session.scalar(
+            select(VideoScriptVersion).where(
+                VideoScriptVersion.source_execution_job_id == execution_job_id
+            )
+        )
+        if existing is not None:
+            if existing.batch_video_variant_id != checked.variant_id:
+                raise AppError("Qwen result identity conflict", 409)
+            return self._read(
+                existing, self._variant(checked.variant_id).active_script_version_id
+            )
+        variant = self._variant(checked.variant_id)
+        VideoScriptPreflightService._validate_timeline(variant, output)  # type: ignore[arg-type]
+        content_text = " ".join(
+            [output.title, output.concept, output.hook, output.cta]
+            + [
+                value
+                for scene in output.scenes
+                for value in (
+                    scene.visual_description,
+                    scene.action_description,
+                    scene.narration,
+                    scene.subtitle_draft,
+                )
+            ]
+        ).casefold()
+        if checked.brand_kit_version_id is not None:
+            from app.models import BrandKitVersion
+
+            brand = self.session.get(BrandKitVersion, checked.brand_kit_version_id)
+            if brand is None or brand.digest != checked.brand_kit_version_digest:
+                raise AppError("Frozen BrandKitVersion identity changed", 409)
+            for forbidden in brand.forbidden_terms:
+                term = " ".join(str(forbidden).split()).casefold()
+                if term and term in content_text:
+                    raise AppError("Script contains a BrandKit forbidden term", 422)
+        full_narration = " ".join(scene.narration for scene in output.scenes)
+        full_subtitle = " ".join(scene.subtitle_draft for scene in output.scenes)
+        content_digest = stable_digest(
+            {
+                "source_type": "QWEN_GENERATED",
+                "platform": checked.platform,
+                "language": checked.language,
+                "creative_angle": checked.creative_angle,
+                "title": output.title,
+                "concept": output.concept,
+                "hook": output.hook,
+                "cta": output.cta,
+                "scenes": [scene.model_dump(mode="json") for scene in output.scenes],
+                "full_narration": full_narration,
+                "full_subtitle_draft": full_subtitle,
+            }
+        )
+        try:
+            number = self.session.scalar(
+                update(BatchVideoVariant)
+                .where(
+                    BatchVideoVariant.id == checked.variant_id,
+                    BatchVideoVariant.source_digest == checked.variant_source_digest,
+                    BatchVideoVariant.status == "READY_FOR_SCRIPT",
+                )
+                .values(
+                    script_version_sequence=BatchVideoVariant.script_version_sequence
+                    + 1
+                )
+                .returning(BatchVideoVariant.script_version_sequence)
+            )
+            if number is None:
+                raise AppError("Frozen Variant identity changed", 409)
+            version = VideoScriptVersion(
+                batch_video_variant_id=checked.variant_id,
+                version_number=number,
+                parent_version_id=checked.parent_version_id,
+                source_type="QWEN_GENERATED",
+                source_digest=checked.frozen_input_digest,
+                content_digest=content_digest,
+                idempotency_key=f"qwen-job:{execution_job_id}",
+                product_id=checked.product_id,
+                product_content_digest=checked.product_content_digest,
+                strategy_id=checked.strategy_id,
+                strategy_digest=checked.strategy_digest,
+                copy_matrix_id=checked.copy_matrix_id,
+                target_platform_copy_digest=checked.target_platform_copy_digest,
+                source_video_project_id=None,
+                source_video_project_digest=None,
+                platform=checked.platform,
+                language=checked.language,
+                creative_angle=checked.creative_angle,
+                brand_kit_version_id=checked.brand_kit_version_id,
+                brand_kit_version_digest=checked.brand_kit_version_digest,
+                title=output.title,
+                concept=output.concept,
+                hook=output.hook,
+                full_narration=full_narration,
+                cta=output.cta,
+                full_subtitle_draft=full_subtitle,
+                created_by_kind="QWEN_PROVIDER",
+                source_execution_job_id=execution_job_id,
+                prompt_snapshot_json=prompt_snapshot,
+                prompt_digest=prompt_digest,
+                provider_name="qwen",
+                provider_model=checked.provider_model,
+                provider_response_digest=provider_response_digest,
+                review_status="UNREVIEWED",
+            )
+            self.session.add(version)
+            self.session.flush()
+            self.session.add_all(
+                [
+                    VideoStoryboardSceneVersion(
+                        video_script_version_id=version.id, **scene.model_dump()
+                    )
+                    for scene in output.scenes
+                ]
+            )
+            self.session.commit()
+            created = self.repo.get(checked.variant_id, version.id)
+            assert created is not None
+            return self._read(created, variant.active_script_version_id)
+        except IntegrityError as exc:
+            self.session.rollback()
+            recovered = self.session.scalar(
+                select(VideoScriptVersion).where(
+                    VideoScriptVersion.source_execution_job_id == execution_job_id
+                )
+            )
+            if recovered is None:
+                raise AppError(
+                    "Qwen script result conflict; no retry was attempted", 409
+                ) from exc
+            return self._read(
+                recovered, self._variant(checked.variant_id).active_script_version_id
+            )
 
     def get(self, variant_id: int, version_id: int) -> VideoScriptVersionRead:
         item = self.repo.get(variant_id, version_id)

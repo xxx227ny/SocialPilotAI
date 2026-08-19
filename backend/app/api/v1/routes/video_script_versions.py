@@ -3,8 +3,13 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
+from app.core.config import Settings, get_settings
 from app.db.session import get_db
+from app.schemas.execution import ExecutionJobCreateRead
 from app.schemas.video_script_version import (
+    QwenScriptJobCreateRequest,
+    QwenScriptPreflightRead,
+    QwenScriptPreflightRequest,
     VideoScriptActivateRead,
     VideoScriptCreateRead,
     VideoScriptCreateRequest,
@@ -12,11 +17,14 @@ from app.schemas.video_script_version import (
     VideoScriptPreflightRead,
     VideoScriptVersionRead,
 )
+from app.services.qwen_video_script_job_service import QwenVideoScriptJobService
+from app.services.qwen_video_script_preflight import QwenVideoScriptPreflightService
 from app.services.video_script_preflight import VideoScriptPreflightService
 from app.services.video_script_version_service import VideoScriptVersionService
 
 router = APIRouter()
 Db = Annotated[Session, Depends(get_db)]
+SettingsDep = Annotated[Settings, Depends(get_settings)]
 
 
 @router.post(
@@ -62,3 +70,30 @@ def get_version(variant_id: int, version_id: int, db: Db) -> VideoScriptVersionR
 )
 def activate(variant_id: int, version_id: int, db: Db) -> VideoScriptActivateRead:
     return VideoScriptVersionService(db).activate(variant_id, version_id)
+
+
+@router.post(
+    "/batch-video-variants/{variant_id}/qwen-script/preflight",
+    response_model=QwenScriptPreflightRead,
+)
+def qwen_preflight(
+    variant_id: int,
+    data: QwenScriptPreflightRequest,
+    db: Db,
+    settings: SettingsDep,
+) -> QwenScriptPreflightRead:
+    return QwenVideoScriptPreflightService(db, settings).run(variant_id, data)
+
+
+@router.post(
+    "/batch-video-variants/{variant_id}/qwen-script/jobs",
+    response_model=ExecutionJobCreateRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_qwen_job(
+    variant_id: int,
+    data: QwenScriptJobCreateRequest,
+    db: Db,
+    settings: SettingsDep,
+) -> ExecutionJobCreateRead:
+    return QwenVideoScriptJobService(db, settings).enqueue(variant_id, data)

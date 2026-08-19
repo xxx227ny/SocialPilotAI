@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import (
+    JSON,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -34,17 +35,20 @@ class VideoScriptVersion(Base):
         ),
         CheckConstraint("version_number >= 1", name="ck_video_script_version_positive"),
         CheckConstraint(
-            "source_type IN ('MANUAL','VIDEO_PROJECT_IMPORT')",
+            "source_type IN ('MANUAL','VIDEO_PROJECT_IMPORT','QWEN_GENERATED')",
             name="ck_video_script_source_type",
         ),
         CheckConstraint(
-            "created_by_kind IN ('LOCAL_USER','SYSTEM_IMPORT')",
+            "created_by_kind IN ('LOCAL_USER','SYSTEM_IMPORT','QWEN_PROVIDER')",
             name="ck_video_script_created_by",
         ),
         CheckConstraint(
             "review_status = 'UNREVIEWED'", name="ck_video_script_review_status"
         ),
         Index("ix_video_script_versions_content_digest", "content_digest"),
+        UniqueConstraint(
+            "source_execution_job_id", name="uq_video_script_source_execution_job"
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -97,6 +101,14 @@ class VideoScriptVersion(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now
     )
+    source_execution_job_id: Mapped[int | None] = mapped_column(
+        ForeignKey("execution_jobs.id", ondelete="RESTRICT"), index=True
+    )
+    prompt_snapshot_json: Mapped[dict[str, object] | None] = mapped_column(JSON)
+    prompt_digest: Mapped[str | None] = mapped_column(String(64))
+    provider_name: Mapped[str | None] = mapped_column(String(80))
+    provider_model: Mapped[str | None] = mapped_column(String(120))
+    provider_response_digest: Mapped[str | None] = mapped_column(String(64))
 
     scenes: Mapped[list[VideoStoryboardSceneVersion]] = relationship(
         order_by="VideoStoryboardSceneVersion.sequence",

@@ -37,6 +37,13 @@ ATTEMPT_STATUSES = (
     "SUBMIT_UNKNOWN",
     "LEASE_EXPIRED",
 )
+PROVIDER_SUBMISSION_STATES = (
+    "NOT_STARTED",
+    "NOT_SUBMITTED",
+    "EXPLICIT_FAILURE",
+    "RESPONSE_RECEIVED",
+    "SUBMIT_UNKNOWN",
+)
 
 
 class ExecutionJob(Base):
@@ -48,9 +55,7 @@ class ExecutionJob(Base):
             name="ck_execution_jobs_status",
         ),
         CheckConstraint("priority >= 0", name="ck_execution_jobs_priority"),
-        CheckConstraint(
-            "estimated_cost >= 0", name="ck_execution_jobs_estimated_cost"
-        ),
+        CheckConstraint("estimated_cost >= 0", name="ck_execution_jobs_estimated_cost"),
         CheckConstraint(
             "attempt_count >= 0 AND max_attempts >= 1 "
             "AND attempt_count <= max_attempts",
@@ -78,12 +83,8 @@ class ExecutionJob(Base):
             "uq_execution_jobs_running_concurrency_key",
             "concurrency_key",
             unique=True,
-            sqlite_where=text(
-                "concurrency_key IS NOT NULL AND status = 'RUNNING'"
-            ),
-            postgresql_where=text(
-                "concurrency_key IS NOT NULL AND status = 'RUNNING'"
-            ),
+            sqlite_where=text("concurrency_key IS NOT NULL AND status = 'RUNNING'"),
+            postgresql_where=text("concurrency_key IS NOT NULL AND status = 'RUNNING'"),
         ),
         Index(
             "ix_execution_jobs_queue_order",
@@ -112,9 +113,7 @@ class ExecutionJob(Base):
         Numeric(14, 4), nullable=False, default=Decimal("0")
     )
     currency: Mapped[str] = mapped_column(String(3), nullable=False, default="USD")
-    cost_confirmed: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False
-    )
+    cost_confirmed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     status: Mapped[str] = mapped_column(
         String(30), nullable=False, default="QUEUED", index=True
     )
@@ -145,9 +144,7 @@ class ExecutionJob(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
     )
-    result_entity_type: Mapped[str | None] = mapped_column(
-        String(80), nullable=True
-    )
+    result_entity_type: Mapped[str | None] = mapped_column(String(80), nullable=True)
     result_entity_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     attempts: Mapped[list[ExecutionAttempt]] = relationship(
@@ -178,12 +175,15 @@ class ExecutionAttempt(Base):
             "'LEASE_EXPIRED')",
             name="ck_execution_attempts_status",
         ),
-        CheckConstraint(
-            "attempt_number >= 1", name="ck_execution_attempts_number"
-        ),
+        CheckConstraint("attempt_number >= 1", name="ck_execution_attempts_number"),
         CheckConstraint(
             "provider_call_count >= 0",
             name="ck_execution_attempts_provider_call_count",
+        ),
+        CheckConstraint(
+            "provider_submission_state IN ('NOT_STARTED','NOT_SUBMITTED',"
+            "'EXPLICIT_FAILURE','RESPONSE_RECEIVED','SUBMIT_UNKNOWN')",
+            name="ck_execution_attempts_provider_submission_state",
         ),
         UniqueConstraint(
             "execution_job_id",
@@ -210,11 +210,12 @@ class ExecutionAttempt(Base):
     safe_error_details: Mapped[dict[str, object] | None] = mapped_column(
         JSON, nullable=True
     )
-    provider_call_count: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0
-    )
+    provider_call_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     external_submission_possible: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
+    )
+    provider_submission_state: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="NOT_STARTED", server_default="NOT_STARTED"
     )
 
     execution_job: Mapped[ExecutionJob] = relationship(back_populates="attempts")

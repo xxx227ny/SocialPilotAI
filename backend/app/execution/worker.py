@@ -85,8 +85,7 @@ class ExecutionWorker:
     def has_live_heartbeat(self) -> bool:
         with self._thread_lock:
             return bool(
-                self._heartbeat_thread is not None
-                and self._heartbeat_thread.is_alive()
+                self._heartbeat_thread is not None and self._heartbeat_thread.is_alive()
             )
 
     def stop(self) -> None:
@@ -148,9 +147,7 @@ class ExecutionWorker:
         except WorkerStopRequested:
             _, external_possible = context.provider_state()
             result = (
-                HandlerResult.submit_unknown(
-                    "WORKER_STOPPED_AFTER_EXTERNAL_SUBMISSION"
-                )
+                HandlerResult.submit_unknown("WORKER_STOPPED_AFTER_EXTERNAL_SUBMISSION")
                 if external_possible
                 else HandlerResult.failed("WORKER_STOPPED")
             )
@@ -227,14 +224,20 @@ class ExecutionWorker:
                         ),
                     )
                     return WorkerRunResult(WorkerRunStatus.SUCCEEDED, job_id)
-                if result.status == HandlerStatus.SUBMIT_UNKNOWN or external_possible:
+                certain_provider_failure = result.provider_submission_state in {
+                    "NOT_SUBMITTED",
+                    "EXPLICIT_FAILURE",
+                    "RESPONSE_RECEIVED",
+                }
+                if result.status == HandlerStatus.SUBMIT_UNKNOWN or (
+                    external_possible and not certain_provider_failure
+                ):
                     service.mark_submit_unknown(
                         job_id,
                         ExecutionJobUnknownRequest(
                             worker_id=self._worker_id,
                             safe_error_code=(
-                                result.safe_error_code
-                                or "HANDLER_RESULT_UNCERTAIN"
+                                result.safe_error_code or "HANDLER_RESULT_UNCERTAIN"
                             ),
                             safe_error_details=result.safe_error_details,
                             provider_call_count=provider_call_count,
@@ -242,9 +245,7 @@ class ExecutionWorker:
                             provider_operation_id=result.provider_operation_id,
                         ),
                     )
-                    return WorkerRunResult(
-                        WorkerRunStatus.SUBMIT_UNKNOWN, job_id
-                    )
+                    return WorkerRunResult(WorkerRunStatus.SUBMIT_UNKNOWN, job_id)
                 service.fail(
                     job_id,
                     ExecutionJobFailRequest(
@@ -254,6 +255,10 @@ class ExecutionWorker:
                         ),
                         safe_error_details=result.safe_error_details,
                         provider_call_count=provider_call_count,
+                        external_submission_possible=external_possible,
+                        provider_submission_state=(
+                            result.provider_submission_state or "NOT_STARTED"
+                        ),
                     ),
                 )
                 return WorkerRunResult(WorkerRunStatus.FAILED, job_id)

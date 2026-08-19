@@ -15,6 +15,7 @@ from app.execution.handlers.qwen_strategy import QWEN_STRATEGY_GENERATE_V1
 from app.execution.handlers.qwen_video_project import (
     QWEN_VIDEO_PROJECT_GENERATE_V1,
 )
+from app.execution.handlers.qwen_video_script import QWEN_VIDEO_SCRIPT_GENERATE_V1
 from app.execution.handlers.tiktok_publish import (
     TIKTOK_PUBLISH_CREATOR_INFO_V1,
     TIKTOK_PUBLISH_REFRESH_V1,
@@ -64,6 +65,7 @@ def create_execution_job(
         YOUTUBE_PUBLISH_SUBMIT_V1,
         YOUTUBE_PUBLISH_REFRESH_V1,
         QWEN_VIDEO_PROJECT_GENERATE_V1,
+        QWEN_VIDEO_SCRIPT_GENERATE_V1,
         WANX_VIDEO_RENDER_SUBMIT_V1,
         WANX_VIDEO_RENDER_REFRESH_V1,
         INSTAGRAM_PUBLISH_SUBMIT_V1,

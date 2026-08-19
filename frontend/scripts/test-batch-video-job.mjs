@@ -209,6 +209,15 @@ try {
     path.join(root, "src/config/features.ts"),
     "utf8",
   );
+  const batchApiSource = await fs.readFile(
+    path.join(root, "src/api/batchVideoJobs.ts"),
+    "utf8",
+  );
+  const batchStateSource = await fs.readFile(stateFile, "utf8");
+  const scriptPanelSource = await fs.readFile(
+    path.join(root, "src/components/video/VideoScriptVersionPanel.tsx"),
+    "utf8",
+  );
   for (const expected of [
     "orchestration_only",
     "downstreamCostLabel",
@@ -226,10 +235,53 @@ try {
   assert.ok(featureSource.includes("VITE_ENABLE_BATCH_VIDEO_JOBS"));
   assert.ok(!featureSource.includes("VITE_ENABLE_BATCH_VIDEO_JOBS ??"));
   staticAssertions += 3;
-  for (const forbidden of ["latest", "pinterest", "qwen", "wanx", "ffmpeg"]){
+  for (const forbidden of ["latest", "pinterest", "wanx", "ffmpeg"]) {
     assert.ok(!panel.toLowerCase().includes(forbidden));
     staticAssertions += 1;
   }
+  assert.ok(!batchApiSource.toLowerCase().includes("qwen"));
+  assert.ok(!batchStateSource.toLowerCase().includes("qwen"));
+  assert.ok(panel.includes("qwenEnabled={qwenScriptEnabled}"));
+  assert.ok(
+    panel.includes(
+      "scriptVariantId !== null && <VideoScriptVersionPanel",
+    ),
+  );
+  assert.ok(
+    featureSource.includes(
+      "qwenVideoScriptGenerationEnabled = isEnabledFeatureFlag",
+    ),
+  );
+  assert.ok(
+    featureSource.includes("VITE_ENABLE_QWEN_VIDEO_SCRIPT_GENERATION"),
+  );
+  assert.ok(
+    page.includes(
+      "showBatchVideoJobs && <BatchVideoJobPanel",
+    ),
+  );
+  assert.ok(
+    page.includes(
+      "qwenScriptEnabled={qwenVideoScriptGenerationEnabled}",
+    ),
+  );
+  assert.ok(!panel.includes("preflightQwenVideoScript"));
+  assert.ok(!panel.includes("createQwenVideoScriptJob"));
+  assert.ok(!/Promise\.all\s*\(\s*result\.variants/i.test(panel));
+  assert.ok(scriptPanelSource.includes("qwenApi.preflight(variant.id"));
+  assert.ok(
+    scriptPanelSource.includes(
+      "confirmAndCreateQwenJob(qwenApi,variant.id",
+    ),
+  );
+  staticAssertions += 13;
+
+  let presentationQwenRequests = 0;
+  if (state.shouldMountBatchVideoFlow(true, true)) {
+    presentationQwenRequests += 1;
+  }
+  assert.equal(presentationQwenRequests, 0);
+  behaviorScenarios += 1;
 
   console.log(
     `Batch Video Job: ${behaviorScenarios} production state behavior scenarios, ` +

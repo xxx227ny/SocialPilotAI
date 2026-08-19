@@ -134,9 +134,7 @@ class ExecutionQueueService:
         self.session.commit()
         return self._read(job.id)
 
-    def retry(
-        self, job_id: int, data: ExecutionJobRetryRequest
-    ) -> ExecutionJobRead:
+    def retry(self, job_id: int, data: ExecutionJobRetryRequest) -> ExecutionJobRead:
         del data
         job = self.get(job_id)
         if job.status != "FAILED" or job.uncertain:
@@ -198,6 +196,7 @@ class ExecutionQueueService:
             attempt.provider_call_count = data.provider_call_count
         if data.external_submission_possible:
             attempt.external_submission_possible = True
+            attempt.provider_submission_state = "SUBMIT_UNKNOWN"
             if job.submitted_at is None:
                 job.submitted_at = now
         job.lease_expires_at = now + timedelta(seconds=data.lease_seconds)
@@ -222,6 +221,11 @@ class ExecutionQueueService:
         job.lease_expires_at = None
         job.uncertain = False
         attempt.status = "SUCCEEDED"
+        attempt.provider_submission_state = (
+            "RESPONSE_RECEIVED"
+            if data.provider_call_count > 0 or attempt.external_submission_possible
+            else "NOT_STARTED"
+        )
         attempt.completed_at = now
         self.session.commit()
         return self._read(job.id)
@@ -230,7 +234,14 @@ class ExecutionQueueService:
         now = utc_now()
         self._assert_error(data.safe_error_code, data.safe_error_details)
         job, attempt = self._owned_running(job_id, data.worker_id, now)
-        if data.external_submission_possible or attempt.external_submission_possible:
+        certain = data.provider_submission_state in {
+            "NOT_SUBMITTED",
+            "EXPLICIT_FAILURE",
+            "RESPONSE_RECEIVED",
+        }
+        if (
+            data.external_submission_possible or attempt.external_submission_possible
+        ) and not certain:
             raise AppError(
                 "Possible external submission must be marked SUBMIT_UNKNOWN", 409
             )
@@ -243,6 +254,7 @@ class ExecutionQueueService:
         job.lease_expires_at = None
         job.uncertain = False
         attempt.status = "FAILED"
+        attempt.provider_submission_state = data.provider_submission_state
         attempt.completed_at = now
         attempt.safe_error_code = data.safe_error_code
         attempt.safe_error_details = data.safe_error_details or None
@@ -257,6 +269,7 @@ class ExecutionQueueService:
         job, attempt = self._owned_running(job_id, data.worker_id, now)
         self._set_provider_call_count(attempt, data.provider_call_count)
         attempt.external_submission_possible = True
+        attempt.provider_submission_state = "SUBMIT_UNKNOWN"
         attempt.status = "SUBMIT_UNKNOWN"
         attempt.completed_at = now
         attempt.safe_error_code = data.safe_error_code
@@ -298,6 +311,7 @@ class ExecutionQueueService:
                 if attempt is not None:
                     attempt.status = "SUBMIT_UNKNOWN"
                     attempt.external_submission_possible = True
+                    attempt.provider_submission_state = "SUBMIT_UNKNOWN"
                     attempt.safe_error_code = job.safe_error_code
                     attempt.completed_at = now
             else:
@@ -305,6 +319,7 @@ class ExecutionQueueService:
                 job.safe_error_code = "LEASE_EXPIRED"
                 if attempt is not None:
                     attempt.status = "LEASE_EXPIRED"
+                    attempt.provider_submission_state = "NOT_SUBMITTED"
                     attempt.safe_error_code = job.safe_error_code
                     attempt.completed_at = now
                 if job.attempt_count < job.max_attempts:
@@ -371,16 +386,10 @@ class ExecutionQueueService:
     def _is_running_concurrency_conflict(error: IntegrityError) -> bool:
         original = error.orig
         diagnostic = getattr(original, "diag", None)
-        if (
-            getattr(diagnostic, "constraint_name", None)
-            == _RUNNING_CONCURRENCY_INDEX
-        ):
+        if getattr(diagnostic, "constraint_name", None) == _RUNNING_CONCURRENCY_INDEX:
             return True
         safe_text = str(original).casefold()
-        return (
-            _RUNNING_CONCURRENCY_INDEX in safe_text
-            or (
-                "unique constraint failed" in safe_text
-                and "execution_jobs.concurrency_key" in safe_text
-            )
+        return _RUNNING_CONCURRENCY_INDEX in safe_text or (
+            "unique constraint failed" in safe_text
+            and "execution_jobs.concurrency_key" in safe_text
         )

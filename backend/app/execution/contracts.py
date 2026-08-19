@@ -64,9 +64,7 @@ class ExecutionContext:
         self._stop_event.wait(seconds)
         self.checkpoint()
 
-    def before_provider_call(
-        self, *, may_submit_external: bool = False
-    ) -> int:
+    def before_provider_call(self, *, may_submit_external: bool = False) -> int:
         """Persist the safety boundary before an Adapter makes a Provider call."""
         self.checkpoint()
         with self._state_lock:
@@ -105,6 +103,7 @@ class HandlerResult:
     provider_operation_id: str | None = None
     result_entity_type: str | None = None
     result_entity_id: int | None = None
+    provider_submission_state: str | None = None
 
     def __post_init__(self) -> None:
         reject_sensitive_keys(self.safe_error_details)
@@ -127,6 +126,18 @@ class HandlerResult:
             raise ValueError("Result entity reference is invalid")
         if self.status != HandlerStatus.SUCCEEDED and self.result_entity_type:
             raise ValueError("Only successful Handler results may reference an entity")
+        if self.provider_submission_state not in {
+            None,
+            "NOT_SUBMITTED",
+            "EXPLICIT_FAILURE",
+            "RESPONSE_RECEIVED",
+            "SUBMIT_UNKNOWN",
+        }:
+            raise ValueError("Provider submission state is invalid")
+        if self.status == HandlerStatus.SUBMIT_UNKNOWN and (
+            self.provider_submission_state not in {None, "SUBMIT_UNKNOWN"}
+        ):
+            raise ValueError("Uncertain Handler result has an invalid provider state")
         if self.status == HandlerStatus.SUCCEEDED:
             if self.safe_error_code is not None:
                 raise ValueError("Successful Handler result cannot have an error code")
@@ -144,6 +155,7 @@ class HandlerResult:
         provider_operation_id: str | None = None,
         result_entity_type: str | None = None,
         result_entity_id: int | None = None,
+        provider_submission_state: str | None = None,
     ) -> HandlerResult:
         return cls(
             status=HandlerStatus.SUCCEEDED,
@@ -151,6 +163,7 @@ class HandlerResult:
             provider_operation_id=provider_operation_id,
             result_entity_type=result_entity_type,
             result_entity_id=result_entity_id,
+            provider_submission_state=provider_submission_state,
         )
 
     @classmethod
@@ -159,11 +172,13 @@ class HandlerResult:
         safe_error_code: str,
         *,
         safe_error_details: dict[str, object] | None = None,
+        provider_submission_state: str | None = None,
     ) -> HandlerResult:
         return cls(
             status=HandlerStatus.FAILED,
             safe_error_code=safe_error_code,
             safe_error_details=safe_error_details or {},
+            provider_submission_state=provider_submission_state,
         )
 
     @classmethod
@@ -181,6 +196,7 @@ class HandlerResult:
             safe_error_details=safe_error_details or {},
             provider_name=provider_name,
             provider_operation_id=provider_operation_id,
+            provider_submission_state="SUBMIT_UNKNOWN",
         )
 
 

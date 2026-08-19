@@ -155,6 +155,7 @@ def test_http_enqueue_is_provider_free_and_worker_restores_exact_result(
         "qwen.copy_matrix.generate.v1",
         "qwen.strategy.generate.v1",
         "qwen.video_project.generate.v1",
+        "qwen.video_script.generate.v1",
         "tiktok.publish.creator_info.v1",
         "tiktok.publish.refresh.v1",
         "tiktok.publish.submit.v1",

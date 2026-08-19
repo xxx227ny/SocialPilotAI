@@ -145,3 +145,5 @@ Use [Progress Log](progress-log.md) for exact execution evidence and update [Dev
 ### Stage 3D：Provider-free版本化脚本与分镜
 
 Stage 3D为`BatchVideoVariant`增加不可变、可编辑和可激活的脚本/分镜版本历史。它只覆盖人工创建与精确`VideoProject`导入，所有版本均为`UNREVIEWED`，不表示内容已审核或可发布。Qwen脚本生成、视觉素材、TTS、渲染、批量审核和平台交付仍是后续能力；本阶段不会调用Provider或生成媒体。
+
+Stage 3E增加默认关闭的单Variant Qwen脚本生成编排：Provider-free Preflight冻结精确来源和费用区间，用户确认后仅由Worker执行最多一次Qwen提交，并把合法结果保存为新的不可变`QWEN_GENERATED`脚本版本。生成版本保持`UNREVIEWED`且不会自动激活；本阶段不提供18个Variant批量AI调用，也不包含素材、TTS、渲染、审核、发布或真实Provider Smoke。

@@ -32,13 +32,18 @@ def reject_sensitive_keys(value: object) -> object:
 
 SafeErrorCode = Annotated[str, Field(pattern=r"^[A-Z][A-Z0-9_]{0,99}$")]
 Digest = Annotated[str, Field(pattern=r"^[0-9a-fA-F]{64}$")]
+ProviderSubmissionState = Literal[
+    "NOT_STARTED",
+    "NOT_SUBMITTED",
+    "EXPLICIT_FAILURE",
+    "RESPONSE_RECEIVED",
+    "SUBMIT_UNKNOWN",
+]
 
 
 class ExecutionJobCreate(BaseModel):
     job_type: str = Field(min_length=1, max_length=80, pattern=r"^[a-z0-9_.-]+$")
-    source_type: str = Field(
-        min_length=1, max_length=80, pattern=r"^[a-z0-9_.-]+$"
-    )
+    source_type: str = Field(min_length=1, max_length=80, pattern=r"^[a-z0-9_.-]+$")
     source_id: int = Field(gt=0)
     input_digest: Digest
     idempotency_key: str = Field(min_length=8, max_length=200)
@@ -69,6 +74,7 @@ class ExecutionAttemptRead(BaseModel):
     safe_error_details: dict[str, object] | None
     provider_call_count: int
     external_submission_possible: bool
+    provider_submission_state: ProviderSubmissionState
 
 
 class ExecutionJobRead(BaseModel):
@@ -157,10 +163,14 @@ class ExecutionJobFailRequest(BaseModel):
     safe_error_details: dict[str, object] = Field(default_factory=dict)
     provider_call_count: int = Field(default=0, ge=0)
     external_submission_possible: bool = False
+    provider_submission_state: Literal[
+        "NOT_STARTED", "NOT_SUBMITTED", "EXPLICIT_FAILURE", "RESPONSE_RECEIVED"
+    ] = "NOT_STARTED"
 
 
 class ExecutionJobUnknownRequest(ExecutionJobFailRequest):
     external_submission_possible: Literal[True] = True
+    provider_submission_state: Literal["SUBMIT_UNKNOWN"] = "SUBMIT_UNKNOWN"
     provider_name: str | None = Field(default=None, min_length=1, max_length=80)
     provider_operation_id: str | None = Field(
         default=None, min_length=1, max_length=255

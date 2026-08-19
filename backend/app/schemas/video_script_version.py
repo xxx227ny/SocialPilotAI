@@ -149,6 +149,12 @@ class VideoScriptVersionRead(StrictScriptModel):
     cta: str
     full_subtitle_draft: str
     created_by_kind: str
+    source_execution_job_id: int | None
+    prompt_snapshot_json: dict[str, object] | None
+    prompt_digest: str | None
+    provider_name: str | None
+    provider_model: str | None
+    provider_response_digest: str | None
     review_status: Literal["UNREVIEWED"]
     created_at: datetime
     scenes: list[StoryboardSceneRead]
@@ -165,3 +171,100 @@ class VideoScriptActivateRead(StrictScriptModel):
     active_script_version_id: int
     editing_state: Literal["ACTIVE_VERSION"]
     reused: bool
+
+
+class QwenScriptPreflightRequest(StrictScriptModel):
+    idempotency_key: str = Field(
+        min_length=8, max_length=200, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]+$"
+    )
+    strategy_id: int = Field(gt=0)
+    copy_matrix_id: int | None = Field(default=None, gt=0)
+    parent_version_id: int | None = Field(default=None, gt=0)
+
+
+class QwenScriptPreflightRead(StrictScriptModel):
+    ready_for_execution: bool
+    variant_id: int
+    variant_source_digest: str
+    product_id: int
+    product_content_digest: str
+    strategy_id: int
+    strategy_digest: str
+    copy_matrix_id: int | None
+    target_platform_copy_digest: str | None
+    parent_version_id: int | None
+    parent_content_digest: str | None
+    brand_kit_version_id: int | None
+    brand_kit_version_digest: str | None
+    platform: str
+    language: str
+    creative_angle: str | None
+    duration_ms: Literal[15000]
+    aspect_ratio: Literal["9:16"]
+    prompt_contract_version: str
+    output_schema_version: str
+    provider_name: Literal["qwen"]
+    provider_model: str
+    frozen_input_digest: str
+    preflight_digest: str
+    expires_at: datetime
+    estimated_provider_calls: Literal[1]
+    estimated_cost_min: Decimal | None
+    estimated_cost_max: Decimal | None
+    currency: str
+    cost_estimate_basis: str | None
+    cost_scope: Literal["single_qwen_video_script_generation"]
+    requires_cost_confirmation: Literal[True]
+    will_auto_activate: Literal[False]
+    provider_call_count: Literal[0]
+    database_writes: Literal[0]
+    quota_limit: int
+    quota_reserved: int
+    quota_remaining: int
+
+
+class QwenScriptJobCreateRequest(QwenScriptPreflightRequest):
+    frozen_input_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    preflight_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    preflight_expires_at: datetime
+    estimated_cost_min: Decimal = Field(ge=0)
+    estimated_cost_max: Decimal = Field(gt=0)
+    currency: str = Field(pattern=r"^[A-Za-z]{3}$")
+    cost_estimate_basis: str = Field(min_length=1, max_length=200)
+    cost_confirmed: Literal[True]
+
+
+class QwenGeneratedScene(StoryboardSceneDraft):
+    pass
+
+
+class QwenScriptProviderOutput(StrictScriptModel):
+    title: str = Field(min_length=1, max_length=300)
+    concept: str = Field(min_length=1, max_length=2000)
+    hook: str = Field(min_length=1, max_length=1000)
+    cta: str = Field(min_length=1, max_length=1000)
+    scenes: list[QwenGeneratedScene] = Field(min_length=1, max_length=12)
+
+    @field_validator("title", "concept", "hook", "cta")
+    @classmethod
+    def normalize_provider_text(cls, value: str) -> str:
+        cleaned = " ".join(value.split())
+        if not cleaned:
+            raise ValueError("provider script text cannot be empty")
+        return cleaned
+
+
+class QwenScriptJobInput(StrictScriptModel):
+    variant_id: int = Field(gt=0)
+    idempotency_key: str = Field(min_length=8, max_length=200)
+    strategy_id: int = Field(gt=0)
+    copy_matrix_id: int | None = Field(default=None, gt=0)
+    parent_version_id: int | None = Field(default=None, gt=0)
+    frozen_input_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    preflight_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    preflight_expires_at: datetime
+    estimated_cost_min: Decimal = Field(ge=0)
+    estimated_cost_max: Decimal = Field(gt=0)
+    currency: str = Field(pattern=r"^[A-Z]{3}$")
+    cost_estimate_basis: str = Field(min_length=1, max_length=200)
+    provider_model: str = Field(min_length=1, max_length=120)

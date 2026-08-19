@@ -1,8 +1,9 @@
 import os
 import sys
+from decimal import Decimal
 from functools import lru_cache
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -32,6 +33,16 @@ class Settings(BaseSettings):
     qwen_read_timeout: float = Field(default=120, gt=0, le=120)
     qwen_write_timeout: float = Field(default=30, gt=0, le=60)
     qwen_pool_timeout: float = Field(default=10, gt=0, le=30)
+    enable_qwen_video_script_generation: bool = False
+    qwen_video_script_cost_min: Decimal | None = Field(default=None, ge=0)
+    qwen_video_script_cost_max: Decimal | None = Field(default=None, gt=0)
+    qwen_video_script_cost_currency: str = Field(
+        default="CNY", pattern=r"^[A-Za-z]{3}$"
+    )
+    qwen_video_script_cost_basis: str | None = Field(
+        default=None, min_length=1, max_length=200
+    )
+    qwen_video_script_preflight_ttl_seconds: int = Field(default=600, ge=60, le=3600)
     require_live_provider_coherence: bool = False
     enable_strategy_execution: bool = False
     enable_copy_execution: bool = False
@@ -104,6 +115,30 @@ class Settings(BaseSettings):
         if isinstance(value, str) and not value.startswith("["):
             return [origin.strip() for origin in value.split(",") if origin.strip()]
         return value
+
+    @field_validator("qwen_video_script_cost_currency")
+    @classmethod
+    def normalize_qwen_cost_currency(cls, value: str) -> str:
+        return value.upper()
+
+    @model_validator(mode="after")
+    def validate_qwen_video_script_cost_policy(self) -> "Settings":
+        values = (
+            self.qwen_video_script_cost_min,
+            self.qwen_video_script_cost_max,
+            self.qwen_video_script_cost_basis,
+        )
+        if any(value is not None for value in values) and not all(
+            value is not None for value in values
+        ):
+            raise ValueError("Qwen video script cost policy must be complete")
+        if (
+            self.qwen_video_script_cost_min is not None
+            and self.qwen_video_script_cost_max is not None
+            and self.qwen_video_script_cost_min > self.qwen_video_script_cost_max
+        ):
+            raise ValueError("Qwen video script cost range is invalid")
+        return self
 
 
 @lru_cache
