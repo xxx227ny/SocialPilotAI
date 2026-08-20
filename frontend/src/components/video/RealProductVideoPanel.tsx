@@ -4,8 +4,12 @@ import { getApiErrorMessage } from "../../api/client";
 import {
   getExactMarketingJob,
   getProductImageAsset,
+  happyHorseVideoContentUrl,
   listProductVideoSources,
+  preflightHappyHorseVideo,
   prepareProductVideo,
+  refreshHappyHorseVideo,
+  submitHappyHorseVideo,
   submitProductImageJob,
   submitWanxProductImageJob,
   submitVoiceoverJob,
@@ -46,6 +50,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
   const [phase, setPhase] = useState<RealProductVideoPhase>("IDLE");
   const [message, setMessage] = useState("");
   const [result, setResult] = useState<{ video: number; subtitle: number } | null>(null);
+  const [cloudVideoArtifactId, setCloudVideoArtifactId] = useState<number | null>(null);
   const source = useMemo(
     () => sources.find((item) => item.variant_id === sourceId) ?? null,
     [sourceId, sources],
@@ -56,6 +61,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
     setSources([]);
     setSourceId(0);
     setResult(null);
+    setCloudVideoArtifactId(null);
     if (!realProductVideoEnabled || isPresentation) return;
     const active = operation.current.begin();
     listProductVideoSources(product.id, active.signal)
@@ -271,6 +277,131 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
     }
   }
 
+  async function generateCloudVideo() {
+    if (!source) return;
+    const active = operation.current.begin();
+    setCloudVideoArtifactId(null);
+    setMessage("");
+    try {
+      setPhase("GENERATING_IMAGES");
+      const images: UploadedProductImage[] = [];
+      for (const scene of source.scenes) {
+        const submitted = await submitWanxProductImageJob(
+          product.id,
+          {
+            script_version_id: source.script_version_id,
+            scene_sequence: scene.sequence,
+            idempotency_key: crypto.randomUUID(),
+            cost_confirmed: true,
+          },
+          active.signal,
+        );
+        const job = await pollExactJob(submitted.job, getExactMarketingJob, active.signal);
+        const assetId = requireSuccessfulResult(job, "product_asset");
+        images.push(await getProductImageAsset(product.id, assetId, active.signal));
+      }
+      setPhase("PREPARING_SHOTS");
+      const shots = source.scenes.map((scene, index) => ({
+        scene_id: scene.id,
+        product_asset_id: images[index].id,
+        product_asset_sha256: images[index].sha256,
+        motion: MOTIONS[index % MOTIONS.length],
+      }));
+      const platform = {
+        tiktok: "TIKTOK",
+        youtube: "YOUTUBE_SHORTS",
+        instagram: "INSTAGRAM_REELS",
+      }[source.platform];
+      const prepared = await prepareProductVideo(
+        product.id,
+        {
+          variant_id: source.variant_id,
+          script_version_id: source.script_version_id,
+          platform,
+          shots,
+        },
+        active.signal,
+      );
+      setPhase("CLOUD_VIDEO");
+      const referenceImages = images.map((image) => ({
+        product_asset_id: image.id,
+        product_asset_sha256: image.sha256,
+      }));
+      const preflight = await preflightHappyHorseVideo(
+        product.id,
+        {
+          video_project_id: prepared.video_project_id,
+          script_version_id: source.script_version_id,
+          reference_images: referenceImages,
+        },
+        active.signal,
+      );
+      if (preflight.ready !== true) throw new Error("HappyHorse生成条件尚未满足");
+      const submitted = await submitHappyHorseVideo(
+        product.id,
+        {
+          video_project_id: prepared.video_project_id,
+          script_version_id: source.script_version_id,
+          reference_images: referenceImages,
+          input_digest: preflight.input_digest,
+          preflight_digest: preflight.preflight_digest,
+          preflight_expires_at: preflight.expires_at,
+          cost_confirmed: true,
+        },
+        active.signal,
+      );
+      const submitJob = await pollExactJob(
+        submitted.job,
+        getExactMarketingJob,
+        active.signal,
+      );
+      const taskId = requireSuccessfulResult(submitJob, "video_render_task");
+      let artifactId: number | null = null;
+      for (let attempt = 0; attempt < 90 && artifactId === null; attempt += 1) {
+        await new Promise<void>((resolve, reject) => {
+          const timer = window.setTimeout(resolve, 2000);
+          active.signal.addEventListener(
+            "abort",
+            () => {
+              window.clearTimeout(timer);
+              reject(new DOMException("Aborted", "AbortError"));
+            },
+            { once: true },
+          );
+        });
+        const refresh = await refreshHappyHorseVideo(
+          product.id,
+          taskId,
+          prepared.video_project_id,
+          crypto.randomUUID(),
+          active.signal,
+        );
+        const refreshJob = await pollExactJob(
+          refresh.job,
+          getExactMarketingJob,
+          active.signal,
+        );
+        if (
+          refreshJob.status === "SUCCEEDED" &&
+          refreshJob.result_entity_type === "video_render_artifact" &&
+          refreshJob.result_entity_id
+        ) {
+          artifactId = refreshJob.result_entity_id;
+        } else if (refreshJob.status !== "SUCCEEDED") {
+          requireSuccessfulResult(refreshJob, "video_render_artifact");
+        }
+      }
+      if (artifactId === null) throw new Error("HappyHorse视频生成等待超时");
+      if (operation.current.current(active.id)) {
+        setCloudVideoArtifactId(artifactId);
+        setPhase("SUCCEEDED");
+        setMessage("HappyHorse 15秒商品云视频已生成。下一阶段接入千问配音与字幕。");
+      }
+    } catch (error) {
+      fail(active.id, error, "HappyHorse商品视频生成失败。");
+    }
+  }
+
   function fail(id: number, error: unknown, fallback: string) {
     if (!operation.current.current(id)) return;
     setPhase("FAILED");
@@ -280,7 +411,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
   return (
     <section className="video-composition-panel">
       <h4>真实商品素材15秒视频</h4>
-      <p>千问脚本 · 千问云配音 · 万象商品视觉 · 本地确定性剪辑</p>
+      <p>千问脚本 · 万象商品视觉 · HappyHorse参考图生视频 · 千问云配音</p>
       <p>旁白若超过15秒会安全停止；请缩短文案后重新生成，不会裁断语音。</p>
       <label>
         Variant与激活脚本
@@ -301,6 +432,21 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
       >
         生成15秒视频
       </button>
+      <button
+        type="button"
+        disabled={!source || !["IDLE", "FAILED", "SUCCEEDED"].includes(phase)}
+        onClick={() => void generateCloudVideo()}
+      >
+        生成HappyHorse 15秒云视频
+      </button>
+      {cloudVideoArtifactId && (
+        <div>
+          <video controls src={happyHorseVideoContentUrl(cloudVideoArtifactId)} />
+          <a href={happyHorseVideoContentUrl(cloudVideoArtifactId)} download>
+            下载HappyHorse MP4
+          </a>
+        </div>
+      )}
       {result && (
         <div>
           <video controls src={compositionEnhancementContentUrl(result.video)} />

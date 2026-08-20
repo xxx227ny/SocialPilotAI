@@ -47,11 +47,26 @@ export interface MarketingJobResult {
   reused: boolean;
 }
 
+export interface HappyHorseVideoPreflight {
+  video_project_id: number;
+  script_version_id: number;
+  reference_images: Array<{
+    product_asset_id: number;
+    product_asset_sha256: string;
+  }>;
+  input_digest: string;
+  preflight_digest: string;
+  expires_at: string;
+  ready: boolean;
+  missing_requirements: string[];
+}
+
 export type RealProductVideoPhase =
   | "IDLE"
   | "UPLOADING"
   | "GENERATING_IMAGES"
   | "PREPARING_SHOTS"
+  | "CLOUD_VIDEO"
   | "COMPOSING"
   | "VOICEOVER"
   | "ENHANCING"

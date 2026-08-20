@@ -13,6 +13,7 @@ from app.providers.qwen_provider import QwenProvider
 from app.providers.visual_base import (
     VisualGenerationProvider,
     VisualGenerationRequest,
+    VisualReferenceImage,
     VisualTaskSnapshot,
     VisualTaskSubmission,
 )
@@ -29,6 +30,7 @@ __all__ = [
     "TextGenerationProvider",
     "VisualGenerationProvider",
     "VisualGenerationRequest",
+    "VisualReferenceImage",
     "VisualTaskSnapshot",
     "VisualTaskSubmission",
     "WanxProvider",

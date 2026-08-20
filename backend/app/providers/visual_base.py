@@ -18,6 +18,13 @@ class VisualGenerationRequest:
     duration_seconds: int
     aspect_ratio: str
     resolution: str
+    reference_images: tuple["VisualReferenceImage", ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class VisualReferenceImage:
+    content: bytes
+    content_type: Literal["image/png", "image/jpeg", "image/webp"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,9 +49,7 @@ class VisualGenerationProvider(ABC):
     """Provider-neutral asynchronous visual generation contract."""
 
     @abstractmethod
-    async def submit(
-        self, request: VisualGenerationRequest
-    ) -> VisualTaskSubmission:
+    async def submit(self, request: VisualGenerationRequest) -> VisualTaskSubmission:
         """Submit an asynchronous visual task."""
 
     @abstractmethod

@@ -50,6 +50,47 @@ class VoiceoverSubmitRequest(BaseModel):
     idempotency_key: str = Field(min_length=1, max_length=200)
 
 
+class HappyHorseReferenceImage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    product_asset_id: int = Field(gt=0)
+    product_asset_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class HappyHorseVideoPreflightRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    video_project_id: int = Field(gt=0)
+    script_version_id: int = Field(gt=0)
+    reference_images: list[HappyHorseReferenceImage] = Field(min_length=1, max_length=9)
+
+
+class HappyHorseVideoPreflightRead(HappyHorseVideoPreflightRequest):
+    input_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    preflight_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    expires_at: datetime
+    provider: str = "happyhorse"
+    provider_model: str
+    duration_seconds: int = 15
+    aspect_ratio: str = "9:16"
+    resolution: str = "720P"
+    estimated_cost: str
+    currency: str = "CNY"
+    ready: bool
+    missing_requirements: list[str]
+
+
+class HappyHorseVideoSubmitRequest(HappyHorseVideoPreflightRequest):
+    input_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    preflight_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    preflight_expires_at: datetime
+    cost_confirmed: bool
+
+
+class HappyHorseVideoRefreshRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    video_project_id: int = Field(gt=0)
+    refresh_request_id: str = Field(min_length=16, max_length=128)
+
+
 class ProductVideoPrepareRead(BaseModel):
     video_project_id: int
     script_version_id: int

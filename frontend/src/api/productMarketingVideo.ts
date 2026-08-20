@@ -1,6 +1,7 @@
 import { apiClient } from "./client";
 import type { ExecutionJob } from "../types/execution";
 import type {
+  HappyHorseVideoPreflight,
   MarketingJobResult,
   ProductVideoPrepare,
   ProductVideoSource,
@@ -78,6 +79,53 @@ export async function submitVoiceoverJob(
   );
   return response.data;
 }
+
+export async function preflightHappyHorseVideo(
+  productId: number,
+  payload: Record<string, unknown>,
+  signal?: AbortSignal,
+) {
+  const response = await apiClient.post<HappyHorseVideoPreflight>(
+    `/products/${productId}/real-product-video/happyhorse-preflight`,
+    payload,
+    { signal },
+  );
+  return response.data;
+}
+
+export async function submitHappyHorseVideo(
+  productId: number,
+  payload: Record<string, unknown>,
+  signal?: AbortSignal,
+) {
+  const response = await apiClient.post<MarketingJobResult>(
+    `/products/${productId}/real-product-video/happyhorse-jobs`,
+    payload,
+    { signal },
+  );
+  return response.data;
+}
+
+export async function refreshHappyHorseVideo(
+  productId: number,
+  taskId: number,
+  videoProjectId: number,
+  refreshRequestId: string,
+  signal?: AbortSignal,
+) {
+  const response = await apiClient.post<MarketingJobResult>(
+    `/products/${productId}/real-product-video/happyhorse-tasks/${taskId}/refresh-jobs`,
+    {
+      video_project_id: videoProjectId,
+      refresh_request_id: refreshRequestId,
+    },
+    { signal },
+  );
+  return response.data;
+}
+
+export const happyHorseVideoContentUrl = (artifactId: number) =>
+  `/api/v1/video-render-artifacts/${artifactId}/content`;
 
 export async function getExactMarketingJob(jobId: number, signal?: AbortSignal) {
   const response = await apiClient.get<ExecutionJob>(`/execution-jobs/${jobId}`, {

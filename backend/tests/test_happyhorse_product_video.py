@@ -1,0 +1,339 @@
+import asyncio
+import hashlib
+from pathlib import Path
+
+import httpx
+from sqlalchemy.orm import Session, sessionmaker
+
+from app.core.config import Settings
+from app.execution.handlers.happyhorse_product_video import (
+    HappyHorseProductVideoRefreshV1Handler,
+    HappyHorseProductVideoSubmitV1Handler,
+)
+from app.execution.registry import ExecutionHandlerRegistry
+from app.execution.worker import ExecutionWorker, WorkerRunStatus
+from app.models import (
+    ExecutionJob,
+    Product,
+    ProductAsset,
+    VideoProject,
+    VideoRenderArtifact,
+    VideoRenderTask,
+)
+from app.providers.happyhorse_provider import HappyHorseProvider
+from app.providers.visual_base import (
+    VisualGenerationProvider,
+    VisualGenerationRequest,
+    VisualReferenceImage,
+    VisualTaskSnapshot,
+    VisualTaskSubmission,
+)
+from app.schemas.product_marketing_video import (
+    HappyHorseReferenceImage,
+    HappyHorseVideoPreflightRequest,
+    HappyHorseVideoRefreshRequest,
+    HappyHorseVideoSubmitRequest,
+)
+from app.services.happyhorse_product_video_service import (
+    HappyHorseProductVideoService,
+)
+from app.services.video_artifact_storage import LocalVideoArtifactStorage
+from tests.test_video_render_execution_service import FakeOutputFetcher
+
+
+class FakeHappyHorse(VisualGenerationProvider):
+    def __init__(self) -> None:
+        self.submit_calls = 0
+        self.fetch_calls = 0
+        self.reference_count = 0
+
+    async def submit(self, request: VisualGenerationRequest) -> VisualTaskSubmission:
+        self.submit_calls += 1
+        self.reference_count = len(request.reference_images)
+        return VisualTaskSubmission("happyhorse-task-1", None, "PENDING")
+
+    async def fetch(self, provider_task_id: str) -> VisualTaskSnapshot:
+        self.fetch_calls += 1
+        return VisualTaskSnapshot(
+            provider_task_id=provider_task_id,
+            status="SUCCEEDED",
+            provider_output_url="https://provider.example/video.mp4",
+        )
+
+
+def test_happyhorse_provider_submits_exact_r2v_contract_without_leaking_key() -> None:
+    calls = {"submit": 0, "refresh": 0}
+
+    def transport(request: httpx.Request) -> httpx.Response:
+        assert request.headers["authorization"] == "Bearer fake-token-plan-key"
+        if request.method == "POST":
+            calls["submit"] += 1
+            payload = __import__("json").loads(request.content)
+            assert payload["model"] == "happyhorse-1.1-r2v"
+            assert payload["parameters"] == {
+                "duration": 15,
+                "ratio": "9:16",
+                "resolution": "720P",
+            }
+            assert payload["input"]["media"] == [
+                {
+                    "type": "reference_image",
+                    "url": "data:image/png;base64,aW1hZ2U=",
+                }
+            ]
+            return httpx.Response(
+                200,
+                json={
+                    "output": {"task_id": "task-1", "task_status": "PENDING"},
+                    "request_id": "request-1",
+                },
+            )
+        calls["refresh"] += 1
+        return httpx.Response(
+            200,
+            json={
+                "output": {
+                    "task_id": "task-1",
+                    "task_status": "SUCCEEDED",
+                    "video_url": "https://example.invalid/video.mp4",
+                }
+            },
+        )
+
+    provider = HappyHorseProvider(
+        Settings(qwen_api_key="fake-token-plan-key"),
+        transport=httpx.MockTransport(transport),
+    )
+    submitted = asyncio.run(
+        provider.submit(
+            VisualGenerationRequest(
+                prompt="Premium product video",
+                duration_seconds=15,
+                aspect_ratio="9:16",
+                resolution="720P",
+                reference_images=(VisualReferenceImage(b"image", "image/png"),),
+            )
+        )
+    )
+    refreshed = asyncio.run(provider.fetch(submitted.provider_task_id))
+    assert submitted.provider_task_id == "task-1"
+    assert refreshed.status == "SUCCEEDED"
+    assert calls == {"submit": 1, "refresh": 1}
+
+
+def test_happyhorse_preflight_and_enqueue_freeze_exact_reference_images(
+    db_session: Session, tmp_path: Path
+) -> None:
+    product = Product(
+        name="Fictional Product",
+        category="Demo",
+        description="A sufficiently detailed fictional product description.",
+        selling_points=["Portable"],
+        target_markets=["US"],
+    )
+    db_session.add(product)
+    db_session.flush()
+    content = b"image"
+    digest = hashlib.sha256(content).hexdigest()
+    identity = f"product-images/{digest[:2]}/{digest}.png"
+    asset = ProductAsset(
+        product_id=product.id,
+        file_name="reference.png",
+        file_path=identity,
+        file_type="png",
+        content_type="image/png",
+        size_bytes=len(content),
+        sha256=digest,
+        width=1024,
+        height=1024,
+        storage_identity=identity,
+    )
+    project = VideoProject(
+        product_id=product.id,
+        marketing_strategy_id=1,
+        copy_matrix_id=1,
+        platform="TikTok",
+        title="Product launch",
+        concept="Premium portable product",
+        duration_seconds=15,
+        aspect_ratio="9:16",
+        scenes=[
+            {
+                "sequence": 1,
+                "visual_description": "Hero shot",
+                "action": "Slow orbit",
+            }
+        ],
+        cta="Shop now",
+        source_script_version_id=7,
+        source_script_content_digest="a" * 64,
+    )
+    db_session.add_all([asset, project])
+    db_session.commit()
+    settings = Settings(
+        qwen_api_key="fake-token-plan-key",
+        enable_happyhorse_product_video=True,
+        product_asset_storage_root=str(tmp_path / "images"),
+        video_artifact_storage_root=str(tmp_path / "videos"),
+    )
+    request = HappyHorseVideoPreflightRequest(
+        video_project_id=project.id,
+        script_version_id=7,
+        reference_images=[
+            HappyHorseReferenceImage(
+                product_asset_id=asset.id,
+                product_asset_sha256=digest,
+            )
+        ],
+    )
+    service = HappyHorseProductVideoService(db_session, settings)
+    checked = service.preflight(product.id, request)
+    assert checked.ready is True
+    submit = HappyHorseVideoSubmitRequest(
+        **request.model_dump(),
+        input_digest=checked.input_digest,
+        preflight_digest=checked.preflight_digest,
+        preflight_expires_at=checked.expires_at,
+        cost_confirmed=True,
+    )
+    first = service.enqueue_submit(product.id, submit)
+    second = service.enqueue_submit(product.id, submit)
+    assert first.reused is False and second.reused is True
+    assert first.job.id == second.job.id
+    assert first.job.job_type == "happyhorse.product_video.submit.v1"
+    assert first.job.max_attempts == 1
+    assert first.job.estimated_cost == settings.happyhorse_estimated_cost
+    assert db_session.query(ExecutionJob).count() == 1
+
+
+def test_happyhorse_worker_submits_once_and_refresh_persists_artifact(
+    db_session: Session, tmp_path: Path
+) -> None:
+    product = Product(
+        name="Worker Product",
+        category="Demo",
+        description="A sufficiently detailed fictional product description.",
+        selling_points=["Portable"],
+        target_markets=["US"],
+    )
+    db_session.add(product)
+    db_session.flush()
+    content = b"reference-image"
+    digest = hashlib.sha256(content).hexdigest()
+    identity = f"product-images/{digest[:2]}/{digest}.png"
+    asset = ProductAsset(
+        product_id=product.id,
+        file_name="reference.png",
+        file_path=identity,
+        file_type="png",
+        content_type="image/png",
+        size_bytes=len(content),
+        sha256=digest,
+        width=1024,
+        height=1024,
+        storage_identity=identity,
+    )
+    project = VideoProject(
+        product_id=product.id,
+        marketing_strategy_id=1,
+        copy_matrix_id=1,
+        platform="TikTok",
+        title="Worker launch",
+        concept="Premium portable product",
+        duration_seconds=15,
+        aspect_ratio="9:16",
+        scenes=[
+            {
+                "sequence": 1,
+                "visual_description": "Hero shot",
+                "action": "Slow orbit",
+            }
+        ],
+        cta="Shop now",
+        source_script_version_id=8,
+        source_script_content_digest="b" * 64,
+    )
+    db_session.add_all([asset, project])
+    db_session.commit()
+    image_path = tmp_path / "images" / identity
+    image_path.parent.mkdir(parents=True)
+    image_path.write_bytes(content)
+    settings = Settings(
+        qwen_api_key="fake-token-plan-key",
+        enable_happyhorse_product_video=True,
+        enable_video_render_execution=True,
+        product_asset_storage_root=str(tmp_path / "images"),
+        video_artifact_storage_root=str(tmp_path / "videos"),
+    )
+    request = HappyHorseVideoPreflightRequest(
+        video_project_id=project.id,
+        script_version_id=8,
+        reference_images=[
+            HappyHorseReferenceImage(
+                product_asset_id=asset.id,
+                product_asset_sha256=digest,
+            )
+        ],
+    )
+    service = HappyHorseProductVideoService(db_session, settings)
+    checked = service.preflight(product.id, request)
+    submitted = service.enqueue_submit(
+        product.id,
+        HappyHorseVideoSubmitRequest(
+            **request.model_dump(),
+            input_digest=checked.input_digest,
+            preflight_digest=checked.preflight_digest,
+            preflight_expires_at=checked.expires_at,
+            cost_confirmed=True,
+        ),
+    )
+    sessions = sessionmaker(bind=db_session.bind, expire_on_commit=False)
+    provider = FakeHappyHorse()
+    fetcher = FakeOutputFetcher(content=b"fake-happyhorse-video")
+    storage = LocalVideoArtifactStorage(tmp_path / "videos", 1_000_000)
+    registry = ExecutionHandlerRegistry()
+    registry.register(
+        HappyHorseProductVideoSubmitV1Handler(
+            session_factory=sessions,
+            provider=provider,
+            settings=settings,
+            output_fetcher=fetcher,
+            artifact_storage=storage,
+        )
+    )
+    registry.register(
+        HappyHorseProductVideoRefreshV1Handler(
+            session_factory=sessions,
+            provider=provider,
+            settings=settings,
+            output_fetcher=fetcher,
+            artifact_storage=storage,
+        )
+    )
+    worker = ExecutionWorker(
+        session_factory=sessions,
+        registry=registry,
+        worker_id="happyhorse-worker",
+        heartbeat_interval_seconds=0.1,
+    )
+    assert worker.run_once().status == WorkerRunStatus.SUCCEEDED
+    db_session.expire_all()
+    submit_job = db_session.get(ExecutionJob, submitted.job.id)
+    assert submit_job is not None
+    task = db_session.get(VideoRenderTask, submit_job.result_entity_id)
+    assert task is not None and task.provider_name == "happyhorse"
+    assert provider.submit_calls == 1 and provider.reference_count == 1
+    refresh = service.enqueue_refresh(
+        product.id,
+        task.id,
+        HappyHorseVideoRefreshRequest(
+            video_project_id=project.id,
+            refresh_request_id="refresh-request-0001",
+        ),
+    )
+    assert worker.run_once().status == WorkerRunStatus.SUCCEEDED
+    db_session.expire_all()
+    refresh_job = db_session.get(ExecutionJob, refresh.job.id)
+    artifact = db_session.get(VideoRenderArtifact, refresh_job.result_entity_id)
+    assert artifact is not None
+    assert provider.fetch_calls == 1 and fetcher.calls == 1

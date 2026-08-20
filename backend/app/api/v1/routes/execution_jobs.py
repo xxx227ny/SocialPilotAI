@@ -5,6 +5,10 @@ from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppError
 from app.db.session import get_db
+from app.execution.handlers.happyhorse_product_video import (
+    HAPPYHORSE_PRODUCT_VIDEO_REFRESH_V1,
+    HAPPYHORSE_PRODUCT_VIDEO_SUBMIT_V1,
+)
 from app.execution.handlers.instagram_publish import (
     INSTAGRAM_PUBLISH_FINALIZE_V1,
     INSTAGRAM_PUBLISH_REFRESH_V1,
@@ -76,6 +80,8 @@ def create_execution_job(
         TIKTOK_PUBLISH_REFRESH_V1,
         VIDEO_COMPOSITION_RENDER_V1,
         VIDEO_COMPOSITION_ENHANCE_V1,
+        HAPPYHORSE_PRODUCT_VIDEO_SUBMIT_V1,
+        HAPPYHORSE_PRODUCT_VIDEO_REFRESH_V1,
     }:
         raise AppError(
             "Provider jobs must use their confirmed business enqueue endpoint",

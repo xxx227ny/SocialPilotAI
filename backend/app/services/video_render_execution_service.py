@@ -54,6 +54,8 @@ class VideoRenderExecutionService:
         allow_live_demo: bool = False,
         output_fetcher: ProviderOutputFetcher | None = None,
         artifact_storage: VideoArtifactStorage | None = None,
+        provider_name: str | None = None,
+        provider_label: str | None = None,
     ) -> None:
         self.session = session
         self.provider = provider
@@ -64,8 +66,14 @@ class VideoRenderExecutionService:
         self.allow_live_demo = allow_live_demo
         self.output_fetcher = output_fetcher
         self.artifact_storage = artifact_storage
+        self.provider_name = provider_name
+        self.provider_label = provider_label
 
-    async def submit(self, task_id: int) -> VideoRenderExecutionResult:
+    async def submit(
+        self,
+        task_id: int,
+        request_override: VisualGenerationRequest | None = None,
+    ) -> VideoRenderExecutionResult:
         self._require_execution_enabled()
         task = self.render_service.get_render_task(task_id)
         if task.status != "CREATED" or task.provider_task_id is not None:
@@ -75,7 +83,7 @@ class VideoRenderExecutionService:
         if claimed is None:
             raise AppError("Video render task has already been submitted", 409)
 
-        request = VisualGenerationRequest(
+        request = request_override or VisualGenerationRequest(
             prompt=claimed.render_prompt,
             duration_seconds=claimed.duration_seconds,
             aspect_ratio=claimed.aspect_ratio,
@@ -157,9 +165,7 @@ class VideoRenderExecutionService:
             raise AppError("Video render task has not been submitted", 409)
 
         previous_status = task.status
-        claimed = self.render_repository.claim_for_refresh(
-            task.id, previous_status
-        )
+        claimed = self.render_repository.claim_for_refresh(task.id, previous_status)
         if claimed is None:
             raise AppError("Video render task refresh is already in progress", 409)
 
@@ -309,45 +315,43 @@ class VideoRenderExecutionService:
         )
         raise AppError(message, 502)
 
-    @staticmethod
-    def _classify_provider_error(
-        exc: ProviderError,
-    ) -> tuple[str, str, int]:
+    def _classify_provider_error(self, exc: ProviderError) -> tuple[str, str, int]:
+        label = self.provider_label or "Wanx"
         if isinstance(exc, ProviderAuthenticationError):
-            return "authentication", "Wanx authentication failed", 502
+            return "authentication", f"{label} authentication failed", 502
         if isinstance(exc, ProviderQuotaError):
             return (
                 "quota_or_rate_limit",
-                "Wanx quota or rate limit blocked the request",
+                f"{label} quota or rate limit blocked the request",
                 429,
             )
         if isinstance(exc, ProviderTimeoutError):
-            return "timeout", "Wanx request timed out", 504
+            return "timeout", f"{label} request timed out", 504
         if isinstance(exc, ProviderConnectionError):
-            return "network", "Wanx service is unavailable", 502
+            return "network", f"{label} service is unavailable", 502
         if isinstance(exc, ProviderConfigurationError):
             return (
                 "provider_not_configured",
-                "Wanx provider is not configured",
+                f"{label} provider is not configured",
                 503,
             )
         if isinstance(exc, ProviderModelError):
             return (
                 "invalid_provider_output",
-                "Wanx returned an invalid response",
+                f"{label} returned an invalid response",
                 502,
             )
         return "unknown", "Visual generation provider request failed", 502
 
     def _provider_name(self) -> str:
+        if self.provider_name:
+            return self.provider_name
         name = type(self.provider).__name__
         return name.removesuffix("Provider").lower()
 
     def _require_execution_enabled(self) -> None:
         enabled = self.settings.enable_video_render_execution
-        live_enabled = (
-            self.allow_live_demo and self.settings.enable_live_wanx_demo
-        )
+        live_enabled = self.allow_live_demo and self.settings.enable_live_wanx_demo
         if not enabled and not live_enabled:
             raise AppError(
                 "Video render execution is disabled by the server",

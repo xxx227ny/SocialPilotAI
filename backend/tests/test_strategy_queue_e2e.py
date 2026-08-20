@@ -149,6 +149,8 @@ def test_http_enqueue_is_provider_free_and_worker_restores_exact_result(
         qwen_provider_factory=factory,
     )
     assert registry.job_types == (
+        "happyhorse.product_video.refresh.v1",
+        "happyhorse.product_video.submit.v1",
         "instagram.publish.finalize.v1",
         "instagram.publish.refresh.v1",
         "instagram.publish.submit.v1",

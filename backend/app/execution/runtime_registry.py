@@ -9,6 +9,10 @@ from app.core.config import Settings
 from app.execution.handlers.batch_video_variant import (
     BatchVideoVariantPrepareV1Handler,
 )
+from app.execution.handlers.happyhorse_product_video import (
+    HappyHorseProductVideoRefreshV1Handler,
+    HappyHorseProductVideoSubmitV1Handler,
+)
 from app.execution.handlers.instagram_publish import (
     InstagramPublishFinalizeV1Handler,
     InstagramPublishRefreshV1Handler,
@@ -47,6 +51,7 @@ from app.providers import (
     VisualGenerationProvider,
     WanxProvider,
 )
+from app.providers.happyhorse_provider import HappyHorseProvider
 from app.providers.instagram_provider import InstagramProvider
 from app.providers.tiktok_provider import TikTokProvider
 from app.providers.visual_base import (
@@ -210,6 +215,9 @@ def build_execution_handler_registry(
     wanx_provider_factory: Callable[
         [Settings], VisualGenerationProvider
     ] = WanxProvider,
+    happyhorse_provider_factory: Callable[
+        [Settings], VisualGenerationProvider
+    ] = HappyHorseProvider,
     youtube_provider_factory: Callable[[Settings], YouTubeProvider] = YouTubeProvider,
     instagram_provider_factory: Callable[
         [Settings], InstagramProvider
@@ -261,6 +269,25 @@ def build_execution_handler_registry(
         settings.video_artifact_max_bytes, settings.wanx_timeout
     )
     render_storage = artifact_storage or LazyVideoArtifactStorage(settings)
+    happyhorse_provider = LazyWanxProvider(settings, happyhorse_provider_factory)
+    registry.register(
+        HappyHorseProductVideoSubmitV1Handler(
+            session_factory=session_factory,
+            provider=happyhorse_provider,
+            settings=settings,
+            output_fetcher=render_fetcher,
+            artifact_storage=render_storage,
+        )
+    )
+    registry.register(
+        HappyHorseProductVideoRefreshV1Handler(
+            session_factory=session_factory,
+            provider=happyhorse_provider,
+            settings=settings,
+            output_fetcher=render_fetcher,
+            artifact_storage=render_storage,
+        )
+    )
     registry.register(
         WanxVideoRenderSubmitV1Handler(
             session_factory=session_factory,

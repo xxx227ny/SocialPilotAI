@@ -104,6 +104,11 @@ class Settings(BaseSettings):
     wanx_image_model: str = "wan2.7-image-pro"
     wanx_image_timeout: float = Field(default=180, gt=0, le=300)
     wanx_image_estimated_cost: Decimal = Field(default=Decimal("0.10"), ge=0)
+    happyhorse_endpoint: str = "https://token-plan.cn-beijing.maas.aliyuncs.com/api/v1"
+    happyhorse_model: str = "happyhorse-1.1-r2v"
+    happyhorse_timeout: float = Field(default=180, gt=0, le=300)
+    happyhorse_estimated_cost: Decimal = Field(default=Decimal("1.00"), ge=0)
+    enable_happyhorse_product_video: bool = False
     enable_live_wanx_demo: bool = False
     video_artifact_storage_root: str | None = None
     video_composition_temp_root: str | None = None

@@ -8,6 +8,10 @@ from app.core.exceptions import AppError
 from app.db.session import get_db
 from app.models import BatchVideoVariant, VideoScriptVersion
 from app.schemas.product_marketing_video import (
+    HappyHorseVideoPreflightRead,
+    HappyHorseVideoPreflightRequest,
+    HappyHorseVideoRefreshRequest,
+    HappyHorseVideoSubmitRequest,
     JobSubmitRead,
     ProductImageRenderSubmitRequest,
     ProductVideoPrepareRead,
@@ -16,6 +20,9 @@ from app.schemas.product_marketing_video import (
     ProductVideoSourceRead,
     VoiceoverSubmitRequest,
     WanxProductImageSubmitRequest,
+)
+from app.services.happyhorse_product_video_service import (
+    HappyHorseProductVideoService,
 )
 from app.services.product_image_render_service import ProductImageRenderService
 from app.services.video_script_project_bridge import VideoScriptProjectBridge
@@ -122,3 +129,44 @@ def submit_voiceover_job(
     settings: SettingsDep,
 ) -> JobSubmitRead:
     return VoiceoverGenerationService(db, settings).enqueue(product_id, data)
+
+
+@router.post("/happyhorse-preflight", response_model=HappyHorseVideoPreflightRead)
+def preflight_happyhorse_product_video(
+    product_id: int,
+    data: HappyHorseVideoPreflightRequest,
+    db: Db,
+    settings: SettingsDep,
+) -> HappyHorseVideoPreflightRead:
+    return HappyHorseProductVideoService(db, settings).preflight(product_id, data)
+
+
+@router.post(
+    "/happyhorse-jobs",
+    response_model=JobSubmitRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def submit_happyhorse_product_video(
+    product_id: int,
+    data: HappyHorseVideoSubmitRequest,
+    db: Db,
+    settings: SettingsDep,
+) -> JobSubmitRead:
+    return HappyHorseProductVideoService(db, settings).enqueue_submit(product_id, data)
+
+
+@router.post(
+    "/happyhorse-tasks/{task_id}/refresh-jobs",
+    response_model=JobSubmitRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def refresh_happyhorse_product_video(
+    product_id: int,
+    task_id: int,
+    data: HappyHorseVideoRefreshRequest,
+    db: Db,
+    settings: SettingsDep,
+) -> JobSubmitRead:
+    return HappyHorseProductVideoService(db, settings).enqueue_refresh(
+        product_id, task_id, data
+    )
