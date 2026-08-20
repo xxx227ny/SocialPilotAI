@@ -37,6 +37,7 @@ markers = [
     "smoke: tests that call external services",
     "qwen_smoke: tests that make real Qwen API requests",
     "wanx_smoke: tests that make real Wanx API requests",
+    "happyhorse_smoke: tests that make real HappyHorse API requests",
 ]
 
 [tool.ruff]

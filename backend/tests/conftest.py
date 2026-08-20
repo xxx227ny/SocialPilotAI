@@ -46,6 +46,12 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         default=False,
         help="Run tests that make a real Wanx API request",
     )
+    parser.addoption(
+        "--run-happyhorse-smoke",
+        action="store_true",
+        default=False,
+        help="Run tests that make a real HappyHorse API request",
+    )
 
 
 def pytest_collection_modifyitems(
@@ -53,11 +59,15 @@ def pytest_collection_modifyitems(
 ) -> None:
     run_qwen_smoke = config.getoption("--run-qwen-smoke")
     run_wanx_smoke = config.getoption("--run-wanx-smoke")
+    run_happyhorse_smoke = config.getoption("--run-happyhorse-smoke")
     skip_real_qwen = pytest.mark.skip(
         reason="real Qwen smoke test requires --run-qwen-smoke"
     )
     skip_real_wanx = pytest.mark.skip(
         reason="real Wanx smoke test requires --run-wanx-smoke"
+    )
+    skip_real_happyhorse = pytest.mark.skip(
+        reason="real HappyHorse smoke test requires --run-happyhorse-smoke"
     )
     skip_unclassified_smoke = pytest.mark.skip(
         reason="external-service smoke test requires a provider-specific marker"
@@ -65,14 +75,18 @@ def pytest_collection_modifyitems(
     for item in items:
         is_qwen_smoke = "qwen_smoke" in item.keywords
         is_wanx_smoke = "wanx_smoke" in item.keywords
+        is_happyhorse_smoke = "happyhorse_smoke" in item.keywords
         if is_qwen_smoke and not run_qwen_smoke:
             item.add_marker(skip_real_qwen)
         if is_wanx_smoke and not run_wanx_smoke:
             item.add_marker(skip_real_wanx)
+        if is_happyhorse_smoke and not run_happyhorse_smoke:
+            item.add_marker(skip_real_happyhorse)
         if (
             "smoke" in item.keywords
             and not is_qwen_smoke
             and not is_wanx_smoke
+            and not is_happyhorse_smoke
         ):
             item.add_marker(skip_unclassified_smoke)
 
@@ -85,9 +99,7 @@ def db_session() -> Generator[Session, None, None]:
         poolclass=StaticPool,
     )
     Base.metadata.create_all(engine)
-    testing_session = sessionmaker(
-        bind=engine, autoflush=False, expire_on_commit=False
-    )
+    testing_session = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
     with testing_session() as session:
         yield session
     Base.metadata.drop_all(engine)
