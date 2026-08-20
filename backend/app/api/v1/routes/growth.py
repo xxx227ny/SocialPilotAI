@@ -22,6 +22,8 @@ from app.schemas.growth import (
     FeedbackContextRead,
     GrowthAnalysisRequest,
     GrowthAnalysisResponse,
+    GrowthOptimizationPlanRead,
+    GrowthOptimizationPlanRequest,
     GrowthRecommendationPreflightRead,
 )
 from app.schemas.video import (
@@ -33,6 +35,7 @@ from app.schemas.video import (
 from app.services.campaign_service import CampaignService
 from app.services.feedback_context_service import FeedbackContextService
 from app.services.growth_analysis_service import GrowthAnalysisService
+from app.services.growth_budget_optimizer import GrowthBudgetOptimizer
 from app.services.growth_recommendation_preflight import (
     GrowthRecommendationPreflightService,
 )
@@ -50,9 +53,7 @@ DbSession = Annotated[Session, Depends(get_db)]
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 
 
-@router.post(
-    "/{product_id}/campaigns/upload", response_model=CampaignUploadResponse
-)
+@router.post("/{product_id}/campaigns/upload", response_model=CampaignUploadResponse)
 async def upload_campaign_csv(
     product_id: int,
     db: DbSession,
@@ -77,9 +78,7 @@ def get_product_feedback_context(
     return FeedbackContextService(db).get(product_id)
 
 
-@router.post(
-    "/{product_id}/growth-analysis", response_model=GrowthAnalysisResponse
-)
+@router.post("/{product_id}/growth-analysis", response_model=GrowthAnalysisResponse)
 def analyze_product_growth(
     product_id: int,
     data: GrowthAnalysisRequest,
@@ -89,9 +88,9 @@ def analyze_product_growth(
     app_settings: SettingsDep,
 ) -> GrowthAnalysisResponse:
     del execution_gate
-    return GrowthAnalysisService(
-        db, provider, app_settings
-    ).analyze(product_id, data.expected_context_digest)
+    return GrowthAnalysisService(db, provider, app_settings).analyze(
+        product_id, data.expected_context_digest
+    )
 
 
 @router.get(
@@ -103,9 +102,19 @@ def get_growth_recommendation_preflight(
     db: DbSession,
     app_settings: SettingsDep,
 ) -> GrowthRecommendationPreflightRead:
-    return GrowthRecommendationPreflightService(
-        db, app_settings
-    ).run(product_id)
+    return GrowthRecommendationPreflightService(db, app_settings).run(product_id)
+
+
+@router.post(
+    "/{product_id}/growth-optimization/plan",
+    response_model=GrowthOptimizationPlanRead,
+)
+def plan_growth_optimization(
+    product_id: int,
+    data: GrowthOptimizationPlanRequest,
+    db: DbSession,
+) -> GrowthOptimizationPlanRead:
+    return GrowthBudgetOptimizer(db).plan(product_id, data)
 
 
 @router.post(
@@ -134,9 +143,9 @@ def generate_v2_copy(
     app_settings: SettingsDep,
 ) -> V2CopyExecutionRead:
     del execution_gate
-    return V2CopyGenerationService(
-        db, provider, app_settings
-    ).generate(product_id, data)
+    return V2CopyGenerationService(db, provider, app_settings).generate(
+        product_id, data
+    )
 
 
 @router.post(
@@ -149,9 +158,7 @@ def preflight_v2_video_project(
     db: DbSession,
     app_settings: SettingsDep,
 ) -> V2VideoProjectPreflightRead:
-    return V2VideoProjectPreflightService(
-        db, app_settings
-    ).run(product_id, data)
+    return V2VideoProjectPreflightService(db, app_settings).run(product_id, data)
 
 
 @router.post(
@@ -167,6 +174,6 @@ def generate_v2_video_project(
     app_settings: SettingsDep,
 ) -> V2VideoProjectExecutionRead:
     del execution_gate
-    return V2VideoProjectGenerationService(
-        db, provider, app_settings
-    ).generate(product_id, data)
+    return V2VideoProjectGenerationService(db, provider, app_settings).generate(
+        product_id, data
+    )

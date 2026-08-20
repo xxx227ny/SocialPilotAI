@@ -17,6 +17,7 @@ SUPPORTED_GROWTH_PLATFORMS = {
     "tiktok": "TikTok",
     "instagram": "Instagram",
     "facebook": "Facebook",
+    "pinterest": "Pinterest",
 }
 GROWTH_RECOMMENDATION_CONTRACT_VERSION = "growth-recommendation-v1"
 BoundedText = Annotated[str, Field(min_length=1, max_length=400)]
@@ -48,9 +49,7 @@ class GrowthRecommendation(BaseModel):
     def validate_non_empty_lists(cls, value: list[str]) -> list[str]:
         cleaned = [item.strip() for item in value]
         if any(not item for item in cleaned):
-            raise ValueError(
-                "growth recommendation lists cannot contain empty values"
-            )
+            raise ValueError("growth recommendation lists cannot contain empty values")
         return cleaned
 
 
@@ -114,9 +113,7 @@ class GrowthVideoConstraint(StrictGrowthModel):
 class GrowthRecommendationConstraints(StrictGrowthModel):
     summary: BoundedText
     observations: list[GrowthObservation] = Field(min_length=1, max_length=8)
-    copy_constraints: list[GrowthCopyConstraint] = Field(
-        min_length=1, max_length=3
-    )
+    copy_constraints: list[GrowthCopyConstraint] = Field(min_length=1, max_length=4)
     video_constraint: GrowthVideoConstraint
     budget_guidance: BoundedText
 
@@ -179,6 +176,50 @@ class GrowthAnalysisResponse(StrictGrowthModel):
     copy_generation_triggered: Literal[False] = False
     video_generation_triggered: Literal[False] = False
     provider_calls: Literal[1] = 1
+
+
+class GrowthOptimizationPolicy(StrictGrowthModel):
+    total_budget: float = Field(gt=0, le=1_000_000_000)
+    target_roas: float = Field(gt=0, le=1000)
+    minimum_platform_share: float = Field(default=0.05, ge=0, le=0.25)
+    performance_tilt_share: float = Field(default=0.15, ge=0, le=0.25)
+    maximum_bid_adjustment_pct: float = Field(default=0.2, ge=0, le=0.5)
+
+
+class GrowthOptimizationPlanRequest(StrictGrowthModel):
+    analysis: GrowthAnalysisResponse
+    policy: GrowthOptimizationPolicy
+
+
+class GrowthPlatformOptimizationAction(StrictGrowthModel):
+    platform: str
+    observed_roas: float | None
+    current_spend: float = Field(ge=0)
+    current_share: float = Field(ge=0, le=1)
+    recommended_budget: float = Field(ge=0)
+    recommended_share: float = Field(ge=0, le=1)
+    budget_change: float
+    budget_change_pct: float | None
+    bid_adjustment_pct: float = Field(ge=-0.5, le=0.5)
+    action: Literal["increase", "decrease", "hold"]
+
+
+class GrowthOptimizationPlanRead(StrictGrowthModel):
+    version: Literal["v1"] = "v1"
+    product_id: int
+    source_context_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_recommendation_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    policy: GrowthOptimizationPolicy
+    current_total_spend: float = Field(ge=0)
+    recommended_total_budget: float = Field(gt=0)
+    actions: list[GrowthPlatformOptimizationAction] = Field(min_length=1)
+    exact_source_validated: Literal[True] = True
+    requires_qwen_recommendation: Literal[True] = True
+    automatic_plan_generated: Literal[True] = True
+    simulation_only: Literal[True] = True
+    plan_persisted: Literal[False] = False
+    external_execution_allowed: Literal[False] = False
+    provider_calls: Literal[0] = 0
 
 
 def compute_recommendation_digest(
