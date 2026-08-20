@@ -70,6 +70,17 @@ try {
   behavior++;
   assert.equal(features.realProductVideoEnabled, false);
   behavior++;
+  const threePlatforms = state.selectThreePlatformSources([
+    { variant_id: 4, platform: "instagram" },
+    { variant_id: 2, platform: "youtube" },
+    { variant_id: 1, platform: "tiktok" },
+    { variant_id: 3, platform: "tiktok" },
+  ]);
+  assert.deepEqual(
+    threePlatforms.map((source) => source.variant_id),
+    [1, 2, 4],
+  );
+  behavior++;
 
   const panel = await fs.readFile(
     path.join(root, "src/components/video/RealProductVideoPanel.tsx"),
@@ -93,8 +104,11 @@ try {
     "千问云配音",
     "万象商品视觉",
     "HappyHorse参考图生视频",
-    "生成HappyHorse 15秒云视频",
+    "生成单平台完整云成片",
     "下载HappyHorse MP4",
+    "批量生成三平台完整成片",
+    "selectThreePlatformSources",
+    "三平台批量将按顺序执行",
     "旁白若超过15秒会安全停止",
     "下载MP4",
     "下载WebVTT",

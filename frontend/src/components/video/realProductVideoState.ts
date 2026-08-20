@@ -1,4 +1,15 @@
 import type { ExecutionJob } from "../../types/execution";
+import type { ProductVideoSource } from "../../types/productMarketingVideo";
+
+const PLATFORM_ORDER = ["tiktok", "youtube", "instagram"] as const;
+
+export function selectThreePlatformSources(
+  sources: ProductVideoSource[],
+): ProductVideoSource[] {
+  return PLATFORM_ORDER.map((platform) =>
+    sources.find((source) => source.platform === platform),
+  ).filter((source): source is ProductVideoSource => source !== undefined);
+}
 
 export class RealProductVideoOperation {
   private sequence = 0;

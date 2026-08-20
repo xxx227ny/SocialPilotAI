@@ -35,6 +35,24 @@ def test_ffmpeg_uses_fixed_safe_contract(tmp_path: Path) -> None:
     assert run.call_count == 1
 
 
+def test_ffmpeg_accepts_one_exact_fifteen_second_cloud_shot(tmp_path: Path) -> None:
+    source = tmp_path / "cloud.mp4"
+    source.write_bytes(b"video")
+    output = tmp_path / "out.mp4"
+
+    def fake_run(command, **kwargs):
+        output.write_bytes(b"mp4")
+        assert any("[v0]concat=n=1:v=1:a=0[vout]" in argument for argument in command)
+        assert kwargs["shell"] is False
+        return type("R", (), {"returncode": 0, "stdout": b"", "stderr": b""})()
+
+    with patch("subprocess.run", side_effect=fake_run) as run:
+        VideoCompositionFFmpeg("ffmpeg", 30).render(
+            [FFmpegShot(source, 0, 15000)], output
+        )
+    assert run.call_count == 1
+
+
 def test_probe_accepts_exact_contract() -> None:
     VideoCompositionProbe.validate(
         VideoCompositionMedia(

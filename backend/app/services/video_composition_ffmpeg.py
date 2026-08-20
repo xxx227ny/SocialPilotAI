@@ -24,7 +24,7 @@ class VideoCompositionFFmpeg:
         self.timeout = timeout
 
     def render(self, shots: list[FFmpegShot], output: Path) -> None:
-        if len(shots) < 3:
+        if not shots:
             raise VideoCompositionFFmpegError("COMPOSITION_SHOTS_INVALID")
         command = [
             self.executable,

@@ -60,6 +60,25 @@ def test_timeline_accepts_exact_fifteen_seconds() -> None:
     assert len(value.shots) == 3
 
 
+def test_timeline_accepts_one_exact_fifteen_second_cloud_shot() -> None:
+    value = VideoCompositionPreflightRequest(
+        video_project_id=1,
+        shots=[
+            {
+                "sequence": 1,
+                "start_ms": 0,
+                "end_ms": 15000,
+                "trim_start_ms": 0,
+                "trim_end_ms": 15000,
+                "render_task_id": 1,
+                "artifact_id": 1,
+            }
+        ],
+    )
+    assert len(value.shots) == 1
+    assert value.shots[0].end_ms == 15000
+
+
 def test_composition_database_contract(db_session) -> None:
     product = Product(
         name="P",

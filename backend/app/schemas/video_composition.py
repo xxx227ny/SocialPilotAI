@@ -23,7 +23,7 @@ class CompositionShotInput(BaseModel):
 class VideoCompositionPreflightRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     video_project_id: int = Field(gt=0)
-    shots: list[CompositionShotInput] = Field(min_length=3, max_length=100)
+    shots: list[CompositionShotInput] = Field(min_length=1, max_length=100)
 
     @model_validator(mode="after")
     def validate_timeline(self) -> VideoCompositionPreflightRequest:

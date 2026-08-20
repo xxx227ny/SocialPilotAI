@@ -38,6 +38,7 @@ import {
   pollExactJob,
   RealProductVideoOperation,
   requireSuccessfulResult,
+  selectThreePlatformSources,
 } from "./realProductVideoState";
 
 const MOTIONS = ["zoom_in", "pan_right", "zoom_out", "pan_left"] as const;
@@ -51,6 +52,9 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
   const [message, setMessage] = useState("");
   const [result, setResult] = useState<{ video: number; subtitle: number } | null>(null);
   const [cloudVideoArtifactId, setCloudVideoArtifactId] = useState<number | null>(null);
+  const [batchResults, setBatchResults] = useState<
+    Array<{ platform: string; video: number; subtitle: number }>
+  >([]);
   const source = useMemo(
     () => sources.find((item) => item.variant_id === sourceId) ?? null,
     [sourceId, sources],
@@ -62,6 +66,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
     setSourceId(0);
     setResult(null);
     setCloudVideoArtifactId(null);
+    setBatchResults([]);
     if (!realProductVideoEnabled || isPresentation) return;
     const active = operation.current.begin();
     listProductVideoSources(product.id, active.signal)
@@ -277,21 +282,19 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
     }
   }
 
-  async function generateCloudVideo() {
-    if (!source) return;
-    const active = operation.current.begin();
-    setCloudVideoArtifactId(null);
-    setMessage("");
-    try {
+  async function generateCloudFinal(
+    selectedSource: ProductVideoSource,
+    active: { id: number; signal: AbortSignal },
+  ) {
       setPhase("GENERATING_IMAGES");
       const images: UploadedProductImage[] = [];
-      for (const scene of source.scenes) {
+      for (const scene of selectedSource.scenes) {
         const submitted = await submitWanxProductImageJob(
           product.id,
           {
-            script_version_id: source.script_version_id,
+            script_version_id: selectedSource.script_version_id,
             scene_sequence: scene.sequence,
-            idempotency_key: crypto.randomUUID(),
+            idempotency_key: `real-product-wanx:${product.id}:${selectedSource.script_version_id}:${scene.sequence}`,
             cost_confirmed: true,
           },
           active.signal,
@@ -301,7 +304,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
         images.push(await getProductImageAsset(product.id, assetId, active.signal));
       }
       setPhase("PREPARING_SHOTS");
-      const shots = source.scenes.map((scene, index) => ({
+      const shots = selectedSource.scenes.map((scene, index) => ({
         scene_id: scene.id,
         product_asset_id: images[index].id,
         product_asset_sha256: images[index].sha256,
@@ -311,12 +314,12 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
         tiktok: "TIKTOK",
         youtube: "YOUTUBE_SHORTS",
         instagram: "INSTAGRAM_REELS",
-      }[source.platform];
+      }[selectedSource.platform];
       const prepared = await prepareProductVideo(
         product.id,
         {
-          variant_id: source.variant_id,
-          script_version_id: source.script_version_id,
+          variant_id: selectedSource.variant_id,
+          script_version_id: selectedSource.script_version_id,
           platform,
           shots,
         },
@@ -331,7 +334,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
         product.id,
         {
           video_project_id: prepared.video_project_id,
-          script_version_id: source.script_version_id,
+          script_version_id: selectedSource.script_version_id,
           reference_images: referenceImages,
         },
         active.signal,
@@ -341,7 +344,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
         product.id,
         {
           video_project_id: prepared.video_project_id,
-          script_version_id: source.script_version_id,
+          script_version_id: selectedSource.script_version_id,
           reference_images: referenceImages,
           input_digest: preflight.input_digest,
           preflight_digest: preflight.preflight_digest,
@@ -392,13 +395,171 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
         }
       }
       if (artifactId === null) throw new Error("HappyHorse视频生成等待超时");
+      setCloudVideoArtifactId(artifactId);
+      setPhase("COMPOSING");
+      const compositionPreflight = await preflightVideoComposition(
+        product.id,
+        prepared.video_project_id,
+        [
+          {
+            sequence: 1,
+            start_ms: 0,
+            end_ms: 15000,
+            trim_start_ms: 0,
+            trim_end_ms: 15000,
+            transition_type: "cut",
+            render_task_id: taskId,
+            artifact_id: artifactId,
+          },
+        ],
+        active.signal,
+      );
+      const compositionSubmit = await submitVideoComposition(
+        product.id,
+        compositionPreflight,
+        active.signal,
+      );
+      const compositionJob = await pollExactJob(
+        compositionSubmit.job,
+        getExactMarketingJob,
+        active.signal,
+      );
+      const compositionArtifact = await getCompositionArtifact(
+        requireSuccessfulResult(compositionJob, "video_composition_artifact"),
+        active.signal,
+      );
+      setPhase("VOICEOVER");
+      const narration = selectedSource.scenes
+        .map((scene) => scene.narration.trim())
+        .join("\n");
+      const digestBytes = await crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(narration),
+      );
+      const narrationDigest = Array.from(new Uint8Array(digestBytes), (byte) =>
+        byte.toString(16).padStart(2, "0"),
+      ).join("");
+      const voiceSubmit = await submitVoiceoverJob(
+        product.id,
+        {
+          composition_id: compositionArtifact.composition_id,
+          script_version_id: selectedSource.script_version_id,
+          narration_digest: narrationDigest,
+          language: selectedSource.language,
+          voice: "longanhuan_v3.6",
+          speaking_rate: 1,
+          idempotency_key: `real-product-tts:${selectedSource.script_version_id}:${compositionArtifact.composition_id}`,
+        },
+        active.signal,
+      );
+      const voiceJob = await pollExactJob(
+        voiceSubmit.job,
+        getExactMarketingJob,
+        active.signal,
+      );
+      const voiceoverArtifactId = requireSuccessfulResult(
+        voiceJob,
+        "video_composition_audio_artifact",
+      );
+      setPhase("ENHANCING");
+      const enhancementPreflight = await preflightCompositionEnhancement(
+        product.id,
+        {
+          composition_id: compositionArtifact.composition_id,
+          source_artifact_id: compositionArtifact.id,
+          voiceover_artifact_id: voiceoverArtifactId,
+          music_artifact_id: null,
+          cues: selectedSource.scenes.map((scene) => ({
+            sequence: scene.sequence,
+            start_ms: scene.start_ms,
+            end_ms: scene.end_ms,
+            text: scene.subtitle_draft,
+          })),
+          style: {
+            font_size: 48,
+            max_chars_per_line: 18,
+            bottom_margin: 280,
+            outline_width: 3,
+          },
+          mix: {
+            voiceover_gain_db: 0,
+            music_gain_db: -18,
+            ducking_reduction_db: 12,
+            target_lufs: -14,
+            true_peak_db: -1,
+          },
+        },
+        active.signal,
+      );
+      const enhancementSubmit = await submitCompositionEnhancement(
+        product.id,
+        enhancementPreflight,
+        active.signal,
+      );
+      const enhancementJob = await pollExactJob(
+        enhancementSubmit.job,
+        getExactMarketingJob,
+        active.signal,
+      );
+      const artifact = await getCompositionEnhancementArtifact(
+        requireSuccessfulResult(
+          enhancementJob,
+          "video_composition_enhancement_artifact",
+        ),
+        active.signal,
+      );
+      return {
+        video: artifact.id,
+        subtitle: artifact.subtitle_artifact_id,
+        cloudVideo: artifactId,
+      };
+  }
+
+  async function generateCloudVideo() {
+    if (!source) return;
+    const active = operation.current.begin();
+    setCloudVideoArtifactId(null);
+    setBatchResults([]);
+    setMessage("");
+    try {
+      const output = await generateCloudFinal(source, active);
       if (operation.current.current(active.id)) {
-        setCloudVideoArtifactId(artifactId);
+        setResult({ video: output.video, subtitle: output.subtitle });
         setPhase("SUCCEEDED");
-        setMessage("HappyHorse 15秒商品云视频已生成。下一阶段接入千问配音与字幕。");
+        setMessage("HappyHorse画面、千问配音和字幕混音成片已生成。");
       }
     } catch (error) {
-      fail(active.id, error, "HappyHorse商品视频生成失败。");
+      fail(active.id, error, "HappyHorse完整商品视频生成失败。");
+    }
+  }
+
+  async function generateThreePlatformBatch() {
+    const selected = selectThreePlatformSources(sources);
+    if (selected.length !== 3) {
+      setMessage("需要TikTok、YouTube Shorts和Instagram Reels各一个可用脚本。");
+      return;
+    }
+    const active = operation.current.begin();
+    setResult(null);
+    setBatchResults([]);
+    setMessage("三平台批量将按顺序执行，任一失败即停止。每个平台包含万象图、HappyHorse视频和千问TTS调用。");
+    try {
+      const completed: Array<{ platform: string; video: number; subtitle: number }> = [];
+      for (const selectedSource of selected) {
+        const output = await generateCloudFinal(selectedSource, active);
+        completed.push({
+          platform: selectedSource.platform,
+          video: output.video,
+          subtitle: output.subtitle,
+        });
+        if (operation.current.current(active.id)) setBatchResults([...completed]);
+      }
+      if (operation.current.current(active.id)) {
+        setPhase("SUCCEEDED");
+        setMessage("TikTok、YouTube Shorts和Instagram Reels三条完整成片已生成。");
+      }
+    } catch (error) {
+      fail(active.id, error, "三平台批量成片在首个失败处停止。");
     }
   }
 
@@ -437,8 +598,22 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
         disabled={!source || !["IDLE", "FAILED", "SUCCEEDED"].includes(phase)}
         onClick={() => void generateCloudVideo()}
       >
-        生成HappyHorse 15秒云视频
+        生成单平台完整云成片
       </button>
+      <button
+        type="button"
+        disabled={
+          selectThreePlatformSources(sources).length !== 3 ||
+          !["IDLE", "FAILED", "SUCCEEDED"].includes(phase)
+        }
+        onClick={() => void generateThreePlatformBatch()}
+      >
+        批量生成三平台完整成片
+      </button>
+      <p>
+        三平台批量将按顺序执行，每个平台会产生万象商品图、HappyHorse视频和千问TTS费用；
+        任一平台失败即停止，已完成结果会保留。
+      </p>
       {cloudVideoArtifactId && (
         <div>
           <video controls src={happyHorseVideoContentUrl(cloudVideoArtifactId)} />
@@ -458,6 +633,18 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
           </a>
         </div>
       )}
+      {batchResults.map((item) => (
+        <div key={item.platform}>
+          <strong>{item.platform}</strong>
+          <video controls src={compositionEnhancementContentUrl(item.video)} />
+          <a href={compositionEnhancementContentUrl(item.video)} download>
+            下载{item.platform} MP4
+          </a>
+          <a href={compositionSubtitleContentUrl(item.subtitle)} download>
+            下载{item.platform} WebVTT
+          </a>
+        </div>
+      ))}
       {message && <p role="status">{message}</p>}
     </section>
   );
