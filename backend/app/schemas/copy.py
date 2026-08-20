@@ -12,8 +12,8 @@ from pydantic import (
 
 from app.schemas.growth import GrowthRecommendationConstraints
 
-PlatformName = Literal["TikTok", "Instagram", "Facebook"]
-REQUIRED_PLATFORMS = {"TikTok", "Instagram", "Facebook"}
+PlatformName = Literal["TikTok", "Instagram", "Facebook", "Pinterest"]
+REQUIRED_PLATFORMS = {"TikTok", "Instagram", "Facebook", "Pinterest"}
 V2_COPY_CONTRACT_VERSION = "v2-copy-v2"
 
 
@@ -34,6 +34,7 @@ class PlatformCopySchema(BaseModel):
             "tiktok": "TikTok",
             "instagram": "Instagram",
             "facebook": "Facebook",
+            "pinterest": "Pinterest",
         }.get(normalized)
         return canonical if canonical is not None else value.strip()
 
@@ -58,14 +59,15 @@ class CopyMatrixSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     product_id: int = Field(gt=0)
-    copies: list[PlatformCopySchema] = Field(min_length=3, max_length=3)
+    copies: list[PlatformCopySchema] = Field(min_length=4, max_length=4)
 
     @model_validator(mode="after")
     def validate_platform_matrix(self) -> "CopyMatrixSchema":
         platforms = [copy.platform for copy in self.copies]
-        if len(set(platforms)) != 3 or set(platforms) != REQUIRED_PLATFORMS:
+        if len(set(platforms)) != 4 or set(platforms) != REQUIRED_PLATFORMS:
             raise ValueError(
-                "copies must contain TikTok, Instagram and Facebook exactly once"
+                "copies must contain TikTok, Instagram, Facebook and Pinterest "
+                "exactly once"
             )
         return self
 
@@ -76,7 +78,7 @@ class TaskBoundCopyMatrixSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     product_id: int = Field(gt=0)
-    copies: list[PlatformCopySchema] = Field(min_length=1, max_length=3)
+    copies: list[PlatformCopySchema] = Field(min_length=1, max_length=4)
 
     @model_validator(mode="after")
     def validate_requested_platforms(
@@ -211,6 +213,7 @@ class V2PlatformCopySchema(StrictV2CopyModel):
             "tiktok": "TikTok",
             "instagram": "Instagram",
             "facebook": "Facebook",
+            "pinterest": "Pinterest",
         }.get(value.strip().casefold())
         return canonical if canonical is not None else value.strip()
 
@@ -226,24 +229,18 @@ class V2PlatformCopySchema(StrictV2CopyModel):
 
 
 class V2CopyProviderOutput(StrictV2CopyModel):
-    copies: list[V2PlatformCopySchema] = Field(min_length=1, max_length=3)
+    copies: list[V2PlatformCopySchema] = Field(min_length=1, max_length=4)
 
     @model_validator(mode="after")
-    def validate_platform_order(
-        self, info: ValidationInfo
-    ) -> "V2CopyProviderOutput":
+    def validate_platform_order(self, info: ValidationInfo) -> "V2CopyProviderOutput":
         platforms = [copy.platform for copy in self.copies]
         if len(platforms) != len(set(platforms)):
             raise ValueError("V2 Copy platforms must be unique")
         expected = (
-            info.context.get("target_platforms")
-            if info.context is not None
-            else None
+            info.context.get("target_platforms") if info.context is not None else None
         )
         if expected is not None and platforms != list(expected):
-            raise ValueError(
-                "V2 Copy platforms must exactly match the required order"
-            )
+            raise ValueError("V2 Copy platforms must exactly match the required order")
         return self
 
 
@@ -254,20 +251,16 @@ class V2CopyPreflightRead(StrictV2CopyModel):
     source_marketing_strategy_id: int
     source_copy_matrix_id: int
     source_video_project_id: int
-    source_copy_platforms: list[PlatformName] = Field(max_length=3)
-    allowed_copy_constraint_platforms: list[PlatformName] = Field(
-        max_length=3
-    )
+    source_copy_platforms: list[PlatformName] = Field(max_length=4)
+    allowed_copy_constraint_platforms: list[PlatformName] = Field(max_length=4)
     recommendation_target_copy_platforms: list[PlatformName] = Field(
-        min_length=1, max_length=3
+        min_length=1, max_length=4
     )
-    v2_copy_target_platforms: list[PlatformName] = Field(
-        min_length=1, max_length=3
-    )
+    v2_copy_target_platforms: list[PlatformName] = Field(min_length=1, max_length=4)
     # Compatibility field for existing clients. New UI must use the explicit
     # v2_copy_target_platforms evidence field.
-    target_platforms: list[PlatformName] = Field(min_length=1, max_length=3)
-    expected_copy_count: int = Field(ge=1, le=3)
+    target_platforms: list[PlatformName] = Field(min_length=1, max_length=4)
+    expected_copy_count: int = Field(ge=1, le=4)
     input_ready: bool
     provider_configured: bool
     copy_execution_enabled: bool
@@ -289,8 +282,7 @@ class V2CopyPreflightRead(StrictV2CopyModel):
     @model_validator(mode="after")
     def validate_platform_evidence(self) -> "V2CopyPreflightRead":
         if (
-            self.recommendation_target_copy_platforms
-            != self.v2_copy_target_platforms
+            self.recommendation_target_copy_platforms != self.v2_copy_target_platforms
             or self.target_platforms != self.v2_copy_target_platforms
         ):
             raise ValueError("V2 Copy Preflight platform evidence is inconsistent")

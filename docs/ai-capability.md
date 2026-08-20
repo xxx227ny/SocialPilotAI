@@ -24,7 +24,7 @@ Business Service
 
 ### Copy Matrix
 
-基于最新Marketing Strategy生成TikTok、Instagram和Facebook的Hook、Caption、Hashtags和CTA。一次Provider调用返回完整矩阵，不按平台重复调用。
+基于Marketing Strategy生成TikTok、Instagram、Facebook和Pinterest的Hook、Caption、Hashtags和CTA。一次Qwen Provider调用返回完整四平台矩阵，不按平台重复调用。
 
 ### Video Blueprint
 

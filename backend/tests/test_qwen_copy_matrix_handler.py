@@ -44,7 +44,7 @@ def copy_json() -> str:
                     "hashtags": [f"#{platform}"],
                     "cta": f"{platform} CTA",
                 }
-                for platform in ("TikTok", "Instagram", "Facebook")
+                for platform in ("TikTok", "Instagram", "Facebook", "Pinterest")
             ]
         }
     )
@@ -105,7 +105,7 @@ def create_sources(
             product_id=product.id,
             audience="Target markets [US]. Busy professionals",
             language="English",
-            platforms=["TikTok", "Instagram", "Facebook"],
+            platforms=["TikTok", "Instagram", "Facebook", "Pinterest"],
             tone="Clear and practical",
             objective="Build awareness",
         )
@@ -119,9 +119,7 @@ def create_sources(
         )
         session.add_all([brief, strategy])
         session.commit()
-        preflight = CopyPreflightService(
-            session, settings()
-        ).run(brief.id, strategy.id)
+        preflight = CopyPreflightService(session, settings()).run(brief.id, strategy.id)
         return product.id, brief.id, strategy.id, preflight.input_digest
 
 
@@ -214,6 +212,7 @@ def test_fake_qwen_success_persists_exact_copy_result(
             "TikTok",
             "Instagram",
             "Facebook",
+            "Pinterest",
         ]
         assert job.attempts[0].provider_call_count == 1
         assert job.attempts[0].external_submission_possible is True
@@ -241,8 +240,7 @@ def test_two_workers_generate_only_one_copy_matrix(
         results.append(worker.run_once())
 
     threads = [
-        threading.Thread(target=run, args=(f"copy-worker-{index}",))
-        for index in (1, 2)
+        threading.Thread(target=run, args=(f"copy-worker-{index}",)) for index in (1, 2)
     ]
     for thread in threads:
         thread.start()
@@ -289,9 +287,7 @@ def test_changed_source_fails_before_provider_and_can_retry(
         session.commit()
     provider = FakeQwenProvider()
 
-    result = make_worker(
-        copy_sessions, provider, f"copy-worker-{change}"
-    ).run_once()
+    result = make_worker(copy_sessions, provider, f"copy-worker-{change}").run_once()
 
     assert result.status == WorkerRunStatus.FAILED
     assert provider.calls == 0
@@ -318,9 +314,7 @@ def test_provider_exception_is_submit_unknown_and_not_retryable(
         suffix="uncertain",
     )
 
-    result = make_worker(
-        copy_sessions, provider, "copy-worker-uncertain"
-    ).run_once()
+    result = make_worker(copy_sessions, provider, "copy-worker-uncertain").run_once()
 
     assert result.status == WorkerRunStatus.SUBMIT_UNKNOWN
     assert provider.calls == 1

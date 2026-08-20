@@ -1,5 +1,5 @@
 export interface PlatformCopy {
-  platform: "TikTok" | "Instagram" | "Facebook";
+  platform: "TikTok" | "Instagram" | "Facebook" | "Pinterest";
   hook: string;
   caption: string;
   hashtags: string[];

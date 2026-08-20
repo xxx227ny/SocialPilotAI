@@ -10,7 +10,7 @@ SocialPilot AI 是面向跨境电商商家的 AI 社媒增长助手，帮助中�
 
 跨境卖家进入海外社交平台时，通常需要同时解决四类问题：
 
-1. TikTok、Instagram和Facebook具有不同的内容语言，重复策划成本高。
+1. TikTok、Instagram、Facebook和Pinterest具有不同的内容语言，重复策划成本高。
 2. 小团队缺少完整的商品策略、文案、视频和投放分析能力。
 3. AI生成内容容易与真实商品卖点、目标市场和风险边界脱节。
 4. 广告数据与下一轮内容之间缺少可解释、可追踪的连接。
@@ -22,7 +22,7 @@ Product
   ↓
 Qwen Marketing Strategy
   ↓
-TikTok / Instagram / Facebook Copy Matrix
+TikTok / Instagram / Facebook / Pinterest Copy Matrix
   ↓
 AI Video Blueprint
   ↓
@@ -41,7 +41,7 @@ Product、Strategy、Copy和VideoProject保留数据来源关系。视频策划�
 
 ### Copy Matrix
 
-一次生成TikTok、Instagram和Facebook的Hook、Caption、Hashtags和CTA，体现不同平台内容逻辑。
+一次生成TikTok、Instagram、Facebook和Pinterest的Hook、Caption、Hashtags和CTA，体现短视频、社交展示、深度说明和搜索收藏场景的不同内容逻辑。
 
 ### AI Video Blueprint
 

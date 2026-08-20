@@ -6,6 +6,7 @@ const platformDetails: Record<PlatformCopy["platform"], { number: string; traits
   TikTok: { number: "01", traits: ["UGC", "短视频", "情绪驱动"], approach: "短视频情绪驱动", logic: ["Hook 优先", "UGC 表达", "快速转化"] },
   Instagram: { number: "02", traits: ["Lifestyle", "品牌感", "视觉表达"], approach: "生活方式表达", logic: ["视觉美学", "品牌塑造"] },
   Facebook: { number: "03", traits: ["功能价值", "购买理由"], approach: "功能价值表达", logic: ["信息完整", "购买决策"] },
+  Pinterest: { number: "04", traits: ["Evergreen", "搜索发现", "收藏意图"], approach: "灵感发现表达", logic: ["关键词覆盖", "实用灵感", "长期流量"] },
 };
 
 export function CopyMatrixPage() {
@@ -48,7 +49,7 @@ export function CopyMatrixPage() {
           </section>
 
           {snapshot.copy_matrix ? (
-            <section className="copy-showcase-grid" aria-label="三平台文案矩阵">
+            <section className="copy-showcase-grid" aria-label="四平台文案矩阵">
               {snapshot.copy_matrix.copies.map((copy) => <PlatformCopyCard copy={copy} key={copy.platform} />)}
             </section>
           ) : (

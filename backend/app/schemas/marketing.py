@@ -8,6 +8,7 @@ SUPPORTED_MARKETING_PLATFORMS = {
     "tiktok": "TikTok",
     "instagram": "Instagram",
     "facebook": "Facebook",
+    "pinterest": "Pinterest",
 }
 
 
@@ -39,8 +40,8 @@ class MarketingTaskCreate(BaseModel):
             if normalized not in seen:
                 cleaned.append(canonical)
                 seen.add(normalized)
-        if len(cleaned) > 3:
-            raise ValueError("platforms cannot contain more than 3 values")
+        if len(cleaned) > 4:
+            raise ValueError("platforms cannot contain more than 4 values")
         return cleaned
 
 

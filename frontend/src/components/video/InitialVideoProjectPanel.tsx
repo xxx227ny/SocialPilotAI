@@ -14,7 +14,6 @@ import {
 import type { InitialVideoOperationIdentity } from "../../api/videos";
 import { videoProjectExecutionEnabled } from "../../config/features";
 import { usePresentationMode } from "../../context/PresentationModeContext";
-import type { PlatformCopy } from "../../types/copy";
 import type { ExecutionJob } from "../../types/execution";
 import type { Product } from "../../types/product";
 import type {
@@ -34,7 +33,7 @@ import {
 
 type SourceState = "loading" | "ready" | "missing" | "error";
 type OperationState = "idle" | "loading" | "ready" | "blocked" | "error";
-type InitialPlatform = PlatformCopy["platform"];
+type InitialPlatform = InitialVideoProjectSourceRequest["platform"];
 
 const MISSING_LABELS: Record<string, string> = {
   product_input: "Product input is incomplete",

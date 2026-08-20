@@ -48,6 +48,7 @@ const PLATFORM_OPTIONS: Array<{
   { name: "TikTok", purpose: "短视频 Hook、UGC 表达与情绪驱动" },
   { name: "Instagram", purpose: "Lifestyle 视觉叙事与品牌表达" },
   { name: "Facebook", purpose: "完整功能价值与理性购买理由" },
+  { name: "Pinterest", purpose: "常青灵感、搜索关键词与收藏意图" },
 ];
 
 function normalize(value: string) {
@@ -200,7 +201,7 @@ export function MarketingTaskConfig({
     Boolean(product.description?.trim()) &&
     product.selling_points.length > 0;
   const platformsValid =
-    selectedPlatforms.length >= 1 && selectedPlatforms.length <= 3;
+    selectedPlatforms.length >= 1 && selectedPlatforms.length <= 4;
   const taskReady =
     productValid &&
     marketsValid &&
@@ -245,6 +246,10 @@ export function MarketingTaskConfig({
         ? selectedPlatforms.filter((item) => item !== platform)
         : [...selectedPlatforms, platform],
     );
+  }
+
+  function selectCompleteCopyMatrix() {
+    onPlatformsChange(PLATFORM_OPTIONS.map((option) => option.name));
   }
 
   async function saveMarkets() {
@@ -479,8 +484,11 @@ export function MarketingTaskConfig({
             <h5>内容平台</h5>
             <p>仅选择现有内容链路支持的平台</p>
           </div>
-          <strong>{selectedPlatforms.length} / 3</strong>
+          <strong>{selectedPlatforms.length} / 4</strong>
         </div>
+        <button type="button" onClick={selectCompleteCopyMatrix}>
+          选择完整四平台矩阵
+        </button>
         <div className="platform-option-grid">
           {PLATFORM_OPTIONS.map((option) => {
             const selected = selectedPlatforms.includes(option.name);
@@ -499,7 +507,7 @@ export function MarketingTaskConfig({
           })}
         </div>
         {!platformsValid && (
-          <p className="marketing-config-error">请选择 1—3 个内容平台。</p>
+          <p className="marketing-config-error">请选择 1—4 个内容平台。</p>
         )}
         <p className="platform-draft-boundary">
           创建前平台是按商品隔离的会话草稿；点击“创建营销任务输入”后将写入

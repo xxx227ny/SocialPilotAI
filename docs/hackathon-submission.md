@@ -26,7 +26,7 @@ SocialPilot AI面向缺少专业营销团队的跨境电商卖家，通过Qwen�
   ↓
 Qwen Marketing Strategy
   ↓
-TikTok / Instagram / Facebook Copy Matrix
+TikTok / Instagram / Facebook / Pinterest Copy Matrix
   ↓
 AI Video Blueprint
   ↓
@@ -44,7 +44,7 @@ Campaign Metrics + Growth Optimization Advice
 ### Qwen
 
 - 商品理解与Marketing Strategy
-- TikTok、Instagram、Facebook Copy Matrix
+- TikTok、Instagram、Facebook、Pinterest Copy Matrix
 - 结构化Video Blueprint
 - Growth Recommendation
 
@@ -75,7 +75,7 @@ Qwen输出经过JSON解析和Pydantic校验，指标计算不交给模型。
 
 - Product商品数据与营销任务
 - Qwen Marketing Strategy真实验证
-- 三平台Copy Matrix
+- 四平台Copy Matrix
 - AI Video Blueprint
 - Wanx真实视频生成Pipeline
 - VideoRenderArtifact与Verified Output
@@ -105,7 +105,7 @@ Video Blueprint负责结构化创意，RenderTask与Wanx Pipeline负责外部异
 ## 九、Demo流程
 
 1. **Overview**：商品理解、Marketing Strategy和项目价值。
-2. **Copy Matrix**：三平台差异化内容。
+2. **Copy Matrix**：四平台差异化内容。
 3. **Video Blueprint**：Storyboard与Verified Wanx Output。
 4. **Growth Copilot**：广告指标、平台比较和优化建议。
 

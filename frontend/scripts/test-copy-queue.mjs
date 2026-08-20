@@ -68,6 +68,9 @@ try {
   );
 
   const component = read("src", "components", "product", "CopyPreflightPanel.tsx");
+  const taskConfig = read("src", "components", "product", "MarketingTaskConfig.tsx");
+  const copyPage = read("src", "pages", "CopyMatrixPage.tsx");
+  const copyTypes = read("src", "types", "copy.ts");
   assert.match(component, /enqueueCopyJob/);
   assert.match(component, /listCopyJobs/);
   assert.match(component, /getCopyExecutionJob/);
@@ -77,13 +80,19 @@ try {
   assert.match(component, /SUBMIT_UNKNOWN/);
   assert.doesNotMatch(component, /generateTaskBoundCopyMatrix/);
   assert.doesNotMatch(component, /getLatestCopyForStrategy/);
+  assert.match(taskConfig, /Pinterest/);
+  assert.match(taskConfig, /selectedPlatforms\.length <= 4/);
+  assert.match(taskConfig, /选择完整四平台矩阵/);
+  assert.match(copyPage, /四平台文案矩阵/);
+  assert.match(copyPage, /搜索发现/);
+  assert.match(copyTypes, /"Pinterest"/);
 
   const api = read("src", "api", "copies.ts");
   assert.match(api, /\/copy-jobs/);
   assert.match(api, /\/execution-jobs\/\$\{jobId\}/);
   assert.match(api, /\/copies\/\$\{copyMatrixId\}/);
 
-  console.log("Copy queue frontend checks passed: 20 scenarios");
+  console.log("Copy queue frontend checks passed: 26 scenarios");
 } finally {
   await server.close();
 }

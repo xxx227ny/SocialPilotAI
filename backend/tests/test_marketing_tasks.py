@@ -46,6 +46,19 @@ def test_create_marketing_task(
     assert response.json()["created_at"]
 
 
+def test_create_marketing_task_supports_complete_four_platform_matrix(
+    client: TestClient, product_payload: dict[str, object]
+) -> None:
+    product = client.post("/api/v1/products", json=product_payload).json()
+    payload = marketing_payload(product["id"])
+    payload["platforms"] = ["TikTok", "Instagram", "Facebook", "Pinterest"]
+
+    response = client.post("/api/v1/marketing-tasks", json=payload)
+
+    assert response.status_code == 201
+    assert response.json()["platforms"] == payload["platforms"]
+
+
 def test_duplicate_platforms_are_deduplicated(
     client: TestClient, product_payload: dict[str, object]
 ) -> None:
@@ -107,15 +120,11 @@ def test_read_one_and_latest_are_isolated_by_product(
     first = client.post(
         "/api/v1/marketing-tasks", json=marketing_payload(product_a["id"])
     ).json()
-    client.patch(
-        f"/api/v1/products/{product_a['id']}", json={"target_markets": ["CA"]}
-    )
+    client.patch(f"/api/v1/products/{product_a['id']}", json={"target_markets": ["CA"]})
     second_payload = marketing_payload(product_a["id"])
     second_payload["platforms"] = ["Facebook"]
     second = client.post("/api/v1/marketing-tasks", json=second_payload).json()
-    client.patch(
-        f"/api/v1/products/{product_a['id']}", json={"target_markets": []}
-    )
+    client.patch(f"/api/v1/products/{product_a['id']}", json={"target_markets": []})
 
     read_response = client.get(f"/api/v1/marketing-tasks/{first['id']}")
     latest_response = client.get(
@@ -173,9 +182,7 @@ def test_product_scoped_candidates_cover_zero_one_and_many_without_side_effects(
 
         return resolve
 
-    app.dependency_overrides[get_text_generation_provider] = forbidden_provider(
-        "qwen"
-    )
+    app.dependency_overrides[get_text_generation_provider] = forbidden_provider("qwen")
     app.dependency_overrides[get_visual_generation_provider] = forbidden_provider(
         "wanx"
     )
@@ -183,26 +190,18 @@ def test_product_scoped_candidates_cover_zero_one_and_many_without_side_effects(
         "youtube"
     )
 
-    empty = client.get(
-        "/api/v1/marketing-tasks", params={"product_id": product["id"]}
-    )
+    empty = client.get("/api/v1/marketing-tasks", params={"product_id": product["id"]})
     first = client.post(
         "/api/v1/marketing-tasks", json=marketing_payload(product["id"])
     ).json()
-    one = client.get(
-        "/api/v1/marketing-tasks", params={"product_id": product["id"]}
-    )
+    one = client.get("/api/v1/marketing-tasks", params={"product_id": product["id"]})
     second_payload = marketing_payload(product["id"])
     second_payload["audience"] = "Road trip drivers"
     second_payload["language"] = "French"
     second_payload["platforms"] = ["Facebook"]
-    second = client.post(
-        "/api/v1/marketing-tasks", json=second_payload
-    ).json()
+    second = client.post("/api/v1/marketing-tasks", json=second_payload).json()
     brief_count_before = db_session.scalar(select(func.count(MarketingBrief.id)))
-    many = client.get(
-        "/api/v1/marketing-tasks", params={"product_id": product["id"]}
-    )
+    many = client.get("/api/v1/marketing-tasks", params={"product_id": product["id"]})
     brief_count_after = db_session.scalar(select(func.count(MarketingBrief.id)))
 
     assert empty.status_code == 200
@@ -218,9 +217,7 @@ def test_product_scoped_candidates_cover_zero_one_and_many_without_side_effects(
 
 
 def test_product_scoped_candidates_reject_missing_product(client: TestClient) -> None:
-    response = client.get(
-        "/api/v1/marketing-tasks", params={"product_id": 999999}
-    )
+    response = client.get("/api/v1/marketing-tasks", params={"product_id": 999999})
 
     assert response.status_code == 404
     assert response.json()["error"]["message"] == "Product not found"

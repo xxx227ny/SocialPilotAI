@@ -42,7 +42,7 @@
 
 **讲解**：
 
-“同一商品策略被适配为TikTok、Instagram和Facebook三种表达。TikTok强调Hook和UGC节奏，Instagram强调Lifestyle与视觉，Facebook强调功能价值和购买理由。”
+“同一商品策略被Qwen一次适配为TikTok、Instagram、Facebook和Pinterest四种表达。TikTok强调Hook和UGC节奏，Instagram强调Lifestyle与视觉，Facebook强调功能价值和购买理由，Pinterest强调搜索关键词、实用灵感与收藏意图。”
 
 指出每个平台均有Hook、Caption、Hashtags和CTA。
 

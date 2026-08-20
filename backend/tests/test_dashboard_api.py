@@ -65,6 +65,11 @@ def test_demo_api_returns_complete_snapshot_without_provider_dependency(
     }
     assert all(step["status"] == "complete" for step in body["pipeline"])
     assert body["strategy"] is not None
-    assert len(body["copy_matrix"]["copies"]) == 3
+    assert [copy["platform"] for copy in body["copy_matrix"]["copies"]] == [
+        "TikTok",
+        "Instagram",
+        "Facebook",
+        "Pinterest",
+    ]
     assert body["video_project"]["status"] == "planned"
     assert body["growth"]["recommendation"] is not None

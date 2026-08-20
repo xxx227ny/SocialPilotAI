@@ -81,6 +81,16 @@ class DemoService:
                         "hashtags": ["#PortableKitchen", "#EverydayConvenience"],
                         "cta": "Explore the portable design.",
                     },
+                    {
+                        "platform": "Pinterest",
+                        "hook": "A portable fresh-drink idea worth saving.",
+                        "caption": (
+                            "Save this compact blender setup for quick smoothies "
+                            "at your desk, gym, or next weekend trip."
+                        ),
+                        "hashtags": ["#SmoothieIdeas", "#PortableBlender"],
+                        "cta": "Save this portable routine for later.",
+                    },
                 ],
             }
         )
@@ -131,9 +141,7 @@ class DemoService:
             }
         )
         recommendation = GrowthRecommendation(
-            problems=[
-                "Facebook conversion efficiency trails the short-form channels."
-            ],
+            problems=["Facebook conversion efficiency trails the short-form channels."],
             recommendations=[
                 "Keep the winning portable-routine hook and test a clearer demo."
             ],
@@ -150,9 +158,7 @@ class DemoService:
             product = Product(
                 name="Portable Blender Demo",
                 category="Portable Kitchen Appliance",
-                description=(
-                    "A portable personal blender for fresh drinks anywhere."
-                ),
+                description=("A portable personal blender for fresh drinks anywhere."),
                 selling_points=[
                     "Portable design",
                     "USB rechargeable",

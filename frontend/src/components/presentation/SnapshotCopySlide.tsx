@@ -3,7 +3,7 @@ import {
   type SnapshotCopyView,
 } from "./snapshotPresentationPayload";
 
-const PRIMARY_PLATFORMS = ["TikTok", "Instagram", "Facebook"];
+const PRIMARY_PLATFORMS = ["TikTok", "Instagram", "Facebook", "Pinterest"];
 
 export function SnapshotCopySlide({
   copies,

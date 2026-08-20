@@ -38,6 +38,13 @@ class FakeCopyProvider(TextGenerationProvider):
                         "hashtags": ["#ProductValue"],
                         "cta": "Learn more.",
                     },
+                    {
+                        "platform": "Pinterest",
+                        "hook": "Save this portable kitchen idea.",
+                        "caption": "A compact blender idea for busy mornings.",
+                        "hashtags": ["#KitchenIdeas"],
+                        "cta": "Save for later.",
+                    },
                 ]
             }
         )
@@ -80,6 +87,7 @@ def test_copy_api_returns_platform_matrix(
             "TikTok",
             "Instagram",
             "Facebook",
+            "Pinterest",
         ]
         assert body["copies"][0]["hook"] == "TikTok hook"
     finally:

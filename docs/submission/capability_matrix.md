@@ -3,7 +3,7 @@
 | Capability | Status | Evidence |
 |---|---|---|
 | AI Marketing Strategy | 已完成 | `backend/app/providers/qwen_provider.py`、`backend/app/services/marketing_strategy_service.py`、`backend/tests/test_strategy_service.py`、`docs/qwen_verification.md` |
-| Copy Generation | 已完成 | `backend/app/services/copy_generation_service.py`、`backend/app/api/v1/routes/copies.py`、`backend/tests/test_copy_service.py`；支持TikTok、Instagram、Facebook |
+| Copy Generation | 已完成 | `backend/app/services/copy_generation_service.py`、`backend/app/api/v1/routes/copies.py`、`backend/tests/test_copy_service.py`；一次Qwen调用支持TikTok、Instagram、Facebook、Pinterest完整矩阵 |
 | Video Blueprint | 已完成 | `backend/app/services/content_studio_service.py`、`backend/app/schemas/video.py`、`frontend/src/pages/ContentStudioPage.tsx`、Content Studio测试 |
 | Wanx Generation | 已完成 | `backend/app/providers/wanx_provider.py`、`backend/app/services/video_render_execution_service.py`、`backend/tests/smoke/test_wanx_real.py`、成功VideoRenderArtifact |
 | Artifact Read & Verified Output | 已完成 | `GET /api/v1/video-projects/{id}/render-artifacts`、`frontend/src/components/video/VerifiedWanxOutput.tsx`、Artifact API测试 |

@@ -13,7 +13,8 @@ from app.models.strategy import MarketingStrategy
 if TYPE_CHECKING:
     from app.models.video import VideoProject
 
-REQUIRED_PLATFORMS = {"tiktok", "instagram", "facebook"}
+LEGACY_PLATFORMS = {"tiktok", "instagram", "facebook"}
+REQUIRED_PLATFORMS = {*LEGACY_PLATFORMS, "pinterest"}
 
 
 class CopyMatrix(Base):
@@ -46,6 +47,13 @@ class CopyMatrix(Base):
         self, _: str, value: list[dict[str, object]]
     ) -> list[dict[str, object]]:
         platforms = [str(copy.get("platform", "")).casefold() for copy in value]
-        if len(platforms) != 3 or set(platforms) != REQUIRED_PLATFORMS:
-            raise ValueError("Copies must contain TikTok, Instagram and Facebook")
+        platform_set = frozenset(platforms)
+        if len(platforms) != len(platform_set) or platform_set not in {
+            frozenset(LEGACY_PLATFORMS),
+            frozenset(REQUIRED_PLATFORMS),
+        }:
+            raise ValueError(
+                "Copies must contain the legacy three-platform matrix or the "
+                "complete four-platform matrix"
+            )
         return value

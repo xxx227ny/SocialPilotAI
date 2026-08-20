@@ -37,7 +37,7 @@ def copy_json() -> str:
                     "hashtags": [f"#{platform}"],
                     "cta": f"{platform} CTA",
                 }
-                for platform in ("TikTok", "Instagram", "Facebook")
+                for platform in ("TikTok", "Instagram", "Facebook", "Pinterest")
             ]
         }
     )
@@ -84,7 +84,7 @@ def create_source(client: TestClient, db_session: Session) -> tuple[dict, dict, 
             "product_id": product["id"],
             "audience": "Target markets [US]. Busy professionals",
             "language": "English",
-            "platforms": ["TikTok", "Instagram", "Facebook"],
+            "platforms": ["TikTok", "Instagram", "Facebook", "Pinterest"],
             "tone": "Clear and practical",
             "objective": "Build awareness",
         },
@@ -174,9 +174,7 @@ def test_http_enqueue_and_fake_worker_end_to_end(
     assert db_session.scalar(select(func.count(CopyMatrix.id))) == 1
     assert db_session.scalar(select(func.count(ExecutionAttempt.id))) == 1
 
-    job = client.get(
-        f"/api/v1/execution-jobs/{first.json()['job']['id']}"
-    ).json()
+    job = client.get(f"/api/v1/execution-jobs/{first.json()['job']['id']}").json()
     assert job["result_entity_type"] == "copy_matrix"
     exact = client.get(
         f"/api/v1/marketing-tasks/{task['id']}/strategies/{strategy_id}/copies/"
@@ -187,6 +185,7 @@ def test_http_enqueue_and_fake_worker_end_to_end(
         "TikTok",
         "Instagram",
         "Facebook",
+        "Pinterest",
     ]
 
     listed = client.get(
@@ -212,9 +211,10 @@ def test_enqueue_rejects_expired_changed_and_unconfirmed_inputs(
     checked = preflight(client, task["id"], strategy_id)
     expired = dict(checked)
     expired["expires_at"] = (datetime.now(UTC) - timedelta(seconds=1)).isoformat()
-    assert enqueue(
-        client, task["id"], product["id"], strategy_id, expired
-    ).status_code == 409
+    assert (
+        enqueue(client, task["id"], product["id"], strategy_id, expired).status_code
+        == 409
+    )
 
     unconfirmed = client.post(
         f"/api/v1/marketing-tasks/{task['id']}/strategies/{strategy_id}/copy-jobs",
@@ -231,9 +231,10 @@ def test_enqueue_rejects_expired_changed_and_unconfirmed_inputs(
 
     db_session.get(MarketingStrategy, strategy_id).positioning = "Changed"
     db_session.commit()
-    assert enqueue(
-        client, task["id"], product["id"], strategy_id, checked
-    ).status_code == 409
+    assert (
+        enqueue(client, task["id"], product["id"], strategy_id, checked).status_code
+        == 409
+    )
     assert db_session.scalar(select(func.count(ExecutionJob.id))) == 0
 
 

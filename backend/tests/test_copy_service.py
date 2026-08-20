@@ -75,6 +75,13 @@ def valid_copy_json() -> str:
                     "hashtags": ["#KitchenAppliance", "#PortableDesign"],
                     "cta": "Explore the product details.",
                 },
+                {
+                    "platform": "Pinterest",
+                    "hook": "Save a portable fresh-drink idea for busy mornings.",
+                    "caption": "A rechargeable blender idea for compact routines.",
+                    "hashtags": ["#MorningIdeas", "#PortableKitchen"],
+                    "cta": "Save this idea for later.",
+                },
             ]
         }
     )
@@ -89,14 +96,14 @@ def test_provider_is_called_once_and_matrix_is_saved(db_session: Session) -> Non
     ).generate_for_product(product.id)
 
     assert len(provider.prompts) == 1
-    assert "TikTok, Instagram, Facebook" in provider.prompts[0]
+    assert "TikTok, Instagram, Facebook, Pinterest" in provider.prompts[0]
     assert result.marketing_strategy_id == strategy.id
-    assert len(result.copies) == 3
+    assert len(result.copies) == 4
     saved_count = db_session.scalar(select(func.count(CopyMatrix.id)))
     assert saved_count == 1
 
 
-def test_json_is_parsed_into_three_platforms(db_session: Session) -> None:
+def test_json_is_parsed_into_four_platforms(db_session: Session) -> None:
     product, _ = add_product_and_strategy(db_session)
     provider = RecordingCopyProvider(valid_copy_json())
 
@@ -108,6 +115,7 @@ def test_json_is_parsed_into_three_platforms(db_session: Session) -> None:
         "TikTok",
         "Instagram",
         "Facebook",
+        "Pinterest",
     ]
 
 

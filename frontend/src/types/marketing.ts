@@ -1,4 +1,8 @@
-export type MarketingPlatform = "TikTok" | "Instagram" | "Facebook";
+export type MarketingPlatform =
+  | "TikTok"
+  | "Instagram"
+  | "Facebook"
+  | "Pinterest";
 
 export interface MarketingTaskCreatePayload {
   product_id: number;

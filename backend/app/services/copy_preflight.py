@@ -187,18 +187,16 @@ class CopyPreflightService:
         return hashlib.sha256(encoded).hexdigest()
 
     @staticmethod
-    def compute_preflight_digest(
-        *, input_digest: str, expires_at: datetime
-    ) -> str:
+    def compute_preflight_digest(*, input_digest: str, expires_at: datetime) -> str:
         payload = {
             "input_digest": input_digest,
             "expires_at": CopyPreflightService._normalize_expiry(
                 expires_at
             ).isoformat(),
         }
-        encoded = json.dumps(
-            payload, sort_keys=True, separators=(",", ":")
-        ).encode("utf-8")
+        encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode(
+            "utf-8"
+        )
         return hashlib.sha256(encoded).hexdigest()
 
     @staticmethod
@@ -250,7 +248,7 @@ class CopyPreflightService:
     def _normalize_platforms(
         platforms: list[str] | None,
     ) -> list[str] | None:
-        if not platforms or not 1 <= len(platforms) <= 3:
+        if not platforms or not 1 <= len(platforms) <= 4:
             return None
         normalized: list[str] = []
         seen: set[str] = set()

@@ -18,7 +18,7 @@ SocialPilot AI 是面向跨境电商商家的 AI 社媒增长助手，将商品�
 
 ## 产品解决方案
 
-SocialPilot AI 以 Product 为业务起点，使用 Qwen 生成结构化 Marketing Strategy，再生成 TikTok、Instagram 和 Facebook 的 Copy Matrix。Content Studio 将 Product、Strategy 和 Copy 组合为包含分镜、镜头、动作、旁白和 CTA 的 Video Blueprint。
+SocialPilot AI 以 Product 为业务起点，使用 Qwen 生成结构化 Marketing Strategy，再生成 TikTok、Instagram、Facebook 和 Pinterest 的 Copy Matrix。Content Studio 将 Product、Strategy 和 Copy 组合为包含分镜、镜头、动作、旁白和 CTA 的 Video Blueprint。
 
 真实视频链由独立的 Wanx Provider 和 Video Render Execution Pipeline 承担。系统通过幂等任务提交、状态轮询和 Artifact 持久化保存成功结果，并在 AI Video Blueprint 页面只读展示 Verified Wanx Output。Growth Copilot 使用确定性代码计算广告指标，再生成问题、预算和素材优化建议。
 
@@ -29,7 +29,7 @@ Product
   ↓
 Qwen Marketing Strategy
   ↓
-TikTok / Instagram / Facebook Copy Matrix
+TikTok / Instagram / Facebook / Pinterest Copy Matrix
   ↓
 AI Video Blueprint
   ↓
@@ -47,7 +47,7 @@ VideoRenderArtifact
 ## 核心价值
 
 - **策略一致性**：Strategy、Copy 和 Video 均保留明确的数据来源关系。
-- **多平台表达**：一次结构化 Copy 生成覆盖 TikTok、Instagram 和 Facebook。
+- **多平台表达**：一次结构化 Copy 生成覆盖 TikTok、Instagram、Facebook 和 Pinterest。
 - **真实视频链路**：不仅展示 Blueprint，也验证 Wanx 异步视频任务和成功 Artifact。
 - **工程可控性**：Provider 抽象、Schema 校验、幂等提交和安全错误映射降低外部 AI 风险。
 - **演示稳定性**：预置 Snapshot 与真实 Provider 验证分离，避免现场页面自动消耗额度。
