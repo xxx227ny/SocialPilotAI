@@ -12,11 +12,14 @@ from app.providers.wanx_image_provider import WanxImageProvider
 pytestmark = [pytest.mark.smoke, pytest.mark.wanx_smoke]
 
 PROMPT = """Create one photorealistic premium ecommerce advertising image.
-Vertical 9:16 composition featuring a fictional portable USB rechargeable
-blender on a clean modern kitchen counter. Show the complete product clearly,
-with realistic materials, fresh fruit nearby, natural commercial lighting,
-and a coherent teal-and-silver product identity. No text, no logo, no watermark,
-no split screen, and no collage."""
+Vertical 9:16 composition featuring a fictional cordless portable blender on a
+clean modern kitchen counter. Show the complete product clearly with realistic
+materials, fresh fruit nearby, natural commercial lighting, and a coherent
+teal-and-silver identity. The base must be one solid seamless uninterrupted
+surface with all controls and charging hardware concealed. Do not create any
+control panel, screen, display, button, dial, port, badge, or marking. Keep every
+surface completely blank: no letters, numbers, labels, icons, interface text,
+brand marks, logos, watermarks, or decorative writing. No split screen or collage."""
 
 
 def test_wanx_real_product_image() -> None:

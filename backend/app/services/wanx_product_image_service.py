@@ -121,5 +121,7 @@ class WanxProductImageService:
             f"Selling points: {selling_points}. Campaign concept: {version.concept}. "
             f"Scene: {scene.visual_description}. Action: {scene.action_description}. "
             "Natural commercial lighting, complete product visible, realistic "
-            "materials, no text, no logo, no watermark, no split screen."
+            "materials. Keep every product surface completely blank: no letters, "
+            "numbers, labels, interface text, brand marks, logos, watermarks, or "
+            "decorative writing anywhere. No split screen or collage."
         )
