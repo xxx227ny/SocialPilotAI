@@ -1,6 +1,6 @@
 import hashlib
 import json
-from datetime import date
+from datetime import date, datetime
 from typing import Annotated, Literal
 
 from pydantic import (
@@ -218,6 +218,44 @@ class GrowthOptimizationPlanRead(StrictGrowthModel):
     automatic_plan_generated: Literal[True] = True
     simulation_only: Literal[True] = True
     plan_persisted: Literal[False] = False
+    external_execution_allowed: Literal[False] = False
+    provider_calls: Literal[0] = 0
+
+
+class GrowthOptimizationRunCreateRequest(GrowthOptimizationPlanRequest):
+    idempotency_key: str = Field(min_length=8, max_length=160)
+    activate_internal: bool = True
+
+
+class GrowthOptimizationRunRead(StrictGrowthModel):
+    id: int
+    product_id: int
+    idempotency_key: str
+    source_context_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_recommendation_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    policy: GrowthOptimizationPolicy
+    actions: list[GrowthPlatformOptimizationAction] = Field(min_length=1)
+    current_total_spend: float = Field(ge=0)
+    recommended_total_budget: float = Field(gt=0)
+    status: Literal["PROPOSED", "ACTIVE", "SUPERSEDED"]
+    execution_scope: Literal["INTERNAL_PLAN_ONLY"]
+    external_execution_status: Literal["NOT_CONNECTED"]
+    created_at: datetime
+    activated_at: datetime | None
+    requires_qwen_recommendation: Literal[True] = True
+    external_execution_allowed: Literal[False] = False
+
+
+class GrowthOptimizationRunCreateRead(StrictGrowthModel):
+    run: GrowthOptimizationRunRead
+    reused: bool
+    automatic_internal_application: bool
+    provider_calls: Literal[0] = 0
+
+
+class GrowthOptimizationRunActivateRead(StrictGrowthModel):
+    run: GrowthOptimizationRunRead
+    reused: bool
     external_execution_allowed: Literal[False] = False
     provider_calls: Literal[0] = 0
 

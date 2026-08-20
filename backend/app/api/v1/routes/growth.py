@@ -24,6 +24,10 @@ from app.schemas.growth import (
     GrowthAnalysisResponse,
     GrowthOptimizationPlanRead,
     GrowthOptimizationPlanRequest,
+    GrowthOptimizationRunActivateRead,
+    GrowthOptimizationRunCreateRead,
+    GrowthOptimizationRunCreateRequest,
+    GrowthOptimizationRunRead,
     GrowthRecommendationPreflightRead,
 )
 from app.schemas.video import (
@@ -36,6 +40,9 @@ from app.services.campaign_service import CampaignService
 from app.services.feedback_context_service import FeedbackContextService
 from app.services.growth_analysis_service import GrowthAnalysisService
 from app.services.growth_budget_optimizer import GrowthBudgetOptimizer
+from app.services.growth_optimization_run_service import (
+    GrowthOptimizationRunService,
+)
 from app.services.growth_recommendation_preflight import (
     GrowthRecommendationPreflightService,
 )
@@ -115,6 +122,41 @@ def plan_growth_optimization(
     db: DbSession,
 ) -> GrowthOptimizationPlanRead:
     return GrowthBudgetOptimizer(db).plan(product_id, data)
+
+
+@router.post(
+    "/{product_id}/growth-optimization/plans",
+    response_model=GrowthOptimizationRunCreateRead,
+)
+def create_growth_optimization_plan(
+    product_id: int,
+    data: GrowthOptimizationRunCreateRequest,
+    db: DbSession,
+) -> GrowthOptimizationRunCreateRead:
+    return GrowthOptimizationRunService(db).create(product_id, data)
+
+
+@router.get(
+    "/{product_id}/growth-optimization/plans",
+    response_model=list[GrowthOptimizationRunRead],
+)
+def list_growth_optimization_plans(
+    product_id: int,
+    db: DbSession,
+) -> list[GrowthOptimizationRunRead]:
+    return GrowthOptimizationRunService(db).list(product_id)
+
+
+@router.post(
+    "/{product_id}/growth-optimization/plans/{run_id}/activate",
+    response_model=GrowthOptimizationRunActivateRead,
+)
+def activate_growth_optimization_plan(
+    product_id: int,
+    run_id: int,
+    db: DbSession,
+) -> GrowthOptimizationRunActivateRead:
+    return GrowthOptimizationRunService(db).activate(product_id, run_id)
 
 
 @router.post(

@@ -6,6 +6,7 @@ from app.models.campaign import AdCampaign
 from app.models.copy import CopyMatrix
 from app.models.demo import DemoScenario
 from app.models.execution import ExecutionAttempt, ExecutionJob
+from app.models.growth_optimization import GrowthOptimizationRun
 from app.models.marketing import MarketingBrief
 from app.models.presentation_snapshot import PresentationSnapshot
 from app.models.product import Product, ProductAsset
@@ -38,6 +39,7 @@ __all__ = [
     "DemoScenario",
     "ExecutionAttempt",
     "ExecutionJob",
+    "GrowthOptimizationRun",
     "MarketingBrief",
     "MarketingStrategy",
     "Product",

@@ -6,7 +6,13 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import AdCampaign, CopyMatrix, MarketingStrategy, VideoProject
+from app.models import (
+    AdCampaign,
+    CopyMatrix,
+    GrowthOptimizationRun,
+    MarketingStrategy,
+    VideoProject,
+)
 from app.schemas.growth import (
     GrowthAnalysisResponse,
     GrowthRecommendationConstraints,
@@ -223,4 +229,93 @@ def test_plan_rejects_tampered_recommendation_and_stale_context(
     assert stale.status_code == 409
     assert stale.json()["error"]["message"] == (
         "FeedbackContext changed; generate a new analysis first"
+    )
+
+
+def test_persisted_plans_are_idempotent_versioned_and_internally_activated(
+    client: TestClient,
+    db_session: Session,
+    product_payload: dict[str, object],
+) -> None:
+    analysis = _ready_analysis(client, db_session, product_payload)
+    path = f"/api/v1/products/{analysis.product_id}/growth-optimization/plans"
+    first_request = {
+        **_request(analysis),
+        "idempotency_key": "growth-plan-one",
+        "activate_internal": True,
+    }
+
+    first = client.post(path, json=first_request)
+    repeated = client.post(path, json=first_request)
+
+    assert first.status_code == 200
+    assert repeated.status_code == 200
+    assert first.json()["reused"] is False
+    assert repeated.json()["reused"] is True
+    assert first.json()["run"]["status"] == "ACTIVE"
+    assert first.json()["automatic_internal_application"] is True
+    assert first.json()["run"]["external_execution_status"] == "NOT_CONNECTED"
+    assert repeated.json()["run"]["id"] == first.json()["run"]["id"]
+    assert (
+        db_session.scalar(select(func.count()).select_from(GrowthOptimizationRun)) == 1
+    )
+
+    second_request = {
+        **_request(analysis),
+        "idempotency_key": "growth-plan-two",
+        "activate_internal": False,
+    }
+    second = client.post(path, json=second_request)
+    assert second.status_code == 200
+    assert second.json()["run"]["status"] == "PROPOSED"
+
+    activated = client.post(f"{path}/{second.json()['run']['id']}/activate")
+    assert activated.status_code == 200
+    assert activated.json()["run"]["status"] == "ACTIVE"
+    assert activated.json()["external_execution_allowed"] is False
+    listed = client.get(path)
+    assert listed.status_code == 200
+    assert [item["status"] for item in listed.json()] == [
+        "SUPERSEDED",
+        "ACTIVE",
+    ]
+
+
+def test_persisted_plan_rejects_key_conflict_and_stale_activation(
+    client: TestClient,
+    db_session: Session,
+    product_payload: dict[str, object],
+) -> None:
+    analysis = _ready_analysis(client, db_session, product_payload)
+    path = f"/api/v1/products/{analysis.product_id}/growth-optimization/plans"
+    request = {
+        **_request(analysis),
+        "idempotency_key": "growth-plan-conflict",
+        "activate_internal": False,
+    }
+    created = client.post(path, json=request)
+    assert created.status_code == 200
+
+    changed = deepcopy(request)
+    changed["policy"]["total_budget"] = 500
+    assert client.post(path, json=changed).status_code == 409
+
+    db_session.add(
+        AdCampaign(
+            product_id=analysis.product_id,
+            platform="Facebook",
+            campaign_name="Changed context",
+            date=date(2026, 8, 20),
+            impressions=100,
+            clicks=5,
+            conversions=1,
+            spend=Decimal("20"),
+            revenue=Decimal("20"),
+        )
+    )
+    db_session.commit()
+    activate = client.post(f"{path}/{created.json()['run']['id']}/activate")
+    assert activate.status_code == 409
+    assert activate.json()["error"]["message"] == (
+        "FeedbackContext changed; create a new optimization plan"
     )
