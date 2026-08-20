@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.exceptions import AppError
 from app.models import VideoRenderArtifact, VideoRenderTask
+from app.providers.live_configuration import effective_wanx_api_key
 from app.providers.visual_base import VisualGenerationRequest
 from app.providers.wanx_provider import WANX_REGION_HOSTS, WanxProvider
 from app.services.video_render_execution_service import (
@@ -27,7 +28,7 @@ MAX_WAIT_SECONDS = 5 * 60
 
 
 def _require_wanx_configuration() -> None:
-    if settings.wanx_api_key is None:
+    if not effective_wanx_api_key(settings):
         pytest.skip("WANX_API_KEY is not configured")
     if settings.wanx_endpoint:
         return
@@ -47,9 +48,7 @@ def _create_render_task(db_session: Session) -> VideoRenderTask:
             "sequence": 1,
             "duration_seconds": 3,
             "shot_type": "Macro close-up",
-            "visual_description": (
-                "Fruit dropping into a compact blender."
-            ),
+            "visual_description": ("Fruit dropping into a compact blender."),
             "action": "Three rapid ingredient cuts.",
             "narration": "No audio.",
         }
@@ -108,8 +107,7 @@ async def _execute_real_smoke(db_session: Session) -> None:
         db_session.refresh(task)
         category = task.error_code or "WANX_SUBMIT_APP_ERROR"
         pytest.fail(
-            f"Wanx submit failed: category={category}, "
-            f"http_status={exc.status_code}"
+            f"Wanx submit failed: category={category}, http_status={exc.status_code}"
         )
 
     assert submit_calls == 1
@@ -121,16 +119,12 @@ async def _execute_real_smoke(db_session: Session) -> None:
     deadline = started + MAX_WAIT_SECONDS
 
     while time.monotonic() < deadline:
-        await asyncio.sleep(
-            min(POLL_INTERVAL_SECONDS, deadline - time.monotonic())
-        )
+        await asyncio.sleep(min(POLL_INTERVAL_SECONDS, deadline - time.monotonic()))
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             break
         try:
-            result = await asyncio.wait_for(
-                service.refresh(task.id), timeout=remaining
-            )
+            result = await asyncio.wait_for(service.refresh(task.id), timeout=remaining)
         except TimeoutError:
             break
         except AppError as exc:
@@ -165,9 +159,7 @@ async def _execute_real_smoke(db_session: Session) -> None:
             return
 
         if result.task.status in {"FAILED", "CANCELED"}:
-            category = result.task.error_code or (
-                f"WANX_TASK_{result.task.status}"
-            )
+            category = result.task.error_code or (f"WANX_TASK_{result.task.status}")
             pytest.fail(
                 "Wanx task reached a terminal failure: "
                 f"category={category}, "
