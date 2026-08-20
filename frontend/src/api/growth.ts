@@ -3,6 +3,10 @@ import type {
   CampaignUploadResponse,
   FeedbackContext,
   GrowthAnalysis,
+  GrowthOptimizationPolicy,
+  GrowthOptimizationRun,
+  GrowthOptimizationRunActivateResult,
+  GrowthOptimizationRunCreateResult,
   GrowthRecommendationPreflight,
 } from "../types/growth";
 import type {
@@ -58,6 +62,50 @@ export async function executeGrowthRecommendation(
     `/products/${productId}/growth-analysis`,
     { expected_context_digest: expectedContextDigest },
     { signal, timeout: AI_EXECUTION_TIMEOUT_MS },
+  );
+  return response.data;
+}
+
+export async function createGrowthOptimizationRun(
+  productId: number,
+  analysis: GrowthAnalysis,
+  policy: GrowthOptimizationPolicy,
+  idempotencyKey: string,
+  signal?: AbortSignal,
+): Promise<GrowthOptimizationRunCreateResult> {
+  const response = await apiClient.post<GrowthOptimizationRunCreateResult>(
+    `/products/${productId}/growth-optimization/plans`,
+    {
+      analysis,
+      policy,
+      idempotency_key: idempotencyKey,
+      activate_internal: true,
+    },
+    { signal },
+  );
+  return response.data;
+}
+
+export async function listGrowthOptimizationRuns(
+  productId: number,
+  signal?: AbortSignal,
+): Promise<GrowthOptimizationRun[]> {
+  const response = await apiClient.get<GrowthOptimizationRun[]>(
+    `/products/${productId}/growth-optimization/plans`,
+    { signal },
+  );
+  return response.data;
+}
+
+export async function activateGrowthOptimizationRun(
+  productId: number,
+  runId: number,
+  signal?: AbortSignal,
+): Promise<GrowthOptimizationRunActivateResult> {
+  const response = await apiClient.post<GrowthOptimizationRunActivateResult>(
+    `/products/${productId}/growth-optimization/plans/${runId}/activate`,
+    undefined,
+    { signal },
   );
   return response.data;
 }

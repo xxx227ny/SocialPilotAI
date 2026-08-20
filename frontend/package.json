@@ -30,6 +30,7 @@
     "test:brand-kit-onboarding": "node scripts/test-brand-kit-onboarding.mjs",
     "test:strategy-queue": "node scripts/test-strategy-queue.mjs",
     "test:copy-queue": "node scripts/test-copy-queue.mjs",
+    "test:growth-optimization": "node scripts/test-growth-optimization.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -39,6 +39,7 @@ import type {
   V2VideoProjectExecutionResult,
   V2VideoProjectPreflight,
 } from "../types/video";
+import { GrowthOptimizationPanel } from "./growth/GrowthOptimizationPanel";
 
 interface GrowthCopilotPanelProps {
   productId: number;
@@ -159,6 +160,7 @@ export function GrowthCopilotPanel({
   const [v2VideoResult, setV2VideoResult] =
     useState<V2VideoProjectExecutionResult | null>(null);
   const currentProductId = useRef(productId);
+  const contextDigestRef = useRef<string | null>(null);
   const contextRequestId = useRef(0);
   const uploadRequestId = useRef(0);
   const contextController = useRef<AbortController | null>(null);
@@ -247,7 +249,11 @@ export function GrowthCopilotPanel({
   }, [resetV2Copy]);
 
   const readContext = useCallback(
-    async (expectedProductId: number, manual: boolean) => {
+    async (
+      expectedProductId: number,
+      manual: boolean,
+      preserveRecommendationIfUnchanged = false,
+    ) => {
       if (
         manual &&
         (manualReadLock.current ||
@@ -280,7 +286,13 @@ export function GrowthCopilotPanel({
         ) {
           return;
         }
-        resetRecommendation();
+        if (
+          !preserveRecommendationIfUnchanged ||
+          contextDigestRef.current !== result.context_digest
+        ) {
+          resetRecommendation();
+        }
+        contextDigestRef.current = result.context_digest;
         setContext(result);
         setContextState(
           result.campaign_count === 0
@@ -317,6 +329,7 @@ export function GrowthCopilotPanel({
 
   useEffect(() => {
     currentProductId.current = productId;
+    contextDigestRef.current = null;
     setFile(null);
     setNotice("");
     setContext(null);
@@ -946,6 +959,10 @@ export function GrowthCopilotPanel({
     executionState === "submitting" ||
     v2ExecutionState === "submitting" ||
     v2VideoExecutionState === "submitting";
+  const refreshOptimizationContext = useCallback(
+    () => readContext(productId, false, true),
+    [productId, readContext],
+  );
 
   return (
     <section className="growth-panel" aria-label="Structured FeedbackContext">
@@ -1127,6 +1144,15 @@ export function GrowthCopilotPanel({
         )}
         {executionState === "succeeded" && recommendationResult && (
           <RecommendationResult result={recommendationResult} />
+        )}
+
+        {context && (
+          <GrowthOptimizationPanel
+            productId={productId}
+            context={context}
+            analysis={recommendationResult}
+            refreshContext={refreshOptimizationContext}
+          />
         )}
 
         <p className="growth-panel__boundary">

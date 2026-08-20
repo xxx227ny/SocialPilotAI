@@ -1,0 +1,61 @@
+import type {
+  FeedbackContext,
+  GrowthAnalysis,
+  GrowthOptimizationPolicy,
+  GrowthOptimizationRun,
+} from "../../types/growth";
+
+export function analysisMatchesContext(
+  analysis: GrowthAnalysis | null,
+  context: FeedbackContext,
+): boolean {
+  return Boolean(
+    analysis &&
+      analysis.product_id === context.product_id &&
+      analysis.source_context_digest === context.context_digest,
+  );
+}
+
+export function optimizationIdempotencyKey(
+  analysis: GrowthAnalysis,
+  policy: GrowthOptimizationPolicy,
+): string {
+  const values = [
+    policy.total_budget,
+    policy.target_roas,
+    policy.minimum_platform_share,
+    policy.performance_tilt_share,
+    policy.maximum_bid_adjustment_pct,
+  ].map((value) => Number(value).toString());
+  return `growth:${analysis.recommendation_digest.slice(0, 32)}:${values.join(":")}`;
+}
+
+export function mergeOptimizationRun(
+  runs: GrowthOptimizationRun[],
+  incoming: GrowthOptimizationRun,
+): GrowthOptimizationRun[] {
+  return [...runs.filter((item) => item.id !== incoming.id), incoming].sort(
+    (left, right) => left.id - right.id,
+  );
+}
+
+export function activeOptimizationRun(
+  runs: GrowthOptimizationRun[],
+): GrowthOptimizationRun | null {
+  return runs.find((item) => item.status === "ACTIVE") ?? null;
+}
+
+export function canCreateOptimizationRun(
+  analysis: GrowthAnalysis | null,
+  context: FeedbackContext,
+  policy: GrowthOptimizationPolicy,
+  busy: boolean,
+): boolean {
+  return Boolean(
+    !busy &&
+      context.context_ready &&
+      analysisMatchesContext(analysis, context) &&
+      policy.total_budget > 0 &&
+      policy.target_roas > 0,
+  );
+}

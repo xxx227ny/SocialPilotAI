@@ -63,14 +63,14 @@ export type GrowthMetric =
 
 export interface GrowthObservation {
   scope: "overall" | "platform";
-  platform: "TikTok" | "Instagram" | "Facebook" | null;
+  platform: "TikTok" | "Instagram" | "Facebook" | "Pinterest" | null;
   metric: GrowthMetric;
   direction: "improve" | "test" | "protect" | "investigate";
   hypothesis: string;
 }
 
 export interface GrowthCopyConstraint {
-  platform: "TikTok" | "Instagram" | "Facebook";
+  platform: "TikTok" | "Instagram" | "Facebook" | "Pinterest";
   hook_direction: string;
   message_angle: string;
   cta_direction: string;
@@ -147,6 +147,60 @@ export interface GrowthAnalysis {
   copy_generation_triggered: false;
   video_generation_triggered: false;
   provider_calls: 1;
+}
+
+export interface GrowthOptimizationPolicy {
+  total_budget: number;
+  target_roas: number;
+  minimum_platform_share: number;
+  performance_tilt_share: number;
+  maximum_bid_adjustment_pct: number;
+}
+
+export interface GrowthPlatformOptimizationAction {
+  platform: string;
+  observed_roas: number | null;
+  current_spend: number;
+  current_share: number;
+  recommended_budget: number;
+  recommended_share: number;
+  budget_change: number;
+  budget_change_pct: number | null;
+  bid_adjustment_pct: number;
+  action: "increase" | "decrease" | "hold";
+}
+
+export interface GrowthOptimizationRun {
+  id: number;
+  product_id: number;
+  idempotency_key: string;
+  source_context_digest: string;
+  source_recommendation_digest: string;
+  policy: GrowthOptimizationPolicy;
+  actions: GrowthPlatformOptimizationAction[];
+  current_total_spend: number;
+  recommended_total_budget: number;
+  status: "PROPOSED" | "ACTIVE" | "SUPERSEDED";
+  execution_scope: "INTERNAL_PLAN_ONLY";
+  external_execution_status: "NOT_CONNECTED";
+  created_at: string;
+  activated_at: string | null;
+  requires_qwen_recommendation: true;
+  external_execution_allowed: false;
+}
+
+export interface GrowthOptimizationRunCreateResult {
+  run: GrowthOptimizationRun;
+  reused: boolean;
+  automatic_internal_application: boolean;
+  provider_calls: 0;
+}
+
+export interface GrowthOptimizationRunActivateResult {
+  run: GrowthOptimizationRun;
+  reused: boolean;
+  external_execution_allowed: false;
+  provider_calls: 0;
 }
 
 export interface FeedbackPlatformMetrics {
