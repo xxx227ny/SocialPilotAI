@@ -57,8 +57,12 @@ class GrowthOptimizationExecutionService:
         product_id: int,
         run_id: int,
         data: GrowthOptimizationExecutionRequest,
+        *,
+        trigger_kind: str = "MANUAL_CONFIRMATION",
     ) -> GrowthOptimizationExecutionResult:
-        request_digest = self._request_digest(run_id, data)
+        if trigger_kind not in {"MANUAL_CONFIRMATION", "AUTO_POLICY"}:
+            raise ValueError("unsupported growth execution trigger")
+        request_digest = self._request_digest(run_id, data, trigger_kind)
         existing = self.repository.get_execution_by_key(
             product_id, data.idempotency_key
         )
@@ -101,6 +105,7 @@ class GrowthOptimizationExecutionService:
             execution_mode="SANDBOX",
             provider_name="sandbox_ad_adapter",
             external_mutation_performed=False,
+            trigger_kind=trigger_kind,
         )
         try:
             self.session.add(execution)
@@ -192,13 +197,18 @@ class GrowthOptimizationExecutionService:
         ).model_dump(mode="json")
 
     @staticmethod
-    def _request_digest(run_id: int, data: GrowthOptimizationExecutionRequest) -> str:
+    def _request_digest(
+        run_id: int,
+        data: GrowthOptimizationExecutionRequest,
+        trigger_kind: str,
+    ) -> str:
         serialized = json.dumps(
             {
                 "version": "growth-sandbox-execution-v1",
                 "optimization_run_id": run_id,
                 "expected_context_digest": data.expected_context_digest,
                 "confirm_sandbox_execution": data.confirm_sandbox_execution,
+                "trigger_kind": trigger_kind,
             },
             sort_keys=True,
             separators=(",", ":"),
@@ -224,4 +234,5 @@ class GrowthOptimizationExecutionService:
             external_mutation_performed=execution.external_mutation_performed,
             created_at=execution.created_at,
             rolled_back_at=execution.rolled_back_at,
+            trigger_kind=execution.trigger_kind,  # type: ignore[arg-type]
         )

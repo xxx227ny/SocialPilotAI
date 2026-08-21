@@ -7,6 +7,7 @@ from app.models.copy import CopyMatrix
 from app.models.demo import DemoScenario
 from app.models.execution import ExecutionAttempt, ExecutionJob
 from app.models.growth_optimization import (
+    GrowthAutomationControl,
     GrowthOptimizationExecution,
     GrowthOptimizationRun,
 )
@@ -42,6 +43,7 @@ __all__ = [
     "DemoScenario",
     "ExecutionAttempt",
     "ExecutionJob",
+    "GrowthAutomationControl",
     "GrowthOptimizationRun",
     "GrowthOptimizationExecution",
     "MarketingBrief",

@@ -35,6 +35,13 @@ try {
   assert.notEqual(state.sandboxExecutionIdempotencyKey(active, digest, 0), state.sandboxExecutionIdempotencyKey(active, digest, 1));
   const execution = (id, status) => ({ id, status });
   assert.deepEqual(state.mergeOptimizationExecution([execution(1, "SUCCEEDED")], execution(1, "ROLLED_BACK")), [execution(1, "ROLLED_BACK")]);
+  const automation = { mode: "AUTO_SANDBOX", kill_switch_engaged: false };
+  assert.equal(state.canEvaluateAutomation(automation, active, context, false), true);
+  assert.equal(state.canEvaluateAutomation({ ...automation, kill_switch_engaged: true }, active, context, false), false);
+  assert.equal(state.canEvaluateAutomation({ ...automation, mode: "MANUAL" }, active, context, false), false);
+  assert.equal(state.canEvaluateAutomation(automation, active, context, true), false);
+  assert.equal(state.automationEvaluationIdempotencyKey(active, digest, 1), state.automationEvaluationIdempotencyKey(active, digest, 1));
+  assert.notEqual(state.automationEvaluationIdempotencyKey(active, digest, 1), state.automationEvaluationIdempotencyKey(active, digest, 2));
 
   const panel = read("src", "components", "growth", "GrowthOptimizationPanel.tsx");
   const parent = read("src", "components", "GrowthCopilotPanel.tsx");
@@ -45,13 +52,18 @@ try {
   assert.match(panel, /按精确Plan ID激活/);
   assert.match(parent, /preserveRecommendationIfUnchanged/);
   assert.match(parent, /contextDigestRef\.current !== result\.context_digest/);
-  for (const endpoint of ["growth-optimization/plans", "activate", "execution-preflight", "sandbox-executions", "rollback"]) assert.match(api, new RegExp(endpoint));
+  for (const endpoint of ["growth-optimization/plans", "activate", "execution-preflight", "sandbox-executions", "rollback", "automation", "kill-switch", "evaluate"]) assert.match(api, new RegExp(endpoint));
   assert.match(panel, /我确认仅执行SocialPilot AI沙箱方案/);
   assert.match(panel, /external_mutation_performed=false/);
   assert.match(panel, /按精确Execution ID回滚/);
   assert.match(panel, /listGrowthOptimizationExecutions/);
+  assert.match(panel, /AUTO_SANDBOX/);
+  assert.match(panel, /Kill Switch/);
+  assert.match(panel, /三项硬上限全部通过/);
+  assert.match(panel, /不含后台定时器/);
+  assert.match(panel, /我确认自动模式仅运行SocialPilot AI沙箱/);
   assert.doesNotMatch(panel, /access_token|client_secret|Bearer/i);
-  console.log("growth optimization: 18 behavior scenarios, 15 static/safety assertions passed");
+  console.log("growth optimization: 24 behavior scenarios, 23 static/safety assertions passed");
 } finally {
   await server.close();
 }

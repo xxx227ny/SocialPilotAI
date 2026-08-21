@@ -1,6 +1,7 @@
 import type {
   FeedbackContext,
   GrowthAnalysis,
+  GrowthAutomationControl,
   GrowthOptimizationExecution,
   GrowthOptimizationExecutionPreflight,
   GrowthOptimizationPolicy,
@@ -99,4 +100,27 @@ export function mergeOptimizationExecution(
     ...executions.filter((item) => item.id !== incoming.id),
     incoming,
   ].sort((left, right) => left.id - right.id);
+}
+
+export function canEvaluateAutomation(
+  control: GrowthAutomationControl | null,
+  run: GrowthOptimizationRun | null,
+  context: FeedbackContext,
+  busy: boolean,
+): boolean {
+  return Boolean(
+    !busy &&
+      control?.mode === "AUTO_SANDBOX" &&
+      !control.kill_switch_engaged &&
+      run?.status === "ACTIVE" &&
+      run.source_context_digest === context.context_digest,
+  );
+}
+
+export function automationEvaluationIdempotencyKey(
+  run: GrowthOptimizationRun,
+  contextDigest: string,
+  executionCount: number,
+): string {
+  return `growth-auto:${run.id}:${contextDigest.slice(0, 32)}:${executionCount + 1}`;
 }

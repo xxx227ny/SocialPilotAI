@@ -2,6 +2,8 @@ import { AI_EXECUTION_TIMEOUT_MS, apiClient } from "./client";
 import type {
   CampaignUploadResponse,
   FeedbackContext,
+  GrowthAutomationControl,
+  GrowthAutomationControlUpdate,
   GrowthAnalysis,
   GrowthOptimizationPolicy,
   GrowthOptimizationExecution,
@@ -163,6 +165,59 @@ export async function rollbackGrowthOptimizationExecution(
   const response = await apiClient.post<GrowthOptimizationExecutionResult>(
     `/products/${productId}/growth-optimization/executions/${executionId}/rollback`,
     undefined,
+    { signal },
+  );
+  return response.data;
+}
+
+export async function getGrowthAutomationControl(
+  productId: number,
+  signal?: AbortSignal,
+): Promise<GrowthAutomationControl> {
+  const response = await apiClient.get<GrowthAutomationControl>(
+    `/products/${productId}/growth-optimization/automation`,
+    { signal },
+  );
+  return response.data;
+}
+
+export async function updateGrowthAutomationControl(
+  productId: number,
+  data: GrowthAutomationControlUpdate,
+  signal?: AbortSignal,
+): Promise<GrowthAutomationControl> {
+  const response = await apiClient.put<GrowthAutomationControl>(
+    `/products/${productId}/growth-optimization/automation`,
+    data,
+    { signal },
+  );
+  return response.data;
+}
+
+export async function engageGrowthAutomationKillSwitch(
+  productId: number,
+  signal?: AbortSignal,
+): Promise<GrowthAutomationControl> {
+  const response = await apiClient.post<GrowthAutomationControl>(
+    `/products/${productId}/growth-optimization/automation/kill-switch`,
+    undefined,
+    { signal },
+  );
+  return response.data;
+}
+
+export async function evaluateGrowthAutomation(
+  productId: number,
+  idempotencyKey: string,
+  expectedContextDigest: string,
+  signal?: AbortSignal,
+): Promise<GrowthOptimizationExecutionResult> {
+  const response = await apiClient.post<GrowthOptimizationExecutionResult>(
+    `/products/${productId}/growth-optimization/automation/evaluate`,
+    {
+      idempotency_key: idempotencyKey,
+      expected_context_digest: expectedContextDigest,
+    },
     { signal },
   );
   return response.data;

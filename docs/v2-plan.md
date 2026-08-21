@@ -21,7 +21,9 @@ V2 is not the final commercial product. Work proceeds through one reviewed stage
 ## Non-goals
 
 - Authentication, billing, subscriptions, or multi-tenancy.
-- Social publishing, ad-account OAuth, automatic ad execution, or automatic budget changes.
+- Production ad-account OAuth and automatic mutation of real advertising platforms.
+  The verified growth path may execute bounded `AUTO_SANDBOX` evaluations only;
+  these records never call an ad Provider or change an external account.
 - Unlimited generation remains out of scope. Stage 3C permits bounded,
   Provider-free batch orchestration only; it does not generate media.
 - A general media suite remains out of scope. Existing approved subtitle and
@@ -154,3 +156,14 @@ Stage 3F仅实现一个精确`BatchVideoVariant`到一条15秒真实商品画面
 网页播放/下载。它不代表目标1的三平台批量成片已经完成，也不包含云AI TTS、AI图片、
 AI视频、自动发布或Pinterest恢复。Stage 3F后续生产旁白统一使用千问云配音，
 不能宣称为云AI语音。
+
+### 目标3：受控自动投流沙箱
+
+目标3现已支持版本化内部优化方案、人工确认沙箱执行、精确回滚，以及持久化的
+`MANUAL/AUTO_SANDBOX`控制。自动模式默认关闭且Kill Switch默认开启；启用时必须
+明确确认，并同时受总预算、单平台预算变动和竞价调整三项硬上限保护。自动评估仍固定
+使用`SANDBOX / sandbox_ad_adapter`，Provider调用和真实广告平台写入均为0。
+
+当前阶段不包含后台定时调度器，也不连接真实广告账户。真正的跨渠道实时自动执行仍需
+分别完成平台OAuth、生产Adapter、最小权限、审批策略、速率限制和真实账户Smoke后才能
+启用；不得把当前沙箱能力描述为已经修改TikTok、Meta或Pinterest预算。

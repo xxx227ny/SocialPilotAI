@@ -3,7 +3,11 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import GrowthOptimizationExecution, GrowthOptimizationRun
+from app.models import (
+    GrowthAutomationControl,
+    GrowthOptimizationExecution,
+    GrowthOptimizationRun,
+)
 
 
 class GrowthOptimizationRepository:
@@ -36,6 +40,17 @@ class GrowthOptimizationRepository:
                 .order_by(GrowthOptimizationRun.id.asc())
             ).all()
         )
+
+    def get_active(self, product_id: int) -> GrowthOptimizationRun | None:
+        return self.session.scalar(
+            select(GrowthOptimizationRun).where(
+                GrowthOptimizationRun.product_id == product_id,
+                GrowthOptimizationRun.status == "ACTIVE",
+            )
+        )
+
+    def get_automation_control(self, product_id: int) -> GrowthAutomationControl | None:
+        return self.session.get(GrowthAutomationControl, product_id)
 
     def get_execution(
         self, product_id: int, execution_id: int

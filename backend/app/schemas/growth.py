@@ -294,6 +294,7 @@ class GrowthOptimizationExecutionRead(StrictGrowthModel):
     external_mutation_performed: Literal[False]
     created_at: datetime
     rolled_back_at: datetime | None
+    trigger_kind: Literal["MANUAL_CONFIRMATION", "AUTO_POLICY"]
 
 
 class GrowthOptimizationExecutionResult(StrictGrowthModel):
@@ -301,6 +302,46 @@ class GrowthOptimizationExecutionResult(StrictGrowthModel):
     reused: bool
     external_mutation_performed: Literal[False] = False
     provider_calls: Literal[0] = 0
+
+
+class GrowthAutomationControlUpdate(StrictGrowthModel):
+    mode: Literal["MANUAL", "AUTO_SANDBOX"]
+    kill_switch_engaged: bool
+    maximum_total_budget: float = Field(gt=0, le=1_000_000_000)
+    maximum_budget_change_pct: float = Field(ge=0, le=0.5)
+    maximum_bid_adjustment_pct: float = Field(ge=0, le=0.5)
+    confirm_auto_sandbox: bool = False
+
+    @model_validator(mode="after")
+    def require_confirmation_when_armed(self) -> "GrowthAutomationControlUpdate":
+        if (
+            self.mode == "AUTO_SANDBOX"
+            and not self.kill_switch_engaged
+            and not self.confirm_auto_sandbox
+        ):
+            raise ValueError("arming AUTO_SANDBOX requires explicit confirmation")
+        return self
+
+
+class GrowthAutomationControlRead(StrictGrowthModel):
+    product_id: int
+    mode: Literal["MANUAL", "AUTO_SANDBOX"]
+    kill_switch_engaged: bool
+    maximum_total_budget: float
+    maximum_budget_change_pct: float
+    maximum_bid_adjustment_pct: float
+    last_execution_id: int | None
+    last_evaluated_at: datetime | None
+    updated_at: datetime | None
+    persisted: bool
+    execution_mode: Literal["SANDBOX"] = "SANDBOX"
+    provider_name: Literal["sandbox_ad_adapter"] = "sandbox_ad_adapter"
+    external_mutation_allowed: Literal[False] = False
+
+
+class GrowthAutomationEvaluationRequest(StrictGrowthModel):
+    idempotency_key: str = Field(min_length=8, max_length=160)
+    expected_context_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
 def compute_recommendation_digest(

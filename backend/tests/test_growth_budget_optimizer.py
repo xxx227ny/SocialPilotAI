@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.models import (
     AdCampaign,
     CopyMatrix,
+    GrowthAutomationControl,
     GrowthOptimizationExecution,
     GrowthOptimizationRun,
     MarketingStrategy,
@@ -396,6 +397,7 @@ def test_active_plan_sandbox_execution_is_confirmed_idempotent_and_rollbackable(
     assert execution["execution_mode"] == "SANDBOX"
     assert execution["provider_name"] == "sandbox_ad_adapter"
     assert execution["external_mutation_performed"] is False
+    assert execution["trigger_kind"] == "MANUAL_CONFIRMATION"
     assert first.json()["provider_calls"] == 0
     assert all(item["action"] == "hold" for item in execution["before_actions"])
     assert execution["result_actions"] == execution["target_actions"]
@@ -474,4 +476,220 @@ def test_sandbox_execution_rejects_proposed_stale_and_key_conflict(
     assert (
         client.get(f"{plans_path}/{active['id']}/execution-preflight").status_code
         == 409
+    )
+
+
+def test_growth_automation_defaults_safe_and_requires_explicit_arming(
+    client: TestClient,
+    db_session: Session,
+    product_payload: dict[str, object],
+) -> None:
+    analysis = _ready_analysis(client, db_session, product_payload)
+    path = f"/api/v1/products/{analysis.product_id}/growth-optimization/automation"
+
+    default = client.get(path)
+    assert default.status_code == 200
+    assert default.json()["mode"] == "MANUAL"
+    assert default.json()["kill_switch_engaged"] is True
+    assert default.json()["persisted"] is False
+    assert db_session.get(GrowthAutomationControl, analysis.product_id) is None
+
+    unconfirmed = client.put(
+        path,
+        json={
+            "mode": "AUTO_SANDBOX",
+            "kill_switch_engaged": False,
+            "maximum_total_budget": 400,
+            "maximum_budget_change_pct": 0.5,
+            "maximum_bid_adjustment_pct": 0.2,
+            "confirm_auto_sandbox": False,
+        },
+    )
+    assert unconfirmed.status_code == 422
+    assert db_session.get(GrowthAutomationControl, analysis.product_id) is None
+
+
+def test_growth_auto_sandbox_is_bounded_idempotent_and_kill_switchable(
+    client: TestClient,
+    db_session: Session,
+    product_payload: dict[str, object],
+) -> None:
+    analysis = _ready_analysis(client, db_session, product_payload)
+    plans_path = f"/api/v1/products/{analysis.product_id}/growth-optimization/plans"
+    run = client.post(
+        plans_path,
+        json={
+            **_request(analysis),
+            "idempotency_key": "growth-auto-plan",
+            "activate_internal": True,
+        },
+    ).json()["run"]
+    automation_path = (
+        f"/api/v1/products/{analysis.product_id}/growth-optimization/automation"
+    )
+    armed = client.put(
+        automation_path,
+        json={
+            "mode": "AUTO_SANDBOX",
+            "kill_switch_engaged": False,
+            "maximum_total_budget": 400,
+            "maximum_budget_change_pct": 0.5,
+            "maximum_bid_adjustment_pct": 0.2,
+            "confirm_auto_sandbox": True,
+        },
+    )
+    assert armed.status_code == 200
+    assert armed.json()["external_mutation_allowed"] is False
+
+    request = {
+        "idempotency_key": "growth-auto-evaluation-one",
+        "expected_context_digest": analysis.source_context_digest,
+    }
+    first = client.post(f"{automation_path}/evaluate", json=request)
+    repeated = client.post(f"{automation_path}/evaluate", json=request)
+    assert first.status_code == 200
+    assert repeated.status_code == 200
+    assert first.json()["reused"] is False
+    assert repeated.json()["reused"] is True
+    execution = first.json()["execution"]
+    assert execution["optimization_run_id"] == run["id"]
+    assert execution["trigger_kind"] == "AUTO_POLICY"
+    assert execution["execution_mode"] == "SANDBOX"
+    assert execution["external_mutation_performed"] is False
+    assert first.json()["provider_calls"] == 0
+    assert (
+        db_session.scalar(select(func.count()).select_from(GrowthOptimizationExecution))
+        == 1
+    )
+
+    stopped = client.post(f"{automation_path}/kill-switch")
+    assert stopped.status_code == 200
+    assert stopped.json()["kill_switch_engaged"] is True
+    blocked = client.post(
+        f"{automation_path}/evaluate",
+        json={**request, "idempotency_key": "growth-auto-evaluation-two"},
+    )
+    assert blocked.status_code == 409
+    assert "Kill Switch" in blocked.json()["error"]["message"]
+    assert (
+        db_session.scalar(select(func.count()).select_from(GrowthOptimizationExecution))
+        == 1
+    )
+
+
+def test_growth_auto_sandbox_rejects_plan_over_safety_limit_without_write(
+    client: TestClient,
+    db_session: Session,
+    product_payload: dict[str, object],
+) -> None:
+    analysis = _ready_analysis(client, db_session, product_payload)
+    plans_path = f"/api/v1/products/{analysis.product_id}/growth-optimization/plans"
+    client.post(
+        plans_path,
+        json={
+            **_request(analysis),
+            "idempotency_key": "growth-auto-over-limit-plan",
+            "activate_internal": True,
+        },
+    )
+    automation_path = (
+        f"/api/v1/products/{analysis.product_id}/growth-optimization/automation"
+    )
+    assert (
+        client.put(
+            automation_path,
+            json={
+                "mode": "AUTO_SANDBOX",
+                "kill_switch_engaged": False,
+                "maximum_total_budget": 200,
+                "maximum_budget_change_pct": 0.5,
+                "maximum_bid_adjustment_pct": 0.2,
+                "confirm_auto_sandbox": True,
+            },
+        ).status_code
+        == 200
+    )
+    response = client.post(
+        f"{automation_path}/evaluate",
+        json={
+            "idempotency_key": "growth-auto-over-limit-evaluation",
+            "expected_context_digest": analysis.source_context_digest,
+        },
+    )
+    assert response.status_code == 409
+    assert "total budget safety limit" in response.json()["error"]["message"]
+    assert (
+        db_session.scalar(select(func.count()).select_from(GrowthOptimizationExecution))
+        == 0
+    )
+
+
+def test_growth_auto_sandbox_enforces_change_and_bid_caps(
+    client: TestClient,
+    db_session: Session,
+    product_payload: dict[str, object],
+) -> None:
+    analysis = _ready_analysis(client, db_session, product_payload)
+    plans_path = f"/api/v1/products/{analysis.product_id}/growth-optimization/plans"
+    client.post(
+        plans_path,
+        json={
+            **_request(analysis),
+            "idempotency_key": "growth-auto-action-limit-plan",
+            "activate_internal": True,
+        },
+    )
+    automation_path = (
+        f"/api/v1/products/{analysis.product_id}/growth-optimization/automation"
+    )
+    base_control = {
+        "mode": "AUTO_SANDBOX",
+        "kill_switch_engaged": False,
+        "maximum_total_budget": 400,
+        "confirm_auto_sandbox": True,
+    }
+    assert (
+        client.put(
+            automation_path,
+            json={
+                **base_control,
+                "maximum_budget_change_pct": 0.01,
+                "maximum_bid_adjustment_pct": 0.2,
+            },
+        ).status_code
+        == 200
+    )
+    budget_blocked = client.post(
+        f"{automation_path}/evaluate",
+        json={
+            "idempotency_key": "growth-auto-budget-change-blocked",
+            "expected_context_digest": analysis.source_context_digest,
+        },
+    )
+    assert budget_blocked.status_code == 409
+    assert "budget change safety limit" in budget_blocked.json()["error"]["message"]
+
+    assert (
+        client.put(
+            automation_path,
+            json={
+                **base_control,
+                "maximum_budget_change_pct": 0.5,
+                "maximum_bid_adjustment_pct": 0.1,
+            },
+        ).status_code
+        == 200
+    )
+    bid_blocked = client.post(
+        f"{automation_path}/evaluate",
+        json={
+            "idempotency_key": "growth-auto-bid-blocked",
+            "expected_context_digest": analysis.source_context_digest,
+        },
+    )
+    assert bid_blocked.status_code == 409
+    assert "bid safety limit" in bid_blocked.json()["error"]["message"]
+    assert (
+        db_session.scalar(select(func.count()).select_from(GrowthOptimizationExecution))
+        == 0
     )

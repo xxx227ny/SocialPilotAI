@@ -4,15 +4,21 @@ import { getApiErrorMessage } from "../../api/client";
 import {
   activateGrowthOptimizationRun,
   createGrowthOptimizationRun,
+  engageGrowthAutomationKillSwitch,
+  evaluateGrowthAutomation,
   executeGrowthOptimizationSandbox,
+  getGrowthAutomationControl,
   listGrowthOptimizationExecutions,
   listGrowthOptimizationRuns,
   preflightGrowthOptimizationExecution,
   rollbackGrowthOptimizationExecution,
+  updateGrowthAutomationControl,
 } from "../../api/growth";
 import type {
   FeedbackContext,
   GrowthAnalysis,
+  GrowthAutomationControl,
+  GrowthAutomationControlUpdate,
   GrowthOptimizationExecution,
   GrowthOptimizationExecutionPreflight,
   GrowthOptimizationPolicy,
@@ -20,6 +26,8 @@ import type {
 } from "../../types/growth";
 import {
   activeOptimizationRun,
+  automationEvaluationIdempotencyKey,
+  canEvaluateAutomation,
   canExecuteSandbox,
   canCreateOptimizationRun,
   canPreflightSandboxExecution,
@@ -44,6 +52,15 @@ const DEFAULT_POLICY: GrowthOptimizationPolicy = {
   maximum_bid_adjustment_pct: 0.2,
 };
 
+const DEFAULT_AUTOMATION: GrowthAutomationControlUpdate = {
+  mode: "MANUAL",
+  kill_switch_engaged: true,
+  maximum_total_budget: 1000,
+  maximum_budget_change_pct: 0.25,
+  maximum_bid_adjustment_pct: 0.2,
+  confirm_auto_sandbox: false,
+};
+
 export function GrowthOptimizationPanel({
   productId,
   context,
@@ -53,6 +70,10 @@ export function GrowthOptimizationPanel({
   const [policy, setPolicy] = useState(DEFAULT_POLICY);
   const [runs, setRuns] = useState<GrowthOptimizationRun[]>([]);
   const [executions, setExecutions] = useState<GrowthOptimizationExecution[]>([]);
+  const [automation, setAutomation] = useState<GrowthAutomationControl | null>(null);
+  const [automationDraft, setAutomationDraft] =
+    useState<GrowthAutomationControlUpdate>(DEFAULT_AUTOMATION);
+  const [automationConfirmed, setAutomationConfirmed] = useState(false);
   const [executionPreflight, setExecutionPreflight] =
     useState<GrowthOptimizationExecutionPreflight | null>(null);
   const [executionConfirmed, setExecutionConfirmed] = useState(false);
@@ -67,6 +88,9 @@ export function GrowthOptimizationPanel({
     const controller = new AbortController();
     setRuns([]);
     setExecutions([]);
+    setAutomation(null);
+    setAutomationDraft(DEFAULT_AUTOMATION);
+    setAutomationConfirmed(false);
     setExecutionPreflight(null);
     setExecutionConfirmed(false);
     setExecutionKey("");
@@ -74,11 +98,23 @@ export function GrowthOptimizationPanel({
     void Promise.all([
       listGrowthOptimizationRuns(productId, controller.signal),
       listGrowthOptimizationExecutions(productId, controller.signal),
+      getGrowthAutomationControl(productId, controller.signal),
     ])
-      .then(([items, executionItems]) => {
+      .then(([items, executionItems, automationControl]) => {
         if (!controller.signal.aborted && request === operation.current) {
           setRuns(items);
           setExecutions(executionItems);
+          setAutomation(automationControl);
+          setAutomationDraft({
+            mode: automationControl.mode,
+            kill_switch_engaged: automationControl.kill_switch_engaged,
+            maximum_total_budget: automationControl.maximum_total_budget,
+            maximum_budget_change_pct:
+              automationControl.maximum_budget_change_pct,
+            maximum_bid_adjustment_pct:
+              automationControl.maximum_bid_adjustment_pct,
+            confirm_auto_sandbox: false,
+          });
         }
       })
       .catch((error) => {
@@ -257,6 +293,112 @@ export function GrowthOptimizationPanel({
     }
   }
 
+  async function saveAutomation() {
+    if (
+      busy ||
+      (automationDraft.mode === "AUTO_SANDBOX" &&
+        !automationDraft.kill_switch_engaged &&
+        !automationConfirmed)
+    ) {
+      return;
+    }
+    const request = ++operation.current;
+    const controller = new AbortController();
+    setBusy(true);
+    setMessage("");
+    try {
+      const saved = await updateGrowthAutomationControl(
+        productId,
+        {
+          ...automationDraft,
+          confirm_auto_sandbox: automationConfirmed,
+        },
+        controller.signal,
+      );
+      if (request !== operation.current) return;
+      setAutomation(saved);
+      setAutomationDraft((current) => ({
+        ...current,
+        mode: saved.mode,
+        kill_switch_engaged: saved.kill_switch_engaged,
+        confirm_auto_sandbox: false,
+      }));
+      setAutomationConfirmed(false);
+      setMessage(
+        saved.mode === "AUTO_SANDBOX" && !saved.kill_switch_engaged
+          ? "AUTO_SANDBOX已启用；所有动作仍只进入本地沙箱。"
+          : "自动化控制已保存，当前不会自动执行。",
+      );
+    } catch (error) {
+      if (request === operation.current) {
+        setMessage(getApiErrorMessage(error, "自动化控制保存失败。"));
+      }
+    } finally {
+      if (request === operation.current) setBusy(false);
+    }
+  }
+
+  async function engageKillSwitch() {
+    if (busy) return;
+    const request = ++operation.current;
+    setBusy(true);
+    setMessage("");
+    try {
+      const stopped = await engageGrowthAutomationKillSwitch(productId);
+      if (request !== operation.current) return;
+      setAutomation(stopped);
+      setAutomationDraft((current) => ({
+        ...current,
+        mode: stopped.mode,
+        kill_switch_engaged: true,
+        confirm_auto_sandbox: false,
+      }));
+      setAutomationConfirmed(false);
+      setMessage("Kill Switch已开启；后续自动评估全部阻断。现有历史不会删除。");
+    } catch (error) {
+      if (request === operation.current) {
+        setMessage(getApiErrorMessage(error, "Kill Switch操作失败。"));
+      }
+    } finally {
+      if (request === operation.current) setBusy(false);
+    }
+  }
+
+  async function evaluateAutomation() {
+    if (!canEvaluateAutomation(automation, active, context, busy) || !active) {
+      return;
+    }
+    const request = ++operation.current;
+    setBusy(true);
+    setMessage("");
+    try {
+      const result = await evaluateGrowthAutomation(
+        productId,
+        automationEvaluationIdempotencyKey(
+          active,
+          context.context_digest,
+          executions.length,
+        ),
+        context.context_digest,
+      );
+      if (request !== operation.current) return;
+      setExecutions((items) => mergeOptimizationExecution(items, result.execution));
+      setAutomation(await getGrowthAutomationControl(productId));
+      if (request !== operation.current) return;
+      setMessage(
+        result.reused
+          ? `已恢复自动沙箱Execution #${result.execution.id}。`
+          : `自动策略已通过全部上限并完成Execution #${result.execution.id}；真实平台未修改。`,
+      );
+    } catch (error) {
+      if (request === operation.current) {
+        setMessage(getApiErrorMessage(error, "自动沙箱评估被安全门禁阻断。"));
+      }
+    } finally {
+      if (request === operation.current) setBusy(false);
+    }
+  }
+
   const active = activeOptimizationRun(runs);
   return (
     <section className="growth-recommendation" aria-label="ROAS预算竞价优化">
@@ -325,6 +467,122 @@ export function GrowthOptimizationPanel({
         <p className="growth-panel__boundary">
           所有记录固定为SANDBOX；Provider调用0，external_mutation_performed=false。
         </p>
+        <section className="growth-automation" aria-label="自动模式与安全上限">
+          <div className="growth-context-section-title">
+            <strong>自动模式与安全上限</strong>
+            <small>
+              {automation?.mode ?? "MANUAL"} · Kill Switch
+              {automation?.kill_switch_engaged ?? true ? "已开启" : "已关闭"}
+            </small>
+          </div>
+          <label>
+            <span>运行模式</span>
+            <select
+              aria-label="运行模式"
+              value={automationDraft.mode}
+              onChange={(event) => {
+                setAutomationDraft((current) => ({
+                  ...current,
+                  mode: event.target.value as "MANUAL" | "AUTO_SANDBOX",
+                }));
+                setAutomationConfirmed(false);
+              }}
+            >
+              <option value="MANUAL">MANUAL</option>
+              <option value="AUTO_SANDBOX">AUTO_SANDBOX</option>
+            </select>
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={automationDraft.kill_switch_engaged}
+              onChange={(event) => {
+                setAutomationDraft((current) => ({
+                  ...current,
+                  kill_switch_engaged: event.target.checked,
+                }));
+                setAutomationConfirmed(false);
+              }}
+            />
+            Kill Switch保持开启
+          </label>
+          <div className="growth-automation__limits">
+            <NumberInput
+              label="自动总预算上限"
+              value={automationDraft.maximum_total_budget}
+              setValue={(value) =>
+                setAutomationDraft((current) => ({
+                  ...current,
+                  maximum_total_budget: value,
+                }))
+              }
+            />
+            <NumberInput
+              label="单平台预算变动上限"
+              value={automationDraft.maximum_budget_change_pct}
+              setValue={(value) =>
+                setAutomationDraft((current) => ({
+                  ...current,
+                  maximum_budget_change_pct: value,
+                }))
+              }
+            />
+            <NumberInput
+              label="竞价调整上限"
+              value={automationDraft.maximum_bid_adjustment_pct}
+              setValue={(value) =>
+                setAutomationDraft((current) => ({
+                  ...current,
+                  maximum_bid_adjustment_pct: value,
+                }))
+              }
+            />
+          </div>
+          {automationDraft.mode === "AUTO_SANDBOX" &&
+            !automationDraft.kill_switch_engaged && (
+              <label className="growth-sandbox__confirm">
+                <input
+                  type="checkbox"
+                  checked={automationConfirmed}
+                  onChange={(event) =>
+                    setAutomationConfirmed(event.target.checked)
+                  }
+                />
+                我确认自动模式仅运行SocialPilot AI沙箱，不会修改真实广告账户。
+              </label>
+            )}
+          <div className="growth-automation__actions">
+            <button
+              type="button"
+              disabled={
+                busy ||
+                (automationDraft.mode === "AUTO_SANDBOX" &&
+                  !automationDraft.kill_switch_engaged &&
+                  !automationConfirmed)
+              }
+              onClick={() => void saveAutomation()}
+            >
+              保存自动化控制
+            </button>
+            <button
+              type="button"
+              disabled={busy || Boolean(automation?.kill_switch_engaged)}
+              onClick={() => void engageKillSwitch()}
+            >
+              立即开启Kill Switch
+            </button>
+            <button
+              type="button"
+              disabled={!canEvaluateAutomation(automation, active, context, busy)}
+              onClick={() => void evaluateAutomation()}
+            >
+              运行一次自动策略评估
+            </button>
+          </div>
+          <p className="growth-panel__boundary">
+            AUTO_SANDBOX只在精确Context、Active Plan与三项硬上限全部通过时执行；不含后台定时器，不连接广告平台。
+          </p>
+        </section>
         {executions.length === 0 ? (
           <p>暂无沙箱执行记录。</p>
         ) : (
@@ -351,7 +609,7 @@ function RunCard({ run, active = false, activate }: { run: GrowthOptimizationRun
 }
 
 function ExecutionCard({ execution, busy, rollback }: { execution: GrowthOptimizationExecution; busy: boolean; rollback: () => void }) {
-  return <article className="growth-context-card"><header><strong>Execution #{execution.id} · {execution.status}</strong><small>{execution.execution_mode} · {execution.provider_name}</small></header><p>真实平台修改：否 · Plan #{execution.optimization_run_id}</p><ul>{execution.result_actions.map((action) => <li key={action.platform}><strong>{action.platform}</strong>：结果预算 {action.recommended_budget.toFixed(2)} · 竞价 {signedPercent(action.bid_adjustment_pct)}</li>)}</ul>{execution.status === "SUCCEEDED" && <button type="button" disabled={busy} onClick={rollback}>按精确Execution ID回滚</button>}</article>;
+  return <article className="growth-context-card"><header><strong>Execution #{execution.id} · {execution.status}</strong><small>{execution.execution_mode} · {execution.provider_name} · {execution.trigger_kind}</small></header><p>真实平台修改：否 · Plan #{execution.optimization_run_id}</p><ul>{execution.result_actions.map((action) => <li key={action.platform}><strong>{action.platform}</strong>：结果预算 {action.recommended_budget.toFixed(2)} · 竞价 {signedPercent(action.bid_adjustment_pct)}</li>)}</ul>{execution.status === "SUCCEEDED" && <button type="button" disabled={busy} onClick={rollback}>按精确Execution ID回滚</button>}</article>;
 }
 
 function signedPercent(value: number) {

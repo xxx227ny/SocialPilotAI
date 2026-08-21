@@ -22,6 +22,9 @@ from app.schemas.growth import (
     FeedbackContextRead,
     GrowthAnalysisRequest,
     GrowthAnalysisResponse,
+    GrowthAutomationControlRead,
+    GrowthAutomationControlUpdate,
+    GrowthAutomationEvaluationRequest,
     GrowthOptimizationExecutionPreflightRead,
     GrowthOptimizationExecutionRead,
     GrowthOptimizationExecutionRequest,
@@ -43,6 +46,7 @@ from app.schemas.video import (
 from app.services.campaign_service import CampaignService
 from app.services.feedback_context_service import FeedbackContextService
 from app.services.growth_analysis_service import GrowthAnalysisService
+from app.services.growth_automation_service import GrowthAutomationService
 from app.services.growth_budget_optimizer import GrowthBudgetOptimizer
 from app.services.growth_optimization_execution_service import (
     GrowthOptimizationExecutionService,
@@ -212,6 +216,50 @@ def rollback_growth_optimization_execution(
     db: DbSession,
 ) -> GrowthOptimizationExecutionResult:
     return GrowthOptimizationExecutionService(db).rollback(product_id, execution_id)
+
+
+@router.get(
+    "/{product_id}/growth-optimization/automation",
+    response_model=GrowthAutomationControlRead,
+)
+def get_growth_automation_control(
+    product_id: int, db: DbSession
+) -> GrowthAutomationControlRead:
+    return GrowthAutomationService(db).get(product_id)
+
+
+@router.put(
+    "/{product_id}/growth-optimization/automation",
+    response_model=GrowthAutomationControlRead,
+)
+def update_growth_automation_control(
+    product_id: int,
+    data: GrowthAutomationControlUpdate,
+    db: DbSession,
+) -> GrowthAutomationControlRead:
+    return GrowthAutomationService(db).update(product_id, data)
+
+
+@router.post(
+    "/{product_id}/growth-optimization/automation/kill-switch",
+    response_model=GrowthAutomationControlRead,
+)
+def engage_growth_automation_kill_switch(
+    product_id: int, db: DbSession
+) -> GrowthAutomationControlRead:
+    return GrowthAutomationService(db).engage_kill_switch(product_id)
+
+
+@router.post(
+    "/{product_id}/growth-optimization/automation/evaluate",
+    response_model=GrowthOptimizationExecutionResult,
+)
+def evaluate_growth_automation(
+    product_id: int,
+    data: GrowthAutomationEvaluationRequest,
+    db: DbSession,
+) -> GrowthOptimizationExecutionResult:
+    return GrowthAutomationService(db).evaluate(product_id, data)
 
 
 @router.post(

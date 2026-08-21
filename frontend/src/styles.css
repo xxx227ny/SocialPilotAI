@@ -1985,6 +1985,27 @@ textarea { font: inherit; }
   background: #fff;
 }
 
+.growth-automation {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 0.8rem;
+  background: rgba(245, 158, 11, 0.06);
+}
+
+.growth-automation__limits {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 0.75rem;
+}
+
+.growth-automation__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
 .growth-sandbox__confirm label {
   display: flex;
   align-items: flex-start;

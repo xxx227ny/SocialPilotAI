@@ -137,3 +137,55 @@ class GrowthOptimizationExecution(Base):
         DateTime(timezone=True), default=utc_now, nullable=False
     )
     rolled_back_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    trigger_kind: Mapped[str] = mapped_column(
+        String(24),
+        nullable=False,
+        default="MANUAL_CONFIRMATION",
+        server_default="MANUAL_CONFIRMATION",
+    )
+
+
+class GrowthAutomationControl(Base):
+    __tablename__ = "growth_automation_controls"
+    __table_args__ = (
+        CheckConstraint(
+            "mode IN ('MANUAL','AUTO_SANDBOX')",
+            name="ck_growth_automation_mode",
+        ),
+        CheckConstraint(
+            "maximum_total_budget > 0",
+            name="ck_growth_automation_total_budget",
+        ),
+        CheckConstraint(
+            "maximum_budget_change_pct >= 0 AND maximum_budget_change_pct <= 0.5",
+            name="ck_growth_automation_budget_change",
+        ),
+        CheckConstraint(
+            "maximum_bid_adjustment_pct >= 0 AND maximum_bid_adjustment_pct <= 0.5",
+            name="ck_growth_automation_bid_adjustment",
+        ),
+    )
+
+    product_id: Mapped[int] = mapped_column(
+        ForeignKey("products.id", ondelete="CASCADE"), primary_key=True
+    )
+    mode: Mapped[str] = mapped_column(String(20), nullable=False)
+    kill_switch_engaged: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("1")
+    )
+    maximum_total_budget: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2), nullable=False
+    )
+    maximum_budget_change_pct: Mapped[Decimal] = mapped_column(
+        Numeric(6, 4), nullable=False
+    )
+    maximum_bid_adjustment_pct: Mapped[Decimal] = mapped_column(
+        Numeric(6, 4), nullable=False
+    )
+    last_execution_id: Mapped[int | None] = mapped_column(
+        ForeignKey("growth_optimization_executions.id", ondelete="SET NULL")
+    )
+    last_evaluated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )

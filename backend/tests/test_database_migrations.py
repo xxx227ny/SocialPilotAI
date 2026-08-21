@@ -953,7 +953,7 @@ def test_stage3f_head_contains_product_media_bridge_columns(tmp_path: Path) -> N
         ).fetchone()[0]
     finally:
         connection.close()
-    assert HEAD_REVISION == "0016_growth_sandbox_executions"
+    assert HEAD_REVISION == "0017_growth_automation_controls"
     assert {
         "content_type",
         "size_bytes",
@@ -971,7 +971,9 @@ def test_stage3f_head_contains_product_media_bridge_columns(tmp_path: Path) -> N
     assert "ck_composition_audio_natural_duration" in audio_schema
 
 
-def test_0015_database_is_safely_upgraded_to_0016(tmp_path: Path) -> None:
+def test_0015_database_is_safely_upgraded_to_growth_automation_head(
+    tmp_path: Path,
+) -> None:
     database = tmp_path / "growth-0015.db"
     backups = tmp_path / "backups"
     migration_service._run_alembic(  # noqa: SLF001
@@ -985,10 +987,44 @@ def test_0015_database_is_safely_upgraded_to_0016(tmp_path: Path) -> None:
 
     result = upgrade_sqlite_database(database, backups)
     assert result.previous_revision == "0015_growth_optimization_runs"
-    assert result.current_revision == "0016_growth_sandbox_executions"
+    assert result.current_revision == "0017_growth_automation_controls"
     assert result.backup_manifest_path is not None
     assert result.backup_manifest_path.is_file()
     assert migration_service.get_database_migration_status(database).state == "head"
+
+
+def test_0016_database_is_safely_upgraded_to_0017(tmp_path: Path) -> None:
+    database = tmp_path / "growth-0016.db"
+    backups = tmp_path / "backups"
+    migration_service._run_alembic(  # noqa: SLF001
+        database, "upgrade", "0016_growth_sandbox_executions"
+    )
+
+    before = migration_service.get_database_migration_status(database)
+    assert before.state == "growth_sandbox_runtime"
+    assert before.revision == "0016_growth_sandbox_executions"
+    assert before.upgrade_required is True
+
+    result = upgrade_sqlite_database(database, backups)
+    assert result.previous_revision == "0016_growth_sandbox_executions"
+    assert result.current_revision == "0017_growth_automation_controls"
+    assert result.backup_manifest_path is not None
+    assert result.backup_manifest_path.is_file()
+    with sqlite3.connect(database) as connection:
+        tables = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
+        execution_columns = {
+            row[1]
+            for row in connection.execute(
+                "PRAGMA table_info(growth_optimization_executions)"
+            )
+        }
+    assert "growth_automation_controls" in tables
+    assert "trigger_kind" in execution_columns
 
 
 def test_stage3f_upgrade_preserves_old_voiceover_with_unknown_natural_duration(

@@ -231,6 +231,7 @@ export interface GrowthOptimizationExecution {
   external_mutation_performed: false;
   created_at: string;
   rolled_back_at: string | null;
+  trigger_kind: "MANUAL_CONFIRMATION" | "AUTO_POLICY";
 }
 
 export interface GrowthOptimizationExecutionResult {
@@ -238,6 +239,31 @@ export interface GrowthOptimizationExecutionResult {
   reused: boolean;
   external_mutation_performed: false;
   provider_calls: 0;
+}
+
+export interface GrowthAutomationControl {
+  product_id: number;
+  mode: "MANUAL" | "AUTO_SANDBOX";
+  kill_switch_engaged: boolean;
+  maximum_total_budget: number;
+  maximum_budget_change_pct: number;
+  maximum_bid_adjustment_pct: number;
+  last_execution_id: number | null;
+  last_evaluated_at: string | null;
+  updated_at: string | null;
+  persisted: boolean;
+  execution_mode: "SANDBOX";
+  provider_name: "sandbox_ad_adapter";
+  external_mutation_allowed: false;
+}
+
+export interface GrowthAutomationControlUpdate {
+  mode: "MANUAL" | "AUTO_SANDBOX";
+  kill_switch_engaged: boolean;
+  maximum_total_budget: number;
+  maximum_budget_change_pct: number;
+  maximum_bid_adjustment_pct: number;
+  confirm_auto_sandbox: boolean;
 }
 
 export interface FeedbackPlatformMetrics {
