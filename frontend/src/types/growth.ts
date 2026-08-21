@@ -203,6 +203,43 @@ export interface GrowthOptimizationRunActivateResult {
   provider_calls: 0;
 }
 
+export interface GrowthOptimizationExecutionPreflight {
+  product_id: number;
+  optimization_run_id: number;
+  source_context_digest: string;
+  ready: true;
+  execution_mode: "SANDBOX";
+  provider_name: "sandbox_ad_adapter";
+  requires_explicit_confirmation: true;
+  external_mutation_allowed: false;
+  provider_calls: 0;
+  database_writes: 0;
+}
+
+export interface GrowthOptimizationExecution {
+  id: number;
+  product_id: number;
+  optimization_run_id: number;
+  idempotency_key: string;
+  source_context_digest: string;
+  before_actions: GrowthPlatformOptimizationAction[];
+  target_actions: GrowthPlatformOptimizationAction[];
+  result_actions: GrowthPlatformOptimizationAction[];
+  status: "SUCCEEDED" | "ROLLED_BACK";
+  execution_mode: "SANDBOX";
+  provider_name: "sandbox_ad_adapter";
+  external_mutation_performed: false;
+  created_at: string;
+  rolled_back_at: string | null;
+}
+
+export interface GrowthOptimizationExecutionResult {
+  execution: GrowthOptimizationExecution;
+  reused: boolean;
+  external_mutation_performed: false;
+  provider_calls: 0;
+}
+
 export interface FeedbackPlatformMetrics {
   platform: string;
   metrics: CampaignMetrics;

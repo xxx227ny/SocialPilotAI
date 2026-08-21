@@ -25,6 +25,16 @@ try {
   const run = (id, status) => ({ id, status });
   assert.deepEqual(state.mergeOptimizationRun([run(2, "PROPOSED"), run(1, "SUPERSEDED")], run(2, "ACTIVE")).map((item) => [item.id, item.status]), [[1, "SUPERSEDED"], [2, "ACTIVE"]]);
   assert.equal(state.activeOptimizationRun([run(1, "SUPERSEDED"), run(2, "ACTIVE")]).id, 2);
+  const active = { id: 2, product_id: 1, status: "ACTIVE", source_context_digest: digest };
+  assert.equal(state.canPreflightSandboxExecution(active, context, false), true);
+  assert.equal(state.canPreflightSandboxExecution({ ...active, source_context_digest: "c".repeat(64) }, context, false), false);
+  const preflight = { ready: true };
+  assert.equal(state.canExecuteSandbox(preflight, true, false), true);
+  assert.equal(state.canExecuteSandbox(preflight, false, false), false);
+  assert.equal(state.sandboxExecutionIdempotencyKey(active, digest, 0), state.sandboxExecutionIdempotencyKey(active, digest, 0));
+  assert.notEqual(state.sandboxExecutionIdempotencyKey(active, digest, 0), state.sandboxExecutionIdempotencyKey(active, digest, 1));
+  const execution = (id, status) => ({ id, status });
+  assert.deepEqual(state.mergeOptimizationExecution([execution(1, "SUCCEEDED")], execution(1, "ROLLED_BACK")), [execution(1, "ROLLED_BACK")]);
 
   const panel = read("src", "components", "growth", "GrowthOptimizationPanel.tsx");
   const parent = read("src", "components", "GrowthCopilotPanel.tsx");
@@ -35,9 +45,13 @@ try {
   assert.match(panel, /按精确Plan ID激活/);
   assert.match(parent, /preserveRecommendationIfUnchanged/);
   assert.match(parent, /contextDigestRef\.current !== result\.context_digest/);
-  for (const endpoint of ["growth-optimization/plans", "activate"]) assert.match(api, new RegExp(endpoint));
+  for (const endpoint of ["growth-optimization/plans", "activate", "execution-preflight", "sandbox-executions", "rollback"]) assert.match(api, new RegExp(endpoint));
+  assert.match(panel, /我确认仅执行SocialPilot AI沙箱方案/);
+  assert.match(panel, /external_mutation_performed=false/);
+  assert.match(panel, /按精确Execution ID回滚/);
+  assert.match(panel, /listGrowthOptimizationExecutions/);
   assert.doesNotMatch(panel, /access_token|client_secret|Bearer/i);
-  console.log("growth optimization: 10 behavior scenarios, 8 static/safety assertions passed");
+  console.log("growth optimization: 18 behavior scenarios, 15 static/safety assertions passed");
 } finally {
   await server.close();
 }

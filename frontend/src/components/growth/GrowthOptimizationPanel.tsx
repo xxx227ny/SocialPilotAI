@@ -4,19 +4,29 @@ import { getApiErrorMessage } from "../../api/client";
 import {
   activateGrowthOptimizationRun,
   createGrowthOptimizationRun,
+  executeGrowthOptimizationSandbox,
+  listGrowthOptimizationExecutions,
   listGrowthOptimizationRuns,
+  preflightGrowthOptimizationExecution,
+  rollbackGrowthOptimizationExecution,
 } from "../../api/growth";
 import type {
   FeedbackContext,
   GrowthAnalysis,
+  GrowthOptimizationExecution,
+  GrowthOptimizationExecutionPreflight,
   GrowthOptimizationPolicy,
   GrowthOptimizationRun,
 } from "../../types/growth";
 import {
   activeOptimizationRun,
+  canExecuteSandbox,
   canCreateOptimizationRun,
+  canPreflightSandboxExecution,
+  mergeOptimizationExecution,
   mergeOptimizationRun,
   optimizationIdempotencyKey,
+  sandboxExecutionIdempotencyKey,
 } from "./growthOptimizationState";
 
 interface GrowthOptimizationPanelProps {
@@ -42,6 +52,11 @@ export function GrowthOptimizationPanel({
 }: GrowthOptimizationPanelProps) {
   const [policy, setPolicy] = useState(DEFAULT_POLICY);
   const [runs, setRuns] = useState<GrowthOptimizationRun[]>([]);
+  const [executions, setExecutions] = useState<GrowthOptimizationExecution[]>([]);
+  const [executionPreflight, setExecutionPreflight] =
+    useState<GrowthOptimizationExecutionPreflight | null>(null);
+  const [executionConfirmed, setExecutionConfirmed] = useState(false);
+  const [executionKey, setExecutionKey] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [autoRefresh, setAutoRefresh] = useState(false);
@@ -51,11 +66,19 @@ export function GrowthOptimizationPanel({
     const request = ++operation.current;
     const controller = new AbortController();
     setRuns([]);
+    setExecutions([]);
+    setExecutionPreflight(null);
+    setExecutionConfirmed(false);
+    setExecutionKey("");
     setMessage("");
-    void listGrowthOptimizationRuns(productId, controller.signal)
-      .then((items) => {
+    void Promise.all([
+      listGrowthOptimizationRuns(productId, controller.signal),
+      listGrowthOptimizationExecutions(productId, controller.signal),
+    ])
+      .then(([items, executionItems]) => {
         if (!controller.signal.aborted && request === operation.current) {
           setRuns(items);
+          setExecutions(executionItems);
         }
       })
       .catch((error) => {
@@ -124,12 +147,110 @@ export function GrowthOptimizationPanel({
       const refreshed = await listGrowthOptimizationRuns(productId);
       if (request !== operation.current) return;
       setRuns(refreshed);
+      setExecutionPreflight(null);
+      setExecutionConfirmed(false);
+      setExecutionKey("");
       setMessage(
         result.reused ? "该方案已经是当前方案。" : `已激活方案 #${runId}。`,
       );
     } catch (error) {
       if (request === operation.current) {
         setMessage(getApiErrorMessage(error, "历史方案激活失败。"));
+      }
+    } finally {
+      if (request === operation.current) setBusy(false);
+    }
+  }
+
+  async function preflightSandbox(run: GrowthOptimizationRun) {
+    if (!canPreflightSandboxExecution(run, context, busy)) return;
+    const request = ++operation.current;
+    const controller = new AbortController();
+    setBusy(true);
+    setMessage("");
+    setExecutionPreflight(null);
+    setExecutionConfirmed(false);
+    try {
+      const checked = await preflightGrowthOptimizationExecution(
+        productId,
+        run.id,
+        controller.signal,
+      );
+      if (request !== operation.current) return;
+      setExecutionPreflight(checked);
+      setExecutionKey(
+        sandboxExecutionIdempotencyKey(run, context.context_digest, executions.length),
+      );
+      setMessage("沙箱执行Preflight已通过；请明确确认后执行。");
+    } catch (error) {
+      if (request === operation.current) {
+        setMessage(getApiErrorMessage(error, "沙箱执行Preflight失败。"));
+      }
+    } finally {
+      if (request === operation.current) setBusy(false);
+    }
+  }
+
+  async function executeSandbox(run: GrowthOptimizationRun) {
+    if (
+      !canExecuteSandbox(executionPreflight, executionConfirmed, busy) ||
+      !executionKey
+    ) {
+      return;
+    }
+    const request = ++operation.current;
+    const controller = new AbortController();
+    setBusy(true);
+    setMessage("");
+    try {
+      const result = await executeGrowthOptimizationSandbox(
+        productId,
+        run.id,
+        executionKey,
+        context.context_digest,
+        controller.signal,
+      );
+      if (request !== operation.current) return;
+      setExecutions((items) => mergeOptimizationExecution(items, result.execution));
+      setMessage(
+        result.reused
+          ? `已恢复沙箱执行 #${result.execution.id}。`
+          : `沙箱执行 #${result.execution.id} 已完成，真实广告平台未修改。`,
+      );
+      setExecutionPreflight(null);
+      setExecutionConfirmed(false);
+      setExecutionKey("");
+    } catch (error) {
+      if (request === operation.current) {
+        setMessage(getApiErrorMessage(error, "沙箱执行失败。"));
+      }
+    } finally {
+      if (request === operation.current) setBusy(false);
+    }
+  }
+
+  async function rollbackExecution(executionId: number) {
+    if (busy) return;
+    const request = ++operation.current;
+    const controller = new AbortController();
+    setBusy(true);
+    setMessage("");
+    try {
+      const result = await rollbackGrowthOptimizationExecution(
+        productId,
+        executionId,
+        controller.signal,
+      );
+      if (request !== operation.current) return;
+      setExecutions((items) => mergeOptimizationExecution(items, result.execution));
+      setMessage(
+        result.reused
+          ? `沙箱执行 #${executionId} 已经回滚。`
+          : `已按精确Execution ID回滚 #${executionId}。`,
+      );
+    } catch (error) {
+      if (request === operation.current) {
+        setMessage(getApiErrorMessage(error, "沙箱回滚失败。"));
       }
     } finally {
       if (request === operation.current) setBusy(false);
@@ -167,6 +288,56 @@ export function GrowthOptimizationPanel({
       {runs.filter((item) => item.status !== "ACTIVE").map((run) => (
         <RunCard key={run.id} run={run} activate={() => void activate(run.id)} />
       ))}
+      <section className="growth-sandbox" aria-label="广告预算沙箱执行">
+        <div className="growth-context-section-title">
+          <strong>受控广告Adapter</strong>
+          <small>SANDBOX · 不连接、不修改真实广告账户</small>
+        </div>
+        <button
+          type="button"
+          disabled={!canPreflightSandboxExecution(active, context, busy)}
+          onClick={() => active && void preflightSandbox(active)}
+        >
+          运行沙箱执行Preflight
+        </button>
+        {executionPreflight && active && (
+          <div className="growth-sandbox__confirm">
+            <p>
+              READY · Plan #{executionPreflight.optimization_run_id} · Provider {executionPreflight.provider_name}
+            </p>
+            <label>
+              <input
+                type="checkbox"
+                checked={executionConfirmed}
+                onChange={(event) => setExecutionConfirmed(event.target.checked)}
+              />
+              我确认仅执行SocialPilot AI沙箱方案，不会修改真实广告账户。
+            </label>
+            <button
+              type="button"
+              disabled={!canExecuteSandbox(executionPreflight, executionConfirmed, busy)}
+              onClick={() => void executeSandbox(active)}
+            >
+              确认执行沙箱方案
+            </button>
+          </div>
+        )}
+        <p className="growth-panel__boundary">
+          所有记录固定为SANDBOX；Provider调用0，external_mutation_performed=false。
+        </p>
+        {executions.length === 0 ? (
+          <p>暂无沙箱执行记录。</p>
+        ) : (
+          executions.map((execution) => (
+            <ExecutionCard
+              key={execution.id}
+              execution={execution}
+              busy={busy}
+              rollback={() => void rollbackExecution(execution.id)}
+            />
+          ))
+        )}
+      </section>
     </section>
   );
 }
@@ -177,6 +348,10 @@ function NumberInput({ label, value, setValue }: { label: string; value: number;
 
 function RunCard({ run, active = false, activate }: { run: GrowthOptimizationRun; active?: boolean; activate?: () => void }) {
   return <article className="growth-context-card"><header><strong>方案 #{run.id} · {run.status}</strong><small>{run.execution_scope} · 外部平台 {run.external_execution_status}</small></header><p>总预算 {run.recommended_total_budget.toFixed(2)}</p><ul>{run.actions.map((action) => <li key={action.platform}><strong>{action.platform}</strong>：预算 {action.recommended_budget.toFixed(2)} · 竞价 {signedPercent(action.bid_adjustment_pct)} · {action.action}</li>)}</ul>{!active && activate && <button type="button" onClick={activate}>按精确Plan ID激活</button>}</article>;
+}
+
+function ExecutionCard({ execution, busy, rollback }: { execution: GrowthOptimizationExecution; busy: boolean; rollback: () => void }) {
+  return <article className="growth-context-card"><header><strong>Execution #{execution.id} · {execution.status}</strong><small>{execution.execution_mode} · {execution.provider_name}</small></header><p>真实平台修改：否 · Plan #{execution.optimization_run_id}</p><ul>{execution.result_actions.map((action) => <li key={action.platform}><strong>{action.platform}</strong>：结果预算 {action.recommended_budget.toFixed(2)} · 竞价 {signedPercent(action.bid_adjustment_pct)}</li>)}</ul>{execution.status === "SUCCEEDED" && <button type="button" disabled={busy} onClick={rollback}>按精确Execution ID回滚</button>}</article>;
 }
 
 function signedPercent(value: number) {

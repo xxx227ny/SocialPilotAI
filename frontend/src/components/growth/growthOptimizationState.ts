@@ -1,6 +1,8 @@
 import type {
   FeedbackContext,
   GrowthAnalysis,
+  GrowthOptimizationExecution,
+  GrowthOptimizationExecutionPreflight,
   GrowthOptimizationPolicy,
   GrowthOptimizationRun,
 } from "../../types/growth";
@@ -58,4 +60,43 @@ export function canCreateOptimizationRun(
       policy.total_budget > 0 &&
       policy.target_roas > 0,
   );
+}
+
+export function sandboxExecutionIdempotencyKey(
+  run: GrowthOptimizationRun,
+  contextDigest: string,
+  executionCount: number,
+): string {
+  return `growth-sandbox:${run.id}:${contextDigest.slice(0, 32)}:${executionCount + 1}`;
+}
+
+export function canPreflightSandboxExecution(
+  run: GrowthOptimizationRun | null,
+  context: FeedbackContext,
+  busy: boolean,
+): boolean {
+  return Boolean(
+    !busy &&
+      run?.status === "ACTIVE" &&
+      run.product_id === context.product_id &&
+      run.source_context_digest === context.context_digest,
+  );
+}
+
+export function canExecuteSandbox(
+  preflight: GrowthOptimizationExecutionPreflight | null,
+  confirmed: boolean,
+  busy: boolean,
+): boolean {
+  return Boolean(!busy && confirmed && preflight?.ready);
+}
+
+export function mergeOptimizationExecution(
+  executions: GrowthOptimizationExecution[],
+  incoming: GrowthOptimizationExecution,
+): GrowthOptimizationExecution[] {
+  return [
+    ...executions.filter((item) => item.id !== incoming.id),
+    incoming,
+  ].sort((left, right) => left.id - right.id);
 }

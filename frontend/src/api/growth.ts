@@ -4,6 +4,9 @@ import type {
   FeedbackContext,
   GrowthAnalysis,
   GrowthOptimizationPolicy,
+  GrowthOptimizationExecution,
+  GrowthOptimizationExecutionPreflight,
+  GrowthOptimizationExecutionResult,
   GrowthOptimizationRun,
   GrowthOptimizationRunActivateResult,
   GrowthOptimizationRunCreateResult,
@@ -104,6 +107,61 @@ export async function activateGrowthOptimizationRun(
 ): Promise<GrowthOptimizationRunActivateResult> {
   const response = await apiClient.post<GrowthOptimizationRunActivateResult>(
     `/products/${productId}/growth-optimization/plans/${runId}/activate`,
+    undefined,
+    { signal },
+  );
+  return response.data;
+}
+
+export async function preflightGrowthOptimizationExecution(
+  productId: number,
+  runId: number,
+  signal?: AbortSignal,
+): Promise<GrowthOptimizationExecutionPreflight> {
+  const response = await apiClient.get<GrowthOptimizationExecutionPreflight>(
+    `/products/${productId}/growth-optimization/plans/${runId}/execution-preflight`,
+    { signal },
+  );
+  return response.data;
+}
+
+export async function executeGrowthOptimizationSandbox(
+  productId: number,
+  runId: number,
+  idempotencyKey: string,
+  expectedContextDigest: string,
+  signal?: AbortSignal,
+): Promise<GrowthOptimizationExecutionResult> {
+  const response = await apiClient.post<GrowthOptimizationExecutionResult>(
+    `/products/${productId}/growth-optimization/plans/${runId}/sandbox-executions`,
+    {
+      idempotency_key: idempotencyKey,
+      expected_context_digest: expectedContextDigest,
+      confirm_sandbox_execution: true,
+    },
+    { signal },
+  );
+  return response.data;
+}
+
+export async function listGrowthOptimizationExecutions(
+  productId: number,
+  signal?: AbortSignal,
+): Promise<GrowthOptimizationExecution[]> {
+  const response = await apiClient.get<GrowthOptimizationExecution[]>(
+    `/products/${productId}/growth-optimization/executions`,
+    { signal },
+  );
+  return response.data;
+}
+
+export async function rollbackGrowthOptimizationExecution(
+  productId: number,
+  executionId: number,
+  signal?: AbortSignal,
+): Promise<GrowthOptimizationExecutionResult> {
+  const response = await apiClient.post<GrowthOptimizationExecutionResult>(
+    `/products/${productId}/growth-optimization/executions/${executionId}/rollback`,
     undefined,
     { signal },
   );
