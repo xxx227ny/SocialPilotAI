@@ -257,9 +257,12 @@ class HappyHorseProductVideoService:
             f"Create a polished vertical product advertisement titled "
             f"'{project.title}'. Concept: {project.concept}. {scenes}. "
             f"End with this call to action: {project.cta}. Use the supplied "
-            "reference images to keep the exact same product identity. Smooth "
-            "cinematic motion, coherent lighting, no subtitles, no logos, no "
-            "watermarks, and no generated on-screen text."
+            "reference images to keep the exact same product identity. Render a "
+            "product-only studio tabletop scene with an inanimate product, neutral "
+            "background, smooth cinematic camera motion, and coherent lighting. "
+            "Do not show people, hands, faces, bodies, food preparation, blades, "
+            "liquids, splashes, or ingestion. No subtitles, logos, watermarks, or "
+            "generated on-screen text."
         )
 
     def _existing(self, key: str) -> ExecutionJob | None:

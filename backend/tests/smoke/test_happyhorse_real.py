@@ -21,10 +21,11 @@ pytestmark = [pytest.mark.smoke, pytest.mark.happyhorse_smoke]
 
 PROMPT = """Create a polished 15-second vertical product advertisement using
 the supplied portable blender reference image. Preserve the exact teal-and-silver
-product identity. Begin with a clean hero shot, add smooth cinematic camera
-motion and fresh fruit preparation, then end on the complete product. Coherent
-commercial lighting, realistic motion, no subtitles, no logos, no watermarks,
-and no generated on-screen text."""
+product identity. Show only the inanimate product on a neutral studio tabletop.
+Use a clean hero shot, slow product rotation, gentle cinematic camera movement,
+and coherent commercial lighting. Do not show people, hands, faces, bodies, food
+preparation, blades, liquids, splashes, or ingestion. No subtitles, logos,
+watermarks, or generated on-screen text."""
 POLL_INTERVAL_SECONDS = 15
 MAX_WAIT_SECONDS = 10 * 60
 
