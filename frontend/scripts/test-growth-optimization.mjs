@@ -42,6 +42,12 @@ try {
   assert.equal(state.canEvaluateAutomation(automation, active, context, true), false);
   assert.equal(state.automationEvaluationIdempotencyKey(active, digest, 1), state.automationEvaluationIdempotencyKey(active, digest, 1));
   assert.notEqual(state.automationEvaluationIdempotencyKey(active, digest, 1), state.automationEvaluationIdempotencyKey(active, digest, 2));
+  const replanCycle = { id: 7, product_id: 1, context_digest: digest, status: "REPLAN_REQUIRED" };
+  assert.equal(state.canRequestQwenReplan(replanCycle, context, false), true);
+  assert.equal(state.canRequestQwenReplan({ ...replanCycle, status: "NO_CHANGE" }, context, false), false);
+  assert.equal(state.canRequestQwenReplan({ ...replanCycle, product_id: 2 }, context, false), false);
+  assert.equal(state.canRequestQwenReplan({ ...replanCycle, context_digest: "c".repeat(64) }, context, false), false);
+  assert.equal(state.canRequestQwenReplan(replanCycle, context, true), false);
 
   const panel = read("src", "components", "growth", "GrowthOptimizationPanel.tsx");
   const parent = read("src", "components", "GrowthCopilotPanel.tsx");
@@ -66,9 +72,16 @@ try {
   assert.match(panel, /不会偷偷调用Qwen/);
   assert.match(panel, /周期Runner需由外部调度器按次启动/);
   assert.match(panel, /Provider 0 · 外部修改 否/);
+  assert.match(panel, /转到Qwen重新规划/);
+  assert.match(panel, /canRequestQwenReplan/);
+  assert.match(parent, /handleQwenReplanRequest/);
+  assert.match(parent, /void handlePreflight\(\)/);
+  assert.match(parent, /仍需单独确认费用/);
+  assert.match(parent, /scrollIntoView/);
+  assert.match(parent, /监控周期.*的新Qwen Recommendation已生成/);
   assert.match(panel, /我确认自动模式仅运行SocialPilot AI沙箱/);
   assert.doesNotMatch(panel, /access_token|client_secret|Bearer/i);
-  console.log("growth optimization: 24 behavior scenarios, 29 static/safety assertions passed");
+  console.log("growth optimization: 29 behavior scenarios, 36 static/safety assertions passed");
 } finally {
   await server.close();
 }

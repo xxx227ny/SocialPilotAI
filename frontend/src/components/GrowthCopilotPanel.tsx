@@ -32,6 +32,7 @@ import type {
   CampaignMetrics,
   FeedbackContext,
   GrowthAnalysis,
+  GrowthAutomationCycle,
   GrowthRecommendationPreflight,
   ProviderFailureDetails,
 } from "../types/growth";
@@ -133,6 +134,7 @@ export function GrowthCopilotPanel({
     useState<ProviderFailureDetails | null>(null);
   const [recommendationResult, setRecommendationResult] =
     useState<GrowthAnalysis | null>(null);
+  const [replanCycleId, setReplanCycleId] = useState<number | null>(null);
   const [v2Preflight, setV2Preflight] =
     useState<V2CopyPreflight | null>(null);
   const [v2PreflightState, setV2PreflightState] =
@@ -160,6 +162,7 @@ export function GrowthCopilotPanel({
   const [v2VideoResult, setV2VideoResult] =
     useState<V2VideoProjectExecutionResult | null>(null);
   const currentProductId = useRef(productId);
+  const recommendationSectionRef = useRef<HTMLElement | null>(null);
   const contextDigestRef = useRef<string | null>(null);
   const contextRequestId = useRef(0);
   const uploadRequestId = useRef(0);
@@ -245,6 +248,7 @@ export function GrowthCopilotPanel({
     setExecutionError("");
     setRecommendationFailure(null);
     setRecommendationResult(null);
+    setReplanCycleId(null);
     resetV2Copy();
   }, [resetV2Copy]);
 
@@ -475,6 +479,31 @@ export function GrowthCopilotPanel({
         preflightLock.current = false;
       }
     }
+  }
+
+  function handleQwenReplanRequest(cycle: GrowthAutomationCycle) {
+    if (
+      !context ||
+      cycle.status !== "REPLAN_REQUIRED" ||
+      cycle.product_id !== productId ||
+      cycle.context_digest !== context.context_digest
+    ) {
+      setNotice("监控周期已过期，请先重新读取FeedbackContext。");
+      return;
+    }
+    setReplanCycleId(cycle.id);
+    setRecommendationResult(null);
+    setFeeConfirmed(false);
+    setAuthorizationConsumed(false);
+    authorizationConsumedRef.current = false;
+    setNotice(
+      `监控周期 #${cycle.id} 已交接到Qwen重新规划；Preflight不调用AI，仍需单独确认费用。`,
+    );
+    recommendationSectionRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+    void handlePreflight();
   }
 
   const canExecute = Boolean(
@@ -1045,6 +1074,7 @@ export function GrowthCopilotPanel({
         context && <ContextResult context={context} />}
 
       <section
+        ref={recommendationSectionRef}
         className="growth-recommendation"
         aria-label="Recommendation Constraints"
       >
@@ -1143,7 +1173,14 @@ export function GrowthCopilotPanel({
           <ProviderFailureSummary failure={recommendationFailure} />
         )}
         {executionState === "succeeded" && recommendationResult && (
-          <RecommendationResult result={recommendationResult} />
+          <>
+            {replanCycleId !== null && (
+              <p className="growth-panel__status">
+                监控周期 #{replanCycleId} 的新Qwen Recommendation已生成；请核对后生成并激活新的内部优化方案。
+              </p>
+            )}
+            <RecommendationResult result={recommendationResult} />
+          </>
         )}
 
         {context && (
@@ -1152,6 +1189,7 @@ export function GrowthCopilotPanel({
             context={context}
             analysis={recommendationResult}
             refreshContext={refreshOptimizationContext}
+            requestQwenReplan={handleQwenReplanRequest}
           />
         )}
 

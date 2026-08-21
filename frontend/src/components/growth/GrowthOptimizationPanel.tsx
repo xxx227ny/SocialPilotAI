@@ -31,6 +31,7 @@ import {
   activeOptimizationRun,
   automationEvaluationIdempotencyKey,
   canEvaluateAutomation,
+  canRequestQwenReplan,
   canExecuteSandbox,
   canCreateOptimizationRun,
   canPreflightSandboxExecution,
@@ -45,6 +46,7 @@ interface GrowthOptimizationPanelProps {
   context: FeedbackContext;
   analysis: GrowthAnalysis | null;
   refreshContext: () => Promise<void>;
+  requestQwenReplan: (cycle: GrowthAutomationCycle) => void;
 }
 
 const DEFAULT_POLICY: GrowthOptimizationPolicy = {
@@ -71,6 +73,7 @@ export function GrowthOptimizationPanel({
   context,
   analysis,
   refreshContext,
+  requestQwenReplan,
 }: GrowthOptimizationPanelProps) {
   const [policy, setPolicy] = useState(DEFAULT_POLICY);
   const [runs, setRuns] = useState<GrowthOptimizationRun[]>([]);
@@ -447,6 +450,7 @@ export function GrowthOptimizationPanel({
   }
 
   const active = activeOptimizationRun(runs);
+  const latestCycle = cycles[0] ?? null;
   return (
     <section className="growth-recommendation" aria-label="ROAS预算竞价优化">
       <div className="growth-context-section-title">
@@ -670,6 +674,20 @@ export function GrowthOptimizationPanel({
               ))
             )}
           </div>
+          {latestCycle?.status === "REPLAN_REQUIRED" && (
+            <div className="growth-sandbox__confirm">
+              <p>
+                当前ROAS Context已变化，旧Active Plan不能继续自动执行。请重新运行Qwen Recommendation Preflight并单独确认费用。
+              </p>
+              <button
+                type="button"
+                disabled={!canRequestQwenReplan(latestCycle, context, busy)}
+                onClick={() => requestQwenReplan(latestCycle)}
+              >
+                转到Qwen重新规划
+              </button>
+            </div>
+          )}
         </section>
         {executions.length === 0 ? (
           <p>暂无沙箱执行记录。</p>

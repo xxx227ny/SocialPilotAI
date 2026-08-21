@@ -2,6 +2,7 @@ import type {
   FeedbackContext,
   GrowthAnalysis,
   GrowthAutomationControl,
+  GrowthAutomationCycle,
   GrowthOptimizationExecution,
   GrowthOptimizationExecutionPreflight,
   GrowthOptimizationPolicy,
@@ -123,4 +124,17 @@ export function automationEvaluationIdempotencyKey(
   executionCount: number,
 ): string {
   return `growth-auto:${run.id}:${contextDigest.slice(0, 32)}:${executionCount + 1}`;
+}
+
+export function canRequestQwenReplan(
+  cycle: GrowthAutomationCycle | null,
+  context: FeedbackContext,
+  busy: boolean,
+): boolean {
+  return Boolean(
+    !busy &&
+      cycle?.status === "REPLAN_REQUIRED" &&
+      cycle.product_id === context.product_id &&
+      cycle.context_digest === context.context_digest,
+  );
 }

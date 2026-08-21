@@ -167,6 +167,9 @@ AI视频、自动发布或Pinterest恢复。Stage 3F后续生产旁白统一使�
 当前阶段新增持久化ROAS监控计划、到期时间、周期审计历史和可由外部调度器调用的
 一次性Runner。周期数据与Active Plan一致时可在硬上限内执行一次沙箱策略；相同数据
 再次监控只记录`NO_CHANGE`，数据变化则记录`REPLAN_REQUIRED`，不会隐式调用Qwen。
+网页可将最新且Digest匹配的`REPLAN_REQUIRED`周期交接到既有Qwen Recommendation
+流程：交接仅运行Provider-free Preflight并定位到费用确认区；用户仍必须重新勾选费用
+授权并显式点击，单次授权不会跨周期继承，失败或结果不确定时不会自动重试。
 系统不运行常驻死循环，也不连接真实广告账户。真正的跨渠道实时自动执行仍需
 分别完成平台OAuth、生产Adapter、最小权限、审批策略、速率限制和真实账户Smoke后才能
 启用；不得把当前沙箱能力描述为已经修改TikTok、Meta或Pinterest预算。
