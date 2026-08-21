@@ -613,11 +613,128 @@ def test_growth_monitor_marks_stale_context_for_replan_without_execution(
     response = client.post(f"{path}/cycles/run-once", json={"force": True})
     assert response.status_code == 200
     assert response.json()["cycle"]["status"] == "REPLAN_REQUIRED"
+    assert response.json()["cycle"]["resolution_status"] == "UNRESOLVED"
+    assert response.json()["cycle"]["resolved_by_optimization_run_id"] is None
     assert response.json()["provider_calls"] == 0
     assert (
         db_session.scalar(select(func.count()).select_from(GrowthOptimizationExecution))
         == 0
     )
+
+
+def test_replan_cycle_is_atomically_resolved_by_exact_new_active_plan(
+    client: TestClient,
+    db_session: Session,
+    product_payload: dict[str, object],
+) -> None:
+    original = _ready_analysis(client, db_session, product_payload)
+    product_id = original.product_id
+    plans_path = f"/api/v1/products/{product_id}/growth-optimization/plans"
+    first = client.post(
+        plans_path,
+        json={
+            **_request(original),
+            "idempotency_key": "growth-replan-original",
+            "activate_internal": True,
+        },
+    )
+    assert first.status_code == 200
+
+    db_session.add(
+        AdCampaign(
+            product_id=product_id,
+            platform="Facebook",
+            campaign_name="New exact ROAS context",
+            date=date(2026, 8, 22),
+            impressions=200,
+            clicks=20,
+            conversions=3,
+            spend=Decimal("20"),
+            revenue=Decimal("70"),
+        )
+    )
+    db_session.commit()
+    automation_path = f"{plans_path.rsplit('/plans', 1)[0]}/automation"
+    armed = client.put(
+        automation_path,
+        json={
+            "mode": "AUTO_SANDBOX",
+            "kill_switch_engaged": False,
+            "maximum_total_budget": 400,
+            "maximum_budget_change_pct": 0.5,
+            "maximum_bid_adjustment_pct": 0.2,
+            "monitoring_enabled": True,
+            "evaluation_interval_seconds": 600,
+            "confirm_auto_sandbox": True,
+        },
+    )
+    assert armed.status_code == 200
+    cycle = client.post(
+        f"{automation_path}/cycles/run-once", json={"force": True}
+    ).json()["cycle"]
+    assert cycle["status"] == "REPLAN_REQUIRED"
+    assert cycle["resolution_status"] == "UNRESOLVED"
+
+    context_digest = client.get(
+        f"/api/v1/products/{product_id}/feedback-context"
+    ).json()["context_digest"]
+    recommendation_digest = compute_recommendation_digest(
+        product_id=product_id,
+        source_context_digest=context_digest,
+        source_marketing_strategy_id=original.source_marketing_strategy_id,
+        source_copy_matrix_id=original.source_copy_matrix_id,
+        source_video_project_id=original.source_video_project_id,
+        recommendation=original.recommendation,
+    )
+    refreshed = original.model_copy(
+        update={
+            "source_context_digest": context_digest,
+            "recommendation_digest": recommendation_digest,
+        }
+    )
+    request = {
+        **_request(refreshed),
+        "idempotency_key": "growth-replan-resolved",
+        "activate_internal": True,
+        "source_automation_cycle_id": cycle["id"],
+    }
+    created = client.post(plans_path, json=request)
+    repeated = client.post(plans_path, json=request)
+    assert created.status_code == 200
+    assert repeated.status_code == 200
+    assert created.json()["reused"] is False
+    assert repeated.json()["reused"] is True
+    new_run_id = created.json()["run"]["id"]
+    assert created.json()["run"]["status"] == "ACTIVE"
+
+    resolved = client.get(f"{automation_path}/cycles").json()[0]
+    assert resolved["id"] == cycle["id"]
+    assert resolved["status"] == "REPLAN_REQUIRED"
+    assert resolved["resolution_status"] == "RESOLVED"
+    assert resolved["resolved_by_optimization_run_id"] == new_run_id
+    assert resolved["resolved_at"] is not None
+    assert (
+        db_session.scalar(select(func.count()).select_from(GrowthOptimizationRun)) == 2
+    )
+    assert (
+        db_session.scalar(select(func.count()).select_from(GrowthOptimizationExecution))
+        == 0
+    )
+
+    already_resolved = client.post(
+        plans_path,
+        json={**request, "idempotency_key": "growth-replan-second-outcome"},
+    )
+    assert already_resolved.status_code == 409
+    proposed_resolution = client.post(
+        plans_path,
+        json={
+            **request,
+            "idempotency_key": "growth-replan-proposed",
+            "activate_internal": False,
+        },
+    )
+    assert proposed_resolution.status_code == 422
 
 
 def test_growth_auto_sandbox_is_bounded_idempotent_and_kill_switchable(

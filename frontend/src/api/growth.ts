@@ -78,6 +78,7 @@ export async function createGrowthOptimizationRun(
   analysis: GrowthAnalysis,
   policy: GrowthOptimizationPolicy,
   idempotencyKey: string,
+  sourceAutomationCycleId: number | null,
   signal?: AbortSignal,
 ): Promise<GrowthOptimizationRunCreateResult> {
   const response = await apiClient.post<GrowthOptimizationRunCreateResult>(
@@ -87,6 +88,7 @@ export async function createGrowthOptimizationRun(
       policy,
       idempotency_key: idempotencyKey,
       activate_internal: true,
+      source_automation_cycle_id: sourceAutomationCycleId,
     },
     { signal },
   );

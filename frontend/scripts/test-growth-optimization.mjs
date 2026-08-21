@@ -22,6 +22,8 @@ try {
   assert.equal(state.canCreateOptimizationRun(null, context, policy, false), false);
   assert.equal(state.optimizationIdempotencyKey(analysis, policy), state.optimizationIdempotencyKey(analysis, policy));
   assert.notEqual(state.optimizationIdempotencyKey(analysis, policy), state.optimizationIdempotencyKey(analysis, { ...policy, total_budget: 301 }));
+  assert.notEqual(state.optimizationIdempotencyKey(analysis, policy), state.optimizationIdempotencyKey(analysis, policy, 7));
+  assert.notEqual(state.optimizationIdempotencyKey(analysis, policy, 7), state.optimizationIdempotencyKey(analysis, policy, 8));
   const run = (id, status) => ({ id, status });
   assert.deepEqual(state.mergeOptimizationRun([run(2, "PROPOSED"), run(1, "SUPERSEDED")], run(2, "ACTIVE")).map((item) => [item.id, item.status]), [[1, "SUPERSEDED"], [2, "ACTIVE"]]);
   assert.equal(state.activeOptimizationRun([run(1, "SUPERSEDED"), run(2, "ACTIVE")]).id, 2);
@@ -42,12 +44,14 @@ try {
   assert.equal(state.canEvaluateAutomation(automation, active, context, true), false);
   assert.equal(state.automationEvaluationIdempotencyKey(active, digest, 1), state.automationEvaluationIdempotencyKey(active, digest, 1));
   assert.notEqual(state.automationEvaluationIdempotencyKey(active, digest, 1), state.automationEvaluationIdempotencyKey(active, digest, 2));
-  const replanCycle = { id: 7, product_id: 1, context_digest: digest, status: "REPLAN_REQUIRED" };
+  const replanCycle = { id: 7, product_id: 1, context_digest: digest, status: "REPLAN_REQUIRED", resolution_status: "UNRESOLVED", resolved_by_optimization_run_id: null };
   assert.equal(state.canRequestQwenReplan(replanCycle, context, false), true);
   assert.equal(state.canRequestQwenReplan({ ...replanCycle, status: "NO_CHANGE" }, context, false), false);
   assert.equal(state.canRequestQwenReplan({ ...replanCycle, product_id: 2 }, context, false), false);
   assert.equal(state.canRequestQwenReplan({ ...replanCycle, context_digest: "c".repeat(64) }, context, false), false);
   assert.equal(state.canRequestQwenReplan(replanCycle, context, true), false);
+  assert.equal(state.canRequestQwenReplan({ ...replanCycle, resolution_status: "RESOLVED", resolved_by_optimization_run_id: 9 }, context, false), false);
+  assert.equal(state.canRequestQwenReplan({ ...replanCycle, resolved_by_optimization_run_id: 9 }, context, false), false);
 
   const panel = read("src", "components", "growth", "GrowthOptimizationPanel.tsx");
   const parent = read("src", "components", "GrowthCopilotPanel.tsx");
@@ -79,9 +83,15 @@ try {
   assert.match(parent, /仍需单独确认费用/);
   assert.match(parent, /scrollIntoView/);
   assert.match(parent, /监控周期.*的新Qwen Recommendation已生成/);
+  assert.match(api, /source_automation_cycle_id/);
+  assert.match(panel, /replanCycleId/);
+  assert.match(panel, /listGrowthAutomationCycles/);
+  assert.match(panel, /已由Plan/);
+  assert.match(panel, /resolution_status === "UNRESOLVED"/);
+  assert.match(parent, /replanResolved/);
   assert.match(panel, /我确认自动模式仅运行SocialPilot AI沙箱/);
   assert.doesNotMatch(panel, /access_token|client_secret|Bearer/i);
-  console.log("growth optimization: 29 behavior scenarios, 36 static/safety assertions passed");
+  console.log("growth optimization: 33 behavior scenarios, 42 static/safety assertions passed");
 } finally {
   await server.close();
 }

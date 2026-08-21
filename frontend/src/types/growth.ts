@@ -289,6 +289,9 @@ export interface GrowthAutomationCycle {
   next_evaluation_at: string;
   execution_mode: "SANDBOX";
   external_mutation_performed: false;
+  resolved_by_optimization_run_id: number | null;
+  resolved_at: string | null;
+  resolution_status: "UNRESOLVED" | "RESOLVED";
   provider_calls: 0;
 }
 

@@ -10,7 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppError
-from app.models import GrowthOptimizationRun
+from app.models import GrowthAutomationCycle, GrowthOptimizationRun
 from app.repositories.growth_optimization import GrowthOptimizationRepository
 from app.schemas.growth import (
     GrowthOptimizationPolicy,
@@ -41,12 +41,23 @@ class GrowthOptimizationRunService:
                     "Idempotency key is bound to a different optimization plan",
                     status_code=409,
                 )
+            self._validate_replan_cycle(
+                product_id,
+                data.source_automation_cycle_id,
+                planned.source_context_digest,
+                allow_resolved_by=existing.id,
+            )
             return GrowthOptimizationRunCreateRead(
                 run=self._read(existing),
                 reused=True,
                 automatic_internal_application=(existing.status == "ACTIVE"),
             )
 
+        source_cycle = self._validate_replan_cycle(
+            product_id,
+            data.source_automation_cycle_id,
+            planned.source_context_digest,
+        )
         now = datetime.now(UTC)
         status = "ACTIVE" if data.activate_internal else "PROPOSED"
         try:
@@ -68,6 +79,25 @@ class GrowthOptimizationRunService:
                 activated_at=now if status == "ACTIVE" else None,
             )
             self.session.add(run)
+            self.session.flush()
+            if source_cycle is not None:
+                claimed = self.session.execute(
+                    update(GrowthAutomationCycle)
+                    .where(
+                        GrowthAutomationCycle.id == source_cycle.id,
+                        GrowthAutomationCycle.resolved_by_optimization_run_id.is_(None),
+                    )
+                    .values(
+                        resolved_by_optimization_run_id=run.id,
+                        resolved_at=now,
+                    )
+                )
+                if claimed.rowcount != 1:
+                    self.session.rollback()
+                    raise AppError(
+                        "Growth monitoring cycle was resolved concurrently",
+                        status_code=409,
+                    )
             self.session.commit()
             self.session.refresh(run)
             return GrowthOptimizationRunCreateRead(
@@ -88,6 +118,37 @@ class GrowthOptimizationRunService:
                 reused=True,
                 automatic_internal_application=(recovered.status == "ACTIVE"),
             )
+
+    def _validate_replan_cycle(
+        self,
+        product_id: int,
+        cycle_id: int | None,
+        source_context_digest: str,
+        *,
+        allow_resolved_by: int | None = None,
+    ) -> GrowthAutomationCycle | None:
+        if cycle_id is None:
+            return None
+        cycle = self.repository.get_cycle(product_id, cycle_id)
+        if cycle is None:
+            raise AppError("Growth monitoring cycle was not found", status_code=404)
+        if cycle.status != "REPLAN_REQUIRED":
+            raise AppError("Growth monitoring cycle does not require replanning", 409)
+        if cycle.context_digest != source_context_digest:
+            raise AppError("Growth monitoring cycle context changed", status_code=409)
+        if cycle.resolved_by_optimization_run_id is not None and (
+            cycle.resolved_by_optimization_run_id != allow_resolved_by
+        ):
+            raise AppError(
+                "Growth monitoring cycle is already resolved", status_code=409
+            )
+        if allow_resolved_by is not None and (
+            cycle.resolved_by_optimization_run_id != allow_resolved_by
+        ):
+            raise AppError(
+                "Growth monitoring cycle is not bound to this outcome", status_code=409
+            )
+        return cycle
 
     def list(self, product_id: int) -> list[GrowthOptimizationRunRead]:
         FeedbackContextService(self.session).get(product_id)

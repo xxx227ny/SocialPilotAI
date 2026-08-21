@@ -72,6 +72,14 @@ class GrowthOptimizationRepository:
             )
         )
 
+    def get_cycle(self, product_id: int, cycle_id: int) -> GrowthAutomationCycle | None:
+        return self.session.scalar(
+            select(GrowthAutomationCycle).where(
+                GrowthAutomationCycle.id == cycle_id,
+                GrowthAutomationCycle.product_id == product_id,
+            )
+        )
+
     def get_execution(
         self, product_id: int, execution_id: int
     ) -> GrowthOptimizationExecution | None:

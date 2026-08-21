@@ -294,4 +294,11 @@ class GrowthAutomationService:
             next_evaluation_at=cycle.next_evaluation_at,
             execution_mode="SANDBOX",
             external_mutation_performed=False,
+            resolved_by_optimization_run_id=(cycle.resolved_by_optimization_run_id),
+            resolved_at=cycle.resolved_at,
+            resolution_status=(
+                "RESOLVED"
+                if cycle.resolved_by_optimization_run_id is not None
+                else "UNRESOLVED"
+            ),
         )

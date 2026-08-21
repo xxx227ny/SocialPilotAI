@@ -47,6 +47,8 @@ interface GrowthOptimizationPanelProps {
   analysis: GrowthAnalysis | null;
   refreshContext: () => Promise<void>;
   requestQwenReplan: (cycle: GrowthAutomationCycle) => void;
+  replanCycleId: number | null;
+  replanResolved: () => void;
 }
 
 const DEFAULT_POLICY: GrowthOptimizationPolicy = {
@@ -74,6 +76,8 @@ export function GrowthOptimizationPanel({
   analysis,
   refreshContext,
   requestQwenReplan,
+  replanCycleId,
+  replanResolved,
 }: GrowthOptimizationPanelProps) {
   const [policy, setPolicy] = useState(DEFAULT_POLICY);
   const [runs, setRuns] = useState<GrowthOptimizationRun[]>([]);
@@ -168,15 +172,20 @@ export function GrowthOptimizationPanel({
         productId,
         analysis,
         policy,
-        optimizationIdempotencyKey(analysis, policy),
+        optimizationIdempotencyKey(analysis, policy, replanCycleId),
+        replanCycleId,
         controller.signal,
       );
       if (request !== operation.current) return;
       setRuns((items) => mergeOptimizationRun(items, result.run));
+      setCycles(await listGrowthAutomationCycles(productId));
+      if (replanCycleId !== null) replanResolved();
       setMessage(
         result.reused
           ? "已恢复相同优化方案。"
-          : "已生成并激活系统内部预算/竞价方案。",
+          : replanCycleId !== null
+            ? `已生成并激活方案 #${result.run.id}，监控周期 #${replanCycleId} 已解决。`
+            : "已生成并激活系统内部预算/竞价方案。",
       );
     } catch (error) {
       if (request === operation.current) {
@@ -669,12 +678,13 @@ export function GrowthOptimizationPanel({
             ) : (
               cycles.map((cycle) => (
                 <p key={cycle.id}>
-                  周期 #{cycle.id} · {cycle.status} · Plan {cycle.optimization_run_id ?? "无"} · Execution {cycle.execution_id ?? "无"} · Provider 0 · 外部修改 否
+                  周期 #{cycle.id} · {cycle.status} · Plan {cycle.optimization_run_id ?? "无"} · Execution {cycle.execution_id ?? "无"} · {cycle.resolution_status === "RESOLVED" ? `已由Plan #${cycle.resolved_by_optimization_run_id}解决` : "未解决"} · Provider 0 · 外部修改 否
                 </p>
               ))
             )}
           </div>
-          {latestCycle?.status === "REPLAN_REQUIRED" && (
+          {latestCycle?.status === "REPLAN_REQUIRED" &&
+            latestCycle.resolution_status === "UNRESOLVED" && (
             <div className="growth-sandbox__confirm">
               <p>
                 当前ROAS Context已变化，旧Active Plan不能继续自动执行。请重新运行Qwen Recommendation Preflight并单独确认费用。

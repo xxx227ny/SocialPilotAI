@@ -23,6 +23,7 @@ export function analysisMatchesContext(
 export function optimizationIdempotencyKey(
   analysis: GrowthAnalysis,
   policy: GrowthOptimizationPolicy,
+  sourceAutomationCycleId: number | null = null,
 ): string {
   const values = [
     policy.total_budget,
@@ -31,7 +32,9 @@ export function optimizationIdempotencyKey(
     policy.performance_tilt_share,
     policy.maximum_bid_adjustment_pct,
   ].map((value) => Number(value).toString());
-  return `growth:${analysis.recommendation_digest.slice(0, 32)}:${values.join(":")}`;
+  const cycle =
+    sourceAutomationCycleId === null ? "direct" : `cycle-${sourceAutomationCycleId}`;
+  return `growth:${analysis.recommendation_digest.slice(0, 32)}:${values.join(":")}:${cycle}`;
 }
 
 export function mergeOptimizationRun(
@@ -134,6 +137,8 @@ export function canRequestQwenReplan(
   return Boolean(
     !busy &&
       cycle?.status === "REPLAN_REQUIRED" &&
+      cycle.resolution_status === "UNRESOLVED" &&
+      cycle.resolved_by_optimization_run_id === null &&
       cycle.product_id === context.product_id &&
       cycle.context_digest === context.context_digest,
   );

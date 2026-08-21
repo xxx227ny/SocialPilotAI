@@ -169,7 +169,9 @@ AI视频、自动发布或Pinterest恢复。Stage 3F后续生产旁白统一使�
 再次监控只记录`NO_CHANGE`，数据变化则记录`REPLAN_REQUIRED`，不会隐式调用Qwen。
 网页可将最新且Digest匹配的`REPLAN_REQUIRED`周期交接到既有Qwen Recommendation
 流程：交接仅运行Provider-free Preflight并定位到费用确认区；用户仍必须重新勾选费用
-授权并显式点击，单次授权不会跨周期继承，失败或结果不确定时不会自动重试。
+授权并显式点击，单次授权不会跨周期继承，失败或结果不确定时不会自动重试。Qwen
+Recommendation生成后，只有用户继续生成并激活新的内部优化方案，系统才会把该方案ID
+和解决时间原子写回精确的`REPLAN_REQUIRED`周期；周期历史状态保持不变，以保留完整审计链。
 系统不运行常驻死循环，也不连接真实广告账户。真正的跨渠道实时自动执行仍需
 分别完成平台OAuth、生产Adapter、最小权限、审批策略、速率限制和真实账户Smoke后才能
 启用；不得把当前沙箱能力描述为已经修改TikTok、Meta或Pinterest预算。

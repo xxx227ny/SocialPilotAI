@@ -217,6 +217,14 @@ class GrowthAutomationCycle(Base):
             "external_mutation_performed = 0",
             name="ck_growth_cycle_no_external_mutation",
         ),
+        CheckConstraint(
+            "(resolved_by_optimization_run_id IS NULL AND resolved_at IS NULL) OR "
+            "(resolved_by_optimization_run_id IS NOT NULL AND resolved_at IS NOT NULL)",
+            name="ck_growth_cycle_resolution_pair",
+        ),
+        UniqueConstraint(
+            "resolved_by_optimization_run_id", name="uq_growth_cycle_resolved_run"
+        ),
         Index("ix_growth_automation_cycles_observed_at", "observed_at"),
     )
 
@@ -245,3 +253,11 @@ class GrowthAutomationCycle(Base):
     external_mutation_performed: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("0")
     )
+    resolved_by_optimization_run_id: Mapped[int | None] = mapped_column(
+        ForeignKey(
+            "growth_optimization_runs.id",
+            name="fk_growth_cycle_resolved_run",
+            ondelete="RESTRICT",
+        )
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -481,10 +481,17 @@ export function GrowthCopilotPanel({
     }
   }
 
+  function handleManualPreflight() {
+    setReplanCycleId(null);
+    void handlePreflight();
+  }
+
   function handleQwenReplanRequest(cycle: GrowthAutomationCycle) {
     if (
       !context ||
       cycle.status !== "REPLAN_REQUIRED" ||
+      cycle.resolution_status !== "UNRESOLVED" ||
+      cycle.resolved_by_optimization_run_id !== null ||
       cycle.product_id !== productId ||
       cycle.context_digest !== context.context_digest
     ) {
@@ -1090,7 +1097,7 @@ export function GrowthCopilotPanel({
               preflightState === "checking" ||
               panelSubmitting
             }
-            onClick={() => void handlePreflight()}
+            onClick={handleManualPreflight}
           >
             {preflightState === "checking"
               ? "检查中…"
@@ -1190,6 +1197,8 @@ export function GrowthCopilotPanel({
             analysis={recommendationResult}
             refreshContext={refreshOptimizationContext}
             requestQwenReplan={handleQwenReplanRequest}
+            replanCycleId={replanCycleId}
+            replanResolved={() => setReplanCycleId(null)}
           />
         )}
 

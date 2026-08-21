@@ -953,7 +953,7 @@ def test_stage3f_head_contains_product_media_bridge_columns(tmp_path: Path) -> N
         ).fetchone()[0]
     finally:
         connection.close()
-    assert HEAD_REVISION == "0018_growth_automation_cycles"
+    assert HEAD_REVISION == "0019_growth_replan_resolutions"
     assert {
         "content_type",
         "size_bytes",
@@ -987,7 +987,7 @@ def test_0015_database_is_safely_upgraded_to_growth_automation_head(
 
     result = upgrade_sqlite_database(database, backups)
     assert result.previous_revision == "0015_growth_optimization_runs"
-    assert result.current_revision == "0018_growth_automation_cycles"
+    assert result.current_revision == "0019_growth_replan_resolutions"
     assert result.backup_manifest_path is not None
     assert result.backup_manifest_path.is_file()
     assert migration_service.get_database_migration_status(database).state == "head"
@@ -1009,7 +1009,7 @@ def test_0016_database_is_safely_upgraded_to_growth_monitoring_head(
 
     result = upgrade_sqlite_database(database, backups)
     assert result.previous_revision == "0016_growth_sandbox_executions"
-    assert result.current_revision == "0018_growth_automation_cycles"
+    assert result.current_revision == "0019_growth_replan_resolutions"
     assert result.backup_manifest_path is not None
     assert result.backup_manifest_path.is_file()
     with sqlite3.connect(database) as connection:
@@ -1029,7 +1029,7 @@ def test_0016_database_is_safely_upgraded_to_growth_monitoring_head(
     assert "trigger_kind" in execution_columns
 
 
-def test_0017_database_is_safely_upgraded_to_0018(tmp_path: Path) -> None:
+def test_0017_database_is_safely_upgraded_to_growth_replan_head(tmp_path: Path) -> None:
     database = tmp_path / "growth-0017.db"
     backups = tmp_path / "backups"
     migration_service._run_alembic(  # noqa: SLF001
@@ -1038,7 +1038,7 @@ def test_0017_database_is_safely_upgraded_to_0018(tmp_path: Path) -> None:
 
     result = upgrade_sqlite_database(database, backups)
     assert result.previous_revision == "0017_growth_automation_controls"
-    assert result.current_revision == "0018_growth_automation_cycles"
+    assert result.current_revision == "0019_growth_replan_resolutions"
     with sqlite3.connect(database) as connection:
         tables = {
             row[0]
@@ -1058,6 +1058,32 @@ def test_0017_database_is_safely_upgraded_to_0018(tmp_path: Path) -> None:
         "evaluation_interval_seconds",
         "next_evaluation_at",
     } <= control_columns
+
+
+def test_0018_database_is_safely_upgraded_to_replan_resolution_head(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "growth-0018.db"
+    backups = tmp_path / "backups"
+    migration_service._run_alembic(  # noqa: SLF001
+        database, "upgrade", "0018_growth_automation_cycles"
+    )
+
+    result = upgrade_sqlite_database(database, backups)
+    assert result.previous_revision == "0018_growth_automation_cycles"
+    assert result.current_revision == "0019_growth_replan_resolutions"
+    with sqlite3.connect(database) as connection:
+        cycle_columns = {
+            row[1]
+            for row in connection.execute("PRAGMA table_info(growth_automation_cycles)")
+        }
+        cycle_schema = connection.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' "
+            "AND name='growth_automation_cycles'"
+        ).fetchone()[0]
+    assert {"resolved_by_optimization_run_id", "resolved_at"} <= cycle_columns
+    assert "uq_growth_cycle_resolved_run" in cycle_schema
+    assert "ck_growth_cycle_resolution_pair" in cycle_schema
 
 
 def test_stage3f_upgrade_preserves_old_voiceover_with_unknown_natural_duration(

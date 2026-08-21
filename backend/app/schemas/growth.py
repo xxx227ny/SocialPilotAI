@@ -225,6 +225,15 @@ class GrowthOptimizationPlanRead(StrictGrowthModel):
 class GrowthOptimizationRunCreateRequest(GrowthOptimizationPlanRequest):
     idempotency_key: str = Field(min_length=8, max_length=160)
     activate_internal: bool = True
+    source_automation_cycle_id: int | None = Field(default=None, gt=0)
+
+    @model_validator(mode="after")
+    def require_activation_for_replan_resolution(
+        self,
+    ) -> "GrowthOptimizationRunCreateRequest":
+        if self.source_automation_cycle_id is not None and not self.activate_internal:
+            raise ValueError("a replan resolution must activate the new internal plan")
+        return self
 
 
 class GrowthOptimizationRunRead(StrictGrowthModel):
@@ -372,6 +381,9 @@ class GrowthAutomationCycleRead(StrictGrowthModel):
     next_evaluation_at: datetime
     execution_mode: Literal["SANDBOX"]
     external_mutation_performed: Literal[False]
+    resolved_by_optimization_run_id: int | None
+    resolved_at: datetime | None
+    resolution_status: Literal["UNRESOLVED", "RESOLVED"]
     provider_calls: Literal[0] = 0
 
 
