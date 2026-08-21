@@ -52,18 +52,23 @@ try {
   assert.match(panel, /按精确Plan ID激活/);
   assert.match(parent, /preserveRecommendationIfUnchanged/);
   assert.match(parent, /contextDigestRef\.current !== result\.context_digest/);
-  for (const endpoint of ["growth-optimization/plans", "activate", "execution-preflight", "sandbox-executions", "rollback", "automation", "kill-switch", "evaluate"]) assert.match(api, new RegExp(endpoint));
+  for (const endpoint of ["growth-optimization/plans", "activate", "execution-preflight", "sandbox-executions", "rollback", "automation", "kill-switch", "evaluate", "cycles", "run-once"]) assert.match(api, new RegExp(endpoint));
   assert.match(panel, /我确认仅执行SocialPilot AI沙箱方案/);
   assert.match(panel, /external_mutation_performed=false/);
   assert.match(panel, /按精确Execution ID回滚/);
   assert.match(panel, /listGrowthOptimizationExecutions/);
   assert.match(panel, /AUTO_SANDBOX/);
   assert.match(panel, /Kill Switch/);
-  assert.match(panel, /三项硬上限全部通过/);
-  assert.match(panel, /不含后台定时器/);
+  assert.match(panel, /启用持久化ROAS监控计划/);
+  assert.match(panel, /监控间隔（秒）/);
+  assert.match(panel, /立即运行一次监控周期/);
+  assert.match(panel, /REPLAN_REQUIRED/);
+  assert.match(panel, /不会偷偷调用Qwen/);
+  assert.match(panel, /周期Runner需由外部调度器按次启动/);
+  assert.match(panel, /Provider 0 · 外部修改 否/);
   assert.match(panel, /我确认自动模式仅运行SocialPilot AI沙箱/);
   assert.doesNotMatch(panel, /access_token|client_secret|Bearer/i);
-  console.log("growth optimization: 24 behavior scenarios, 23 static/safety assertions passed");
+  console.log("growth optimization: 24 behavior scenarios, 29 static/safety assertions passed");
 } finally {
   await server.close();
 }

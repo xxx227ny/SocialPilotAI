@@ -1,16 +1,19 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+import hashlib
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppError
-from app.models import GrowthAutomationControl
+from app.models import GrowthAutomationControl, GrowthAutomationCycle
 from app.repositories.growth_optimization import GrowthOptimizationRepository
 from app.schemas.growth import (
     GrowthAutomationControlRead,
     GrowthAutomationControlUpdate,
+    GrowthAutomationCycleRead,
+    GrowthAutomationCycleResult,
     GrowthAutomationEvaluationRequest,
     GrowthOptimizationExecutionRequest,
     GrowthOptimizationExecutionResult,
@@ -55,6 +58,9 @@ class GrowthAutomationService:
         control.maximum_bid_adjustment_pct = Decimal(
             str(data.maximum_bid_adjustment_pct)
         )
+        control.monitoring_enabled = data.monitoring_enabled
+        control.evaluation_interval_seconds = data.evaluation_interval_seconds
+        control.next_evaluation_at = now if data.monitoring_enabled else None
         control.updated_at = now
         self.session.commit()
         self.session.refresh(control)
@@ -116,6 +122,94 @@ class GrowthAutomationService:
             self.session.commit()
         return result
 
+    def list_cycles(self, product_id: int) -> list[GrowthAutomationCycleRead]:
+        FeedbackContextService(self.session).get(product_id)
+        return [
+            self._cycle_read(item)
+            for item in self.repository.list_automation_cycles(product_id)
+        ]
+
+    def run_cycle(
+        self,
+        product_id: int,
+        *,
+        force: bool = False,
+        observed_at: datetime | None = None,
+    ) -> GrowthAutomationCycleResult:
+        now = observed_at or datetime.now(UTC)
+        context = FeedbackContextService(self.session).get(product_id)
+        control = self.repository.get_automation_control(product_id)
+        if control is None or not control.monitoring_enabled:
+            raise AppError("Growth monitoring is not enabled", 409)
+        next_due = self._as_utc(control.next_evaluation_at)
+        if not force and next_due is not None and next_due > now:
+            return GrowthAutomationCycleResult(cycle=None, due=False)
+
+        run = self.repository.get_active(product_id)
+        next_evaluation = now + timedelta(seconds=control.evaluation_interval_seconds)
+        cycle_key = hashlib.sha256(
+            f"{product_id}:{now.isoformat()}:{context.context_digest}".encode()
+        ).hexdigest()
+        existing = self.repository.get_cycle_by_key(product_id, cycle_key)
+        if existing is not None:
+            return GrowthAutomationCycleResult(
+                cycle=self._cycle_read(existing), due=True, reused=True
+            )
+
+        status = "NO_ACTIVE_PLAN"
+        execution_id = None
+        if control.kill_switch_engaged:
+            status = "KILL_SWITCHED"
+        elif control.mode != "AUTO_SANDBOX":
+            status = "MANUAL_REVIEW_REQUIRED"
+        elif run is None:
+            status = "NO_ACTIVE_PLAN"
+        elif run.source_context_digest != context.context_digest:
+            status = "REPLAN_REQUIRED"
+        else:
+            previous = next(
+                (
+                    item
+                    for item in self.repository.list_automation_cycles(product_id)
+                    if item.optimization_run_id == run.id
+                    and item.context_digest == context.context_digest
+                    and item.status in {"EXECUTED", "NO_CHANGE"}
+                ),
+                None,
+            )
+            if previous is not None:
+                status = "NO_CHANGE"
+            else:
+                result = self.evaluate(
+                    product_id,
+                    GrowthAutomationEvaluationRequest(
+                        idempotency_key=f"growth-cycle-{run.id}-{context.context_digest[:24]}",
+                        expected_context_digest=context.context_digest,
+                    ),
+                )
+                status = "EXECUTED"
+                execution_id = result.execution.id
+
+        cycle = GrowthAutomationCycle(
+            product_id=product_id,
+            optimization_run_id=None if run is None else run.id,
+            execution_id=execution_id,
+            cycle_key=cycle_key,
+            context_digest=context.context_digest,
+            status=status,
+            observed_at=now,
+            next_evaluation_at=next_evaluation,
+            execution_mode="SANDBOX",
+            external_mutation_performed=False,
+        )
+        control.next_evaluation_at = next_evaluation
+        control.last_evaluated_at = now
+        control.updated_at = now
+        self.session.add(cycle)
+        self.session.commit()
+        self.session.refresh(cycle)
+        return GrowthAutomationCycleResult(cycle=self._cycle_read(cycle), due=True)
+
     @staticmethod
     def _validate_safety_limits(
         control: GrowthAutomationControl,
@@ -154,6 +248,9 @@ class GrowthAutomationService:
                 maximum_total_budget=float(DEFAULT_MAXIMUM_TOTAL_BUDGET),
                 maximum_budget_change_pct=float(DEFAULT_MAXIMUM_BUDGET_CHANGE_PCT),
                 maximum_bid_adjustment_pct=float(DEFAULT_MAXIMUM_BID_ADJUSTMENT_PCT),
+                monitoring_enabled=False,
+                evaluation_interval_seconds=900,
+                next_evaluation_at=None,
                 last_execution_id=None,
                 last_evaluated_at=None,
                 updated_at=None,
@@ -166,8 +263,35 @@ class GrowthAutomationService:
             maximum_total_budget=float(control.maximum_total_budget),
             maximum_budget_change_pct=float(control.maximum_budget_change_pct),
             maximum_bid_adjustment_pct=float(control.maximum_bid_adjustment_pct),
+            monitoring_enabled=control.monitoring_enabled,
+            evaluation_interval_seconds=control.evaluation_interval_seconds,
+            next_evaluation_at=control.next_evaluation_at,
             last_execution_id=control.last_execution_id,
             last_evaluated_at=control.last_evaluated_at,
             updated_at=control.updated_at,
             persisted=True,
+        )
+
+    @staticmethod
+    def _as_utc(value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        return (
+            value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+        )
+
+    @staticmethod
+    def _cycle_read(cycle: GrowthAutomationCycle) -> GrowthAutomationCycleRead:
+        return GrowthAutomationCycleRead(
+            id=cycle.id,
+            product_id=cycle.product_id,
+            optimization_run_id=cycle.optimization_run_id,
+            execution_id=cycle.execution_id,
+            cycle_key=cycle.cycle_key,
+            context_digest=cycle.context_digest,
+            status=cycle.status,  # type: ignore[arg-type]
+            observed_at=cycle.observed_at,
+            next_evaluation_at=cycle.next_evaluation_at,
+            execution_mode="SANDBOX",
+            external_mutation_performed=False,
         )

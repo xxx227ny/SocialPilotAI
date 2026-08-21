@@ -10,6 +10,7 @@ from app.models import (
     AdCampaign,
     CopyMatrix,
     GrowthAutomationControl,
+    GrowthAutomationCycle,
     GrowthOptimizationExecution,
     GrowthOptimizationRun,
     MarketingStrategy,
@@ -492,6 +493,8 @@ def test_growth_automation_defaults_safe_and_requires_explicit_arming(
     assert default.json()["mode"] == "MANUAL"
     assert default.json()["kill_switch_engaged"] is True
     assert default.json()["persisted"] is False
+    assert default.json()["monitoring_enabled"] is False
+    assert default.json()["evaluation_interval_seconds"] == 900
     assert db_session.get(GrowthAutomationControl, analysis.product_id) is None
 
     unconfirmed = client.put(
@@ -507,6 +510,114 @@ def test_growth_automation_defaults_safe_and_requires_explicit_arming(
     )
     assert unconfirmed.status_code == 422
     assert db_session.get(GrowthAutomationControl, analysis.product_id) is None
+
+
+def test_growth_monitor_cycles_execute_once_then_record_no_change(
+    client: TestClient,
+    db_session: Session,
+    product_payload: dict[str, object],
+) -> None:
+    analysis = _ready_analysis(client, db_session, product_payload)
+    product_id = analysis.product_id
+    plan = client.post(
+        f"/api/v1/products/{product_id}/growth-optimization/plans",
+        json={
+            **_request(analysis),
+            "idempotency_key": "growth-monitor-plan",
+            "activate_internal": True,
+        },
+    ).json()["run"]
+    path = f"/api/v1/products/{product_id}/growth-optimization/automation"
+    armed = client.put(
+        path,
+        json={
+            "mode": "AUTO_SANDBOX",
+            "kill_switch_engaged": False,
+            "maximum_total_budget": 400,
+            "maximum_budget_change_pct": 0.5,
+            "maximum_bid_adjustment_pct": 0.2,
+            "monitoring_enabled": True,
+            "evaluation_interval_seconds": 600,
+            "confirm_auto_sandbox": True,
+        },
+    )
+    assert armed.status_code == 200
+    assert armed.json()["next_evaluation_at"] is not None
+
+    first = client.post(f"{path}/cycles/run-once", json={"force": True})
+    second = client.post(f"{path}/cycles/run-once", json={"force": True})
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["cycle"]["status"] == "EXECUTED"
+    assert second.json()["cycle"]["status"] == "NO_CHANGE"
+    assert first.json()["cycle"]["optimization_run_id"] == plan["id"]
+    assert first.json()["cycle"]["provider_calls"] == 0
+    assert first.json()["external_mutation_performed"] is False
+    assert (
+        db_session.scalar(select(func.count()).select_from(GrowthOptimizationExecution))
+        == 1
+    )
+    assert (
+        db_session.scalar(select(func.count()).select_from(GrowthAutomationCycle)) == 2
+    )
+
+    history = client.get(f"{path}/cycles")
+    assert history.status_code == 200
+    assert [item["status"] for item in history.json()] == ["NO_CHANGE", "EXECUTED"]
+
+
+def test_growth_monitor_marks_stale_context_for_replan_without_execution(
+    client: TestClient,
+    db_session: Session,
+    product_payload: dict[str, object],
+) -> None:
+    analysis = _ready_analysis(client, db_session, product_payload)
+    product_id = analysis.product_id
+    client.post(
+        f"/api/v1/products/{product_id}/growth-optimization/plans",
+        json={
+            **_request(analysis),
+            "idempotency_key": "growth-monitor-stale-plan",
+            "activate_internal": True,
+        },
+    )
+    db_session.add(
+        AdCampaign(
+            product_id=product_id,
+            platform="TikTok",
+            campaign_name="Fresh ROAS observation",
+            date=date(2026, 8, 22),
+            impressions=100,
+            clicks=10,
+            conversions=2,
+            spend=Decimal("10"),
+            revenue=Decimal("35"),
+        )
+    )
+    db_session.commit()
+    path = f"/api/v1/products/{product_id}/growth-optimization/automation"
+    client.put(
+        path,
+        json={
+            "mode": "AUTO_SANDBOX",
+            "kill_switch_engaged": False,
+            "maximum_total_budget": 400,
+            "maximum_budget_change_pct": 0.5,
+            "maximum_bid_adjustment_pct": 0.2,
+            "monitoring_enabled": True,
+            "evaluation_interval_seconds": 600,
+            "confirm_auto_sandbox": True,
+        },
+    )
+
+    response = client.post(f"{path}/cycles/run-once", json={"force": True})
+    assert response.status_code == 200
+    assert response.json()["cycle"]["status"] == "REPLAN_REQUIRED"
+    assert response.json()["provider_calls"] == 0
+    assert (
+        db_session.scalar(select(func.count()).select_from(GrowthOptimizationExecution))
+        == 0
+    )
 
 
 def test_growth_auto_sandbox_is_bounded_idempotent_and_kill_switchable(

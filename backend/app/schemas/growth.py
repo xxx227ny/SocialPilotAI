@@ -310,6 +310,8 @@ class GrowthAutomationControlUpdate(StrictGrowthModel):
     maximum_total_budget: float = Field(gt=0, le=1_000_000_000)
     maximum_budget_change_pct: float = Field(ge=0, le=0.5)
     maximum_bid_adjustment_pct: float = Field(ge=0, le=0.5)
+    monitoring_enabled: bool = False
+    evaluation_interval_seconds: int = Field(default=900, ge=60, le=86400)
     confirm_auto_sandbox: bool = False
 
     @model_validator(mode="after")
@@ -330,6 +332,9 @@ class GrowthAutomationControlRead(StrictGrowthModel):
     maximum_total_budget: float
     maximum_budget_change_pct: float
     maximum_bid_adjustment_pct: float
+    monitoring_enabled: bool
+    evaluation_interval_seconds: int
+    next_evaluation_at: datetime | None
     last_execution_id: int | None
     last_evaluated_at: datetime | None
     updated_at: datetime | None
@@ -342,6 +347,40 @@ class GrowthAutomationControlRead(StrictGrowthModel):
 class GrowthAutomationEvaluationRequest(StrictGrowthModel):
     idempotency_key: str = Field(min_length=8, max_length=160)
     expected_context_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class GrowthAutomationCycleRequest(StrictGrowthModel):
+    force: bool = False
+
+
+class GrowthAutomationCycleRead(StrictGrowthModel):
+    id: int
+    product_id: int
+    optimization_run_id: int | None
+    execution_id: int | None
+    cycle_key: str
+    context_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    status: Literal[
+        "EXECUTED",
+        "NO_CHANGE",
+        "REPLAN_REQUIRED",
+        "KILL_SWITCHED",
+        "MANUAL_REVIEW_REQUIRED",
+        "NO_ACTIVE_PLAN",
+    ]
+    observed_at: datetime
+    next_evaluation_at: datetime
+    execution_mode: Literal["SANDBOX"]
+    external_mutation_performed: Literal[False]
+    provider_calls: Literal[0] = 0
+
+
+class GrowthAutomationCycleResult(StrictGrowthModel):
+    cycle: GrowthAutomationCycleRead | None
+    due: bool
+    reused: bool = False
+    provider_calls: Literal[0] = 0
+    external_mutation_performed: Literal[False] = False
 
 
 def compute_recommendation_digest(

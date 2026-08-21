@@ -4,6 +4,8 @@ import type {
   FeedbackContext,
   GrowthAutomationControl,
   GrowthAutomationControlUpdate,
+  GrowthAutomationCycle,
+  GrowthAutomationCycleResult,
   GrowthAnalysis,
   GrowthOptimizationPolicy,
   GrowthOptimizationExecution,
@@ -218,6 +220,30 @@ export async function evaluateGrowthAutomation(
       idempotency_key: idempotencyKey,
       expected_context_digest: expectedContextDigest,
     },
+    { signal },
+  );
+  return response.data;
+}
+
+export async function listGrowthAutomationCycles(
+  productId: number,
+  signal?: AbortSignal,
+): Promise<GrowthAutomationCycle[]> {
+  const response = await apiClient.get<GrowthAutomationCycle[]>(
+    `/products/${productId}/growth-optimization/automation/cycles`,
+    { signal },
+  );
+  return response.data;
+}
+
+export async function runGrowthAutomationCycle(
+  productId: number,
+  force = true,
+  signal?: AbortSignal,
+): Promise<GrowthAutomationCycleResult> {
+  const response = await apiClient.post<GrowthAutomationCycleResult>(
+    `/products/${productId}/growth-optimization/automation/cycles/run-once`,
+    { force },
     { signal },
   );
   return response.data;

@@ -8,6 +8,7 @@ from app.models.demo import DemoScenario
 from app.models.execution import ExecutionAttempt, ExecutionJob
 from app.models.growth_optimization import (
     GrowthAutomationControl,
+    GrowthAutomationCycle,
     GrowthOptimizationExecution,
     GrowthOptimizationRun,
 )
@@ -44,6 +45,7 @@ __all__ = [
     "ExecutionAttempt",
     "ExecutionJob",
     "GrowthAutomationControl",
+    "GrowthAutomationCycle",
     "GrowthOptimizationRun",
     "GrowthOptimizationExecution",
     "MarketingBrief",

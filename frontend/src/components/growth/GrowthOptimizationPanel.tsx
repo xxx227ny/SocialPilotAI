@@ -9,9 +9,11 @@ import {
   executeGrowthOptimizationSandbox,
   getGrowthAutomationControl,
   listGrowthOptimizationExecutions,
+  listGrowthAutomationCycles,
   listGrowthOptimizationRuns,
   preflightGrowthOptimizationExecution,
   rollbackGrowthOptimizationExecution,
+  runGrowthAutomationCycle,
   updateGrowthAutomationControl,
 } from "../../api/growth";
 import type {
@@ -19,6 +21,7 @@ import type {
   GrowthAnalysis,
   GrowthAutomationControl,
   GrowthAutomationControlUpdate,
+  GrowthAutomationCycle,
   GrowthOptimizationExecution,
   GrowthOptimizationExecutionPreflight,
   GrowthOptimizationPolicy,
@@ -58,6 +61,8 @@ const DEFAULT_AUTOMATION: GrowthAutomationControlUpdate = {
   maximum_total_budget: 1000,
   maximum_budget_change_pct: 0.25,
   maximum_bid_adjustment_pct: 0.2,
+  monitoring_enabled: false,
+  evaluation_interval_seconds: 900,
   confirm_auto_sandbox: false,
 };
 
@@ -71,6 +76,7 @@ export function GrowthOptimizationPanel({
   const [runs, setRuns] = useState<GrowthOptimizationRun[]>([]);
   const [executions, setExecutions] = useState<GrowthOptimizationExecution[]>([]);
   const [automation, setAutomation] = useState<GrowthAutomationControl | null>(null);
+  const [cycles, setCycles] = useState<GrowthAutomationCycle[]>([]);
   const [automationDraft, setAutomationDraft] =
     useState<GrowthAutomationControlUpdate>(DEFAULT_AUTOMATION);
   const [automationConfirmed, setAutomationConfirmed] = useState(false);
@@ -89,6 +95,7 @@ export function GrowthOptimizationPanel({
     setRuns([]);
     setExecutions([]);
     setAutomation(null);
+    setCycles([]);
     setAutomationDraft(DEFAULT_AUTOMATION);
     setAutomationConfirmed(false);
     setExecutionPreflight(null);
@@ -99,12 +106,14 @@ export function GrowthOptimizationPanel({
       listGrowthOptimizationRuns(productId, controller.signal),
       listGrowthOptimizationExecutions(productId, controller.signal),
       getGrowthAutomationControl(productId, controller.signal),
+      listGrowthAutomationCycles(productId, controller.signal),
     ])
-      .then(([items, executionItems, automationControl]) => {
+      .then(([items, executionItems, automationControl, cycleItems]) => {
         if (!controller.signal.aborted && request === operation.current) {
           setRuns(items);
           setExecutions(executionItems);
           setAutomation(automationControl);
+          setCycles(cycleItems);
           setAutomationDraft({
             mode: automationControl.mode,
             kill_switch_engaged: automationControl.kill_switch_engaged,
@@ -113,6 +122,9 @@ export function GrowthOptimizationPanel({
               automationControl.maximum_budget_change_pct,
             maximum_bid_adjustment_pct:
               automationControl.maximum_bid_adjustment_pct,
+            monitoring_enabled: automationControl.monitoring_enabled,
+            evaluation_interval_seconds:
+              automationControl.evaluation_interval_seconds,
             confirm_auto_sandbox: false,
           });
         }
@@ -399,6 +411,41 @@ export function GrowthOptimizationPanel({
     }
   }
 
+  async function runMonitoringCycle() {
+    if (busy || !automation?.monitoring_enabled) return;
+    const request = ++operation.current;
+    setBusy(true);
+    setMessage("");
+    try {
+      const result = await runGrowthAutomationCycle(productId, true);
+      if (request !== operation.current) return;
+      if (result.cycle) {
+        setCycles((items) => [
+          result.cycle as GrowthAutomationCycle,
+          ...items.filter((item) => item.id !== result.cycle?.id),
+        ]);
+      }
+      const [saved, executionItems] = await Promise.all([
+        getGrowthAutomationControl(productId),
+        listGrowthOptimizationExecutions(productId),
+      ]);
+      if (request !== operation.current) return;
+      setAutomation(saved);
+      setExecutions(executionItems);
+      setMessage(
+        result.cycle
+          ? `监控周期 #${result.cycle.id}：${result.cycle.status}；Provider调用0，真实广告修改0。`
+          : "当前周期尚未到期，没有写入审计记录。",
+      );
+    } catch (error) {
+      if (request === operation.current) {
+        setMessage(getApiErrorMessage(error, "监控周期被安全门禁阻断。"));
+      }
+    } finally {
+      if (request === operation.current) setBusy(false);
+    }
+  }
+
   const active = activeOptimizationRun(runs);
   return (
     <section className="growth-recommendation" aria-label="ROAS预算竞价优化">
@@ -506,6 +553,29 @@ export function GrowthOptimizationPanel({
             />
             Kill Switch保持开启
           </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={automationDraft.monitoring_enabled}
+              onChange={(event) =>
+                setAutomationDraft((current) => ({
+                  ...current,
+                  monitoring_enabled: event.target.checked,
+                }))
+              }
+            />
+            启用持久化ROAS监控计划
+          </label>
+          <NumberInput
+            label="监控间隔（秒）"
+            value={automationDraft.evaluation_interval_seconds}
+            setValue={(value) =>
+              setAutomationDraft((current) => ({
+                ...current,
+                evaluation_interval_seconds: value,
+              }))
+            }
+          />
           <div className="growth-automation__limits">
             <NumberInput
               label="自动总预算上限"
@@ -578,10 +648,28 @@ export function GrowthOptimizationPanel({
             >
               运行一次自动策略评估
             </button>
+            <button
+              type="button"
+              disabled={busy || !automation?.monitoring_enabled}
+              onClick={() => void runMonitoringCycle()}
+            >
+              立即运行一次监控周期
+            </button>
           </div>
           <p className="growth-panel__boundary">
-            AUTO_SANDBOX只在精确Context、Active Plan与三项硬上限全部通过时执行；不含后台定时器，不连接广告平台。
+            周期Runner需由外部调度器按次启动；数据变化时只记录REPLAN_REQUIRED，不会偷偷调用Qwen。AUTO_SANDBOX仍不连接广告平台。
           </p>
+          <div aria-label="ROAS监控周期历史">
+            {cycles.length === 0 ? (
+              <p>暂无监控周期记录。</p>
+            ) : (
+              cycles.map((cycle) => (
+                <p key={cycle.id}>
+                  周期 #{cycle.id} · {cycle.status} · Plan {cycle.optimization_run_id ?? "无"} · Execution {cycle.execution_id ?? "无"} · Provider 0 · 外部修改 否
+                </p>
+              ))
+            )}
+          </div>
         </section>
         {executions.length === 0 ? (
           <p>暂无沙箱执行记录。</p>

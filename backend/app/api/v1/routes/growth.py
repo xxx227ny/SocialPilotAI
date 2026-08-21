@@ -24,6 +24,9 @@ from app.schemas.growth import (
     GrowthAnalysisResponse,
     GrowthAutomationControlRead,
     GrowthAutomationControlUpdate,
+    GrowthAutomationCycleRead,
+    GrowthAutomationCycleRequest,
+    GrowthAutomationCycleResult,
     GrowthAutomationEvaluationRequest,
     GrowthOptimizationExecutionPreflightRead,
     GrowthOptimizationExecutionRead,
@@ -260,6 +263,28 @@ def evaluate_growth_automation(
     db: DbSession,
 ) -> GrowthOptimizationExecutionResult:
     return GrowthAutomationService(db).evaluate(product_id, data)
+
+
+@router.get(
+    "/{product_id}/growth-optimization/automation/cycles",
+    response_model=list[GrowthAutomationCycleRead],
+)
+def list_growth_automation_cycles(
+    product_id: int, db: DbSession
+) -> list[GrowthAutomationCycleRead]:
+    return GrowthAutomationService(db).list_cycles(product_id)
+
+
+@router.post(
+    "/{product_id}/growth-optimization/automation/cycles/run-once",
+    response_model=GrowthAutomationCycleResult,
+)
+def run_growth_automation_cycle(
+    product_id: int,
+    data: GrowthAutomationCycleRequest,
+    db: DbSession,
+) -> GrowthAutomationCycleResult:
+    return GrowthAutomationService(db).run_cycle(product_id, force=data.force)
 
 
 @router.post(

@@ -248,6 +248,9 @@ export interface GrowthAutomationControl {
   maximum_total_budget: number;
   maximum_budget_change_pct: number;
   maximum_bid_adjustment_pct: number;
+  monitoring_enabled: boolean;
+  evaluation_interval_seconds: number;
+  next_evaluation_at: string | null;
   last_execution_id: number | null;
   last_evaluated_at: string | null;
   updated_at: string | null;
@@ -263,7 +266,38 @@ export interface GrowthAutomationControlUpdate {
   maximum_total_budget: number;
   maximum_budget_change_pct: number;
   maximum_bid_adjustment_pct: number;
+  monitoring_enabled: boolean;
+  evaluation_interval_seconds: number;
   confirm_auto_sandbox: boolean;
+}
+
+export interface GrowthAutomationCycle {
+  id: number;
+  product_id: number;
+  optimization_run_id: number | null;
+  execution_id: number | null;
+  cycle_key: string;
+  context_digest: string;
+  status:
+    | "EXECUTED"
+    | "NO_CHANGE"
+    | "REPLAN_REQUIRED"
+    | "KILL_SWITCHED"
+    | "MANUAL_REVIEW_REQUIRED"
+    | "NO_ACTIVE_PLAN";
+  observed_at: string;
+  next_evaluation_at: string;
+  execution_mode: "SANDBOX";
+  external_mutation_performed: false;
+  provider_calls: 0;
+}
+
+export interface GrowthAutomationCycleResult {
+  cycle: GrowthAutomationCycle | null;
+  due: boolean;
+  reused: boolean;
+  provider_calls: 0;
+  external_mutation_performed: false;
 }
 
 export interface FeedbackPlatformMetrics {

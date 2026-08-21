@@ -33,7 +33,8 @@ BATCH_VIDEO_REVISION = "0011_batch_video_jobs"
 VIDEO_SCRIPT_REVISION = "0012_video_script_versions"
 GROWTH_OPTIMIZATION_REVISION = "0015_growth_optimization_runs"
 GROWTH_SANDBOX_REVISION = "0016_growth_sandbox_executions"
-HEAD_REVISION = "0017_growth_automation_controls"
+GROWTH_AUTOMATION_REVISION = "0017_growth_automation_controls"
+HEAD_REVISION = "0018_growth_automation_cycles"
 UNVERSIONED = "unversioned"
 MANIFEST_VERSION = 1
 ALEMBIC_INI = Path(__file__).resolve().parents[2] / "alembic.ini"
@@ -257,6 +258,7 @@ def expected_schema_fingerprint(revision: str) -> str:
         VIDEO_SCRIPT_REVISION,
         GROWTH_OPTIMIZATION_REVISION,
         GROWTH_SANDBOX_REVISION,
+        GROWTH_AUTOMATION_REVISION,
         HEAD_REVISION,
     }:
         raise ValueError(f"Unknown expected revision: {revision}")
@@ -543,6 +545,8 @@ def _classify_unversioned_schema(path: Path) -> str:
         return "growth_optimization_runtime"
     if fingerprint == expected_schema_fingerprint(GROWTH_SANDBOX_REVISION):
         return "growth_sandbox_runtime"
+    if fingerprint == expected_schema_fingerprint(GROWTH_AUTOMATION_REVISION):
+        return "growth_automation_runtime"
     if fingerprint == expected_schema_fingerprint(HEAD_REVISION):
         return "unversioned_head"
     raise IncompatibleSchemaError(
@@ -631,6 +635,7 @@ def get_database_migration_status(database_path: Path) -> DatabaseMigrationStatu
             VIDEO_SCRIPT_REVISION,
             GROWTH_OPTIMIZATION_REVISION,
             GROWTH_SANDBOX_REVISION,
+            GROWTH_AUTOMATION_REVISION,
             HEAD_REVISION,
         }:
             raise IncompatibleSchemaError("Unsupported Alembic revision")
@@ -661,6 +666,7 @@ def get_database_migration_status(database_path: Path) -> DatabaseMigrationStatu
             VIDEO_SCRIPT_REVISION: "video_script_runtime",
             GROWTH_OPTIMIZATION_REVISION: "growth_optimization_runtime",
             GROWTH_SANDBOX_REVISION: "growth_sandbox_runtime",
+            GROWTH_AUTOMATION_REVISION: "growth_automation_runtime",
         }
         return DatabaseMigrationStatus(
             state=state_by_revision[revision],
@@ -719,6 +725,7 @@ def _upgrade_sqlite_database_unlocked(
                     "video_script_runtime": VIDEO_SCRIPT_REVISION,
                     "growth_optimization_runtime": GROWTH_OPTIMIZATION_REVISION,
                     "growth_sandbox_runtime": GROWTH_SANDBOX_REVISION,
+                    "growth_automation_runtime": GROWTH_AUTOMATION_REVISION,
                     "unversioned_head": HEAD_REVISION,
                 }[schema_state]
                 _run_alembic(database, "stamp", stamp_revision)
@@ -737,6 +744,7 @@ def _upgrade_sqlite_database_unlocked(
                     VIDEO_SCRIPT_REVISION,
                     GROWTH_OPTIMIZATION_REVISION,
                     GROWTH_SANDBOX_REVISION,
+                    GROWTH_AUTOMATION_REVISION,
                     HEAD_REVISION,
                 }:
                     raise IncompatibleSchemaError(

@@ -164,6 +164,11 @@ class GrowthAutomationControl(Base):
             "maximum_bid_adjustment_pct >= 0 AND maximum_bid_adjustment_pct <= 0.5",
             name="ck_growth_automation_bid_adjustment",
         ),
+        CheckConstraint(
+            "evaluation_interval_seconds >= 60 "
+            "AND evaluation_interval_seconds <= 86400",
+            name="ck_growth_automation_interval",
+        ),
     )
 
     product_id: Mapped[int] = mapped_column(
@@ -188,4 +193,55 @@ class GrowthAutomationControl(Base):
     last_evaluated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, nullable=False
+    )
+    monitoring_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0")
+    )
+    evaluation_interval_seconds: Mapped[int] = mapped_column(
+        nullable=False, default=900, server_default="900"
+    )
+    next_evaluation_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class GrowthAutomationCycle(Base):
+    __tablename__ = "growth_automation_cycles"
+    __table_args__ = (
+        UniqueConstraint("product_id", "cycle_key", name="uq_growth_cycle_product_key"),
+        CheckConstraint(
+            "status IN ('EXECUTED','NO_CHANGE','REPLAN_REQUIRED','KILL_SWITCHED',"
+            "'MANUAL_REVIEW_REQUIRED','NO_ACTIVE_PLAN')",
+            name="ck_growth_cycle_status",
+        ),
+        CheckConstraint("execution_mode = 'SANDBOX'", name="ck_growth_cycle_mode"),
+        CheckConstraint(
+            "external_mutation_performed = 0",
+            name="ck_growth_cycle_no_external_mutation",
+        ),
+        Index("ix_growth_automation_cycles_observed_at", "observed_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    product_id: Mapped[int] = mapped_column(
+        ForeignKey("products.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    optimization_run_id: Mapped[int | None] = mapped_column(
+        ForeignKey("growth_optimization_runs.id", ondelete="SET NULL")
+    )
+    execution_id: Mapped[int | None] = mapped_column(
+        ForeignKey("growth_optimization_executions.id", ondelete="SET NULL")
+    )
+    cycle_key: Mapped[str] = mapped_column(String(160), nullable=False)
+    context_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(28), nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    next_evaluation_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    execution_mode: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="SANDBOX", server_default="SANDBOX"
+    )
+    external_mutation_performed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("0")
     )

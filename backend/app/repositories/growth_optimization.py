@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     GrowthAutomationControl,
+    GrowthAutomationCycle,
     GrowthOptimizationExecution,
     GrowthOptimizationRun,
 )
@@ -51,6 +52,25 @@ class GrowthOptimizationRepository:
 
     def get_automation_control(self, product_id: int) -> GrowthAutomationControl | None:
         return self.session.get(GrowthAutomationControl, product_id)
+
+    def list_automation_cycles(self, product_id: int) -> list[GrowthAutomationCycle]:
+        return list(
+            self.session.scalars(
+                select(GrowthAutomationCycle)
+                .where(GrowthAutomationCycle.product_id == product_id)
+                .order_by(GrowthAutomationCycle.id.desc())
+            ).all()
+        )
+
+    def get_cycle_by_key(
+        self, product_id: int, cycle_key: str
+    ) -> GrowthAutomationCycle | None:
+        return self.session.scalar(
+            select(GrowthAutomationCycle).where(
+                GrowthAutomationCycle.product_id == product_id,
+                GrowthAutomationCycle.cycle_key == cycle_key,
+            )
+        )
 
     def get_execution(
         self, product_id: int, execution_id: int
