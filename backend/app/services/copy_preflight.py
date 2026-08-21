@@ -162,7 +162,8 @@ class CopyPreflightService:
                 "本次Qwen Copy任务的配置预算估算为"
                 f"{self.settings.qwen_copy_estimated_cost} "
                 f"{self.settings.qwen_copy_cost_currency.upper()}；"
-                "这是费用确认上限提示，不是Provider最终账单。"
+                "这是费用确认用的配置估算，不是Provider最终账单，"
+                "也不限制实际账单。"
             ),
         )
 
