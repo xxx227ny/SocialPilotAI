@@ -24,7 +24,9 @@ from app.providers.live_configuration import (
 from app.schemas.video_script_version import (
     QwenScriptJobCreateRequest,
     QwenScriptPreflightRequest,
+    QwenScriptProviderOutput,
 )
+from app.services.qwen_video_script_generation_service import select_timed_narration
 from app.services.qwen_video_script_job_service import QwenVideoScriptJobService
 from app.services.qwen_video_script_preflight import QwenVideoScriptPreflightService
 from app.services.video_script_version_service import VideoScriptVersionService
@@ -63,6 +65,37 @@ VALID_RESPONSE = json.dumps(
     }
 )
 
+OVER_BUDGET_RESPONSE = json.dumps(
+    {
+        "title": "Generated title",
+        "concept": "Generated concept",
+        "hook": "Generated hook",
+        "cta": "Generated CTA",
+        "scenes": [
+            {
+                "sequence": index,
+                "start_ms": (index - 1) * 3000,
+                "end_ms": index * 3000,
+                "shot_type": "product",
+                "visual_description": f"Scene {index}",
+                "action_description": "Show the product",
+                "narration": narration,
+                "subtitle_draft": narration,
+            }
+            for index, narration in enumerate(
+                (
+                    "Fresh smoothies are ready wherever your day takes you.",
+                    "Add your favorite fruit and a splash of water.",
+                    "Press blend and watch the portable blender spring to life.",
+                    "Enjoy smooth results with easy cleanup after every drink.",
+                    "Grab yours today and blend fresh flavor anywhere.",
+                ),
+                1,
+            )
+        ],
+    }
+)
+
 
 class FakeQwen(TextGenerationProvider):
     def __init__(
@@ -79,6 +112,21 @@ class FakeQwen(TextGenerationProvider):
         if self.error is not None:
             raise self.error
         return self.response
+
+
+def test_over_budget_narration_uses_complete_temporal_anchor_scenes() -> None:
+    output = QwenScriptProviderOutput.model_validate_json(OVER_BUDGET_RESPONSE)
+
+    narration = select_timed_narration(output)
+
+    assert narration == " ".join(
+        (
+            output.scenes[0].narration,
+            output.scenes[2].narration,
+            output.scenes[4].narration,
+        )
+    )
+    assert len(narration.split()) <= 32
 
 
 def enqueue(session, variant, strategy, settings, key: str):
