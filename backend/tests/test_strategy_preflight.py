@@ -59,9 +59,7 @@ def test_valid_preflight_is_read_only(
 
     app.dependency_overrides[get_settings] = configured_settings
     app.dependency_overrides[get_text_generation_provider] = forbidden_provider
-    response = client.get(
-        f"/api/v1/marketing-tasks/{task['id']}/strategy-preflight"
-    )
+    response = client.get(f"/api/v1/marketing-tasks/{task['id']}/strategy-preflight")
 
     assert response.status_code == 200
     data = response.json()
@@ -92,6 +90,37 @@ def test_valid_preflight_is_read_only(
         VideoRenderArtifact,
     ):
         assert db_session.scalar(select(func.count(model.id))) == 0
+
+
+def test_all_four_copy_platforms_are_valid_strategy_input(
+    client: TestClient,
+    product_payload: dict[str, object],
+) -> None:
+    product = client.post("/api/v1/products", json=product_payload).json()
+    task = client.post(
+        "/api/v1/marketing-tasks",
+        json={
+            "product_id": product["id"],
+            "audience": "Cross-border consumers",
+            "language": "English",
+            "platforms": ["TikTok", "Instagram", "Facebook", "Pinterest"],
+            "tone": "Clear and trustworthy",
+            "objective": "Prepare a complete social copy matrix",
+        },
+    ).json()
+    app.dependency_overrides[get_settings] = configured_settings
+
+    response = client.get(f"/api/v1/marketing-tasks/{task['id']}/strategy-preflight")
+
+    assert response.status_code == 200
+    assert response.json()["ready_for_execution"] is True
+    assert response.json()["platforms"] == [
+        "TikTok",
+        "Instagram",
+        "Facebook",
+        "Pinterest",
+    ]
+    assert response.json()["missing_requirements"] == []
 
 
 def test_missing_task_and_product_fail_safely(
@@ -148,9 +177,7 @@ def test_preflight_reports_missing_and_invalid_business_input(
     task.__dict__["objective"] = ""
     task.__dict__["platforms"] = ["YouTube"]
 
-    result = StrategyPreflightService(
-        db_session, configured_settings()
-    ).run(task.id)
+    result = StrategyPreflightService(db_session, configured_settings()).run(task.id)
 
     assert result.ready is False
     assert set(result.missing_requirements) >= {
@@ -176,9 +203,7 @@ def test_provider_configuration_is_boolean_and_secret_safe(
         enable_strategy_execution=True,
     )
 
-    response = client.get(
-        f"/api/v1/marketing-tasks/{task['id']}/strategy-preflight"
-    )
+    response = client.get(f"/api/v1/marketing-tasks/{task['id']}/strategy-preflight")
 
     assert response.status_code == 200
     data = response.json()
@@ -211,9 +236,7 @@ def test_legacy_dashscope_key_remains_a_compatible_fallback(
         enable_strategy_execution=True,
     )
 
-    response = client.get(
-        f"/api/v1/marketing-tasks/{task['id']}/strategy-preflight"
-    )
+    response = client.get(f"/api/v1/marketing-tasks/{task['id']}/strategy-preflight")
 
     assert response.status_code == 200
     data = response.json()
@@ -259,9 +282,7 @@ def test_execution_enabled_defaults_false_and_is_reported_separately(
         dashscope_api_key="safe-test-placeholder",
     )
 
-    response = client.get(
-        f"/api/v1/marketing-tasks/{task['id']}/strategy-preflight"
-    )
+    response = client.get(f"/api/v1/marketing-tasks/{task['id']}/strategy-preflight")
 
     assert Settings(_env_file=None).enable_strategy_execution is False
     assert response.status_code == 200

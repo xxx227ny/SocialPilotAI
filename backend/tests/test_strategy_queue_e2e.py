@@ -26,6 +26,7 @@ def queue_settings() -> Settings:
     return Settings(
         _env_file=None,
         qwen_api_key="fake-strategy-queue-key",
+        qwen_model="qwen-plus",
         enable_strategy_execution=True,
     )
 

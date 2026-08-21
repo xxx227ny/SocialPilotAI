@@ -148,18 +148,16 @@ class StrategyPreflightService:
         return hashlib.sha256(encoded).hexdigest()
 
     @staticmethod
-    def compute_preflight_digest(
-        *, input_digest: str, expires_at: datetime
-    ) -> str:
+    def compute_preflight_digest(*, input_digest: str, expires_at: datetime) -> str:
         payload = {
             "input_digest": input_digest,
             "expires_at": StrategyPreflightService._normalize_expiry(
                 expires_at
             ).isoformat(),
         }
-        encoded = json.dumps(
-            payload, sort_keys=True, separators=(",", ":")
-        ).encode("utf-8")
+        encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode(
+            "utf-8"
+        )
         return hashlib.sha256(encoded).hexdigest()
 
     @staticmethod
@@ -187,27 +185,25 @@ class StrategyPreflightService:
         if not str(product_input["description"] or "").strip():
             missing.append("product_description")
         selling_points = product_input["selling_points"]
-        if not isinstance(selling_points, list) or not selling_points or any(
-            not str(point).strip() for point in selling_points
+        if (
+            not isinstance(selling_points, list)
+            or not selling_points
+            or any(not str(point).strip() for point in selling_points)
         ):
             missing.append("product_selling_points")
         if not target_market_snapshot:
             missing.append("target_market_snapshot")
         supported = set(SUPPORTED_MARKETING_PLATFORMS.values())
-        normalized_platforms = [
-            platform.strip() for platform in (task.platforms or [])
-        ]
+        normalized_platforms = [platform.strip() for platform in (task.platforms or [])]
         if (
             not normalized_platforms
-            or len(normalized_platforms) > 3
+            or len(normalized_platforms) > len(supported)
             or len({platform.casefold() for platform in normalized_platforms})
             != len(normalized_platforms)
             or any(platform not in supported for platform in normalized_platforms)
         ):
             missing.append("supported_platforms")
-        audience = TARGET_MARKET_AUDIENCE_PATTERN.sub(
-            "", task.audience or ""
-        ).strip()
+        audience = TARGET_MARKET_AUDIENCE_PATTERN.sub("", task.audience or "").strip()
         for field_name, value in (
             ("audience", audience),
             ("language", task.language or ""),
