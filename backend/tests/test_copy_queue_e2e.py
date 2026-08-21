@@ -22,6 +22,8 @@ def queue_settings() -> Settings:
     return Settings(
         _env_file=None,
         qwen_api_key="fake-copy-queue-key",
+        qwen_model="qwen-plus",
+        token_plan_api_key_file="",
         enable_copy_execution=True,
     )
 

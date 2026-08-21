@@ -120,9 +120,10 @@ def test_copy_preflight_uses_exact_sources_without_provider_or_write(
         assert data["ready_for_execution"] is True
         assert data["association_persisted"] is False
         assert "marketing_strategy_id" in data["association_notice"]
-        assert "brief_aware_exact_strategy_copy_contract" not in data[
-            "missing_requirements"
-        ]
+        assert (
+            "brief_aware_exact_strategy_copy_contract"
+            not in data["missing_requirements"]
+        )
         assert "safe-test-placeholder" not in response.text
         assert provider_resolutions == 0
         assert db_session.scalar(select(func.count(CopyMatrix.id))) == 0
@@ -264,7 +265,12 @@ def test_copy_preflight_reports_config_and_execution_without_secrets(
     product = create_product(client, "Configuration Product")
     task = create_task(client, product["id"])
     strategy = add_strategy(db_session, product["id"], "Valid positioning")
-    app.dependency_overrides[get_settings] = lambda: Settings(_env_file=None)
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        _env_file=None,
+        qwen_api_key=None,
+        dashscope_api_key=None,
+        token_plan_api_key_file="",
+    )
     try:
         response = client.get(
             f"/api/v1/marketing-tasks/{task['id']}"
