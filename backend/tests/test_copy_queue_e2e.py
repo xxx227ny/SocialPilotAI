@@ -166,6 +166,9 @@ def test_http_enqueue_and_fake_worker_end_to_end(
     assert first.json()["reused"] is False
     assert second.json()["reused"] is True
     assert first.json()["job"]["id"] == second.json()["job"]["id"]
+    assert first.json()["job"]["max_attempts"] == 1
+    assert first.json()["job"]["estimated_cost"] == "0.05"
+    assert first.json()["job"]["currency"] == "CNY"
     assert factory.state == {"constructed": 0, "calls": 0}
     assert db_session.scalar(select(func.count(ExecutionJob.id))) == 1
     assert db_session.scalar(select(func.count(CopyMatrix.id))) == 0

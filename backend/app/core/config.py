@@ -48,6 +48,8 @@ class Settings(BaseSettings):
     require_live_provider_coherence: bool = False
     enable_strategy_execution: bool = False
     enable_copy_execution: bool = False
+    qwen_copy_estimated_cost: Decimal = Field(default=Decimal("0.05"), gt=0)
+    qwen_copy_cost_currency: str = Field(default="CNY", pattern=r"^[A-Za-z]{3}$")
     enable_v2_copy_execution: bool = False
     enable_video_project_execution: bool = False
     enable_v2_video_project_execution: bool = False

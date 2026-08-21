@@ -161,6 +161,9 @@ class CopyPreflightRead(BaseModel):
     preflight_only: bool = True
     execution_will_call_ai: bool = True
     execution_will_create_copy_matrix: bool = True
+    estimated_cost: str
+    currency: str = Field(pattern=r"^[A-Za-z]{3}$")
+    requires_cost_confirmation: bool = True
     cost_notice: str
 
 

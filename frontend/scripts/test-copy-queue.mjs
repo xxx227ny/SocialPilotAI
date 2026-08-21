@@ -32,7 +32,7 @@ try {
     },
     status: "QUEUED",
     attempt_count: 0,
-    max_attempts: 2,
+    max_attempts: 1,
     result_entity_type: null,
     result_entity_id: null,
     safe_error_code: null,
@@ -51,7 +51,7 @@ try {
   assert.equal(state.copyJobNeedsPolling({ ...base, status: "FAILED" }), false);
   assert.equal(
     state.copyJobAllowsExplicitRetry({ ...base, status: "FAILED", attempt_count: 1 }),
-    true,
+    false,
   );
   assert.equal(
     state.copyJobAllowsExplicitRetry({ ...base, status: "SUBMIT_UNKNOWN", uncertain: true }),
@@ -78,6 +78,8 @@ try {
   assert.match(component, /retryCopyExecutionJob/);
   assert.match(component, /submitLockRef\.current/);
   assert.match(component, /SUBMIT_UNKNOWN/);
+  assert.match(component, /preflight\.estimated_cost/);
+  assert.match(component, /禁止（单次Provider提交）/);
   assert.doesNotMatch(component, /generateTaskBoundCopyMatrix/);
   assert.doesNotMatch(component, /getLatestCopyForStrategy/);
   assert.match(taskConfig, /Pinterest/);

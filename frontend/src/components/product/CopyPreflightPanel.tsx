@@ -300,6 +300,8 @@ export function CopyPreflightPanel({
             <div><dt>Preflight有效期</dt><dd>{new Date(preflight.expires_at).toLocaleString()}</dd></div>
             <div><dt>Provider配置</dt><dd>{preflight.provider_configured ? "已配置" : "未配置"}</dd></div>
             <div><dt>执行契约</dt><dd>{preflight.contract_ready ? "已实现" : "尚未实现"}</dd></div>
+            <div><dt>预算估算</dt><dd>{preflight.estimated_cost} {preflight.currency}</dd></div>
+            <div><dt>自动重试</dt><dd>禁止（单次Provider提交）</dd></div>
           </dl>
           {preflight.missing_requirements.length > 0 ? (
             <div className="strategy-preflight__missing">
@@ -318,7 +320,8 @@ export function CopyPreflightPanel({
                   onChange={(event) => setAcknowledged(event.target.checked)}
                   disabled={!preflight.ready_for_execution}
                 />
-                我确认任务被Worker Claim后可能调用Qwen并产生费用。
+                我确认任务被Worker Claim后将调用一次Qwen，预算估算为
+                {preflight.estimated_cost} {preflight.currency}，并可能产生费用。
               </label>
               <button type="button" className="button" onClick={() => void enqueue()} disabled={!canEnqueue}>
                 创建Copy生成任务

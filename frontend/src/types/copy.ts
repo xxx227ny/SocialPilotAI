@@ -87,6 +87,9 @@ export interface CopyPreflight {
   preflight_only: true;
   execution_will_call_ai: true;
   execution_will_create_copy_matrix: true;
+  estimated_cost: string;
+  currency: string;
+  requires_cost_confirmation: true;
   cost_notice: string;
 }
 

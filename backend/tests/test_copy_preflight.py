@@ -118,6 +118,10 @@ def test_copy_preflight_uses_exact_sources_without_provider_or_write(
         assert data["execution_enabled"] is True
         assert data["contract_ready"] is True
         assert data["ready_for_execution"] is True
+        assert data["estimated_cost"] == "0.05"
+        assert data["currency"] == "CNY"
+        assert data["requires_cost_confirmation"] is True
+        assert "不是Provider最终账单" in data["cost_notice"]
         assert data["association_persisted"] is False
         assert "marketing_strategy_id" in data["association_notice"]
         assert (
@@ -284,6 +288,8 @@ def test_copy_preflight_reports_config_and_execution_without_secrets(
         assert data["execution_enabled"] is False
         assert data["contract_ready"] is True
         assert data["ready_for_execution"] is False
+        assert data["estimated_cost"] == "0.05"
+        assert data["currency"] == "CNY"
         assert "provider_configuration" in data["missing_requirements"]
         assert "copy_execution" in data["missing_requirements"]
         serialized = response.text.casefold()

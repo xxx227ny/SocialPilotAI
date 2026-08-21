@@ -27,10 +27,6 @@ COPY_ASSOCIATION_NOTICE = (
     "marketing_strategy_id. MarketingBrief association remains response-only "
     "because CopyMatrix has no MarketingBrief foreign key."
 )
-COPY_COST_NOTICE = (
-    "真实Copy生成将调用阿里云百炼Qwen，并可能消耗比赛Credits；"
-    "实际消耗由模型、输入输出长度和平台计费决定。"
-)
 COPY_PREFLIGHT_TTL = timedelta(minutes=10)
 
 
@@ -159,7 +155,15 @@ class CopyPreflightService:
             preflight_digest=preflight_digest,
             expires_at=normalized_expiry,
             association_notice=COPY_ASSOCIATION_NOTICE,
-            cost_notice=COPY_COST_NOTICE,
+            estimated_cost=str(self.settings.qwen_copy_estimated_cost),
+            currency=self.settings.qwen_copy_cost_currency.upper(),
+            requires_cost_confirmation=True,
+            cost_notice=(
+                "本次Qwen Copy任务的配置预算估算为"
+                f"{self.settings.qwen_copy_estimated_cost} "
+                f"{self.settings.qwen_copy_cost_currency.upper()}；"
+                "这是费用确认上限提示，不是Provider最终账单。"
+            ),
         )
 
     @staticmethod

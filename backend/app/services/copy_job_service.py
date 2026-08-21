@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
-from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
@@ -81,17 +80,14 @@ class CopyJobService:
                 idempotency_key=self._idempotency_key(current.input_digest),
                 input_payload=payload.model_dump(mode="json"),
                 concurrency_key=f"qwen-copy-product-{current.product_id}",
-                estimated_cost=Decimal("0"),
-                currency="USD",
+                estimated_cost=self.settings.qwen_copy_estimated_cost,
+                currency=self.settings.qwen_copy_cost_currency.upper(),
                 cost_confirmed=data.cost_confirmed,
-                max_attempts=2,
+                max_attempts=1,
             )
         )
 
     @staticmethod
     def _idempotency_key(input_digest: str) -> str:
         material = f"{QWEN_COPY_MATRIX_GENERATE_V1}:{input_digest}".encode()
-        return (
-            f"{QWEN_COPY_MATRIX_GENERATE_V1}:"
-            f"{hashlib.sha256(material).hexdigest()}"
-        )
+        return f"{QWEN_COPY_MATRIX_GENERATE_V1}:{hashlib.sha256(material).hexdigest()}"
