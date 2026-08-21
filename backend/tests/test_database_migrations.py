@@ -953,7 +953,7 @@ def test_stage3f_head_contains_product_media_bridge_columns(tmp_path: Path) -> N
         ).fetchone()[0]
     finally:
         connection.close()
-    assert HEAD_REVISION == "0015_growth_optimization_runs"
+    assert HEAD_REVISION == "0016_growth_sandbox_executions"
     assert {
         "content_type",
         "size_bytes",

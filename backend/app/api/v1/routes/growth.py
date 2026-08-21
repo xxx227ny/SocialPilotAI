@@ -22,6 +22,10 @@ from app.schemas.growth import (
     FeedbackContextRead,
     GrowthAnalysisRequest,
     GrowthAnalysisResponse,
+    GrowthOptimizationExecutionPreflightRead,
+    GrowthOptimizationExecutionRead,
+    GrowthOptimizationExecutionRequest,
+    GrowthOptimizationExecutionResult,
     GrowthOptimizationPlanRead,
     GrowthOptimizationPlanRequest,
     GrowthOptimizationRunActivateRead,
@@ -40,6 +44,9 @@ from app.services.campaign_service import CampaignService
 from app.services.feedback_context_service import FeedbackContextService
 from app.services.growth_analysis_service import GrowthAnalysisService
 from app.services.growth_budget_optimizer import GrowthBudgetOptimizer
+from app.services.growth_optimization_execution_service import (
+    GrowthOptimizationExecutionService,
+)
 from app.services.growth_optimization_run_service import (
     GrowthOptimizationRunService,
 )
@@ -157,6 +164,54 @@ def activate_growth_optimization_plan(
     db: DbSession,
 ) -> GrowthOptimizationRunActivateRead:
     return GrowthOptimizationRunService(db).activate(product_id, run_id)
+
+
+@router.get(
+    "/{product_id}/growth-optimization/plans/{run_id}/execution-preflight",
+    response_model=GrowthOptimizationExecutionPreflightRead,
+)
+def preflight_growth_optimization_execution(
+    product_id: int,
+    run_id: int,
+    db: DbSession,
+) -> GrowthOptimizationExecutionPreflightRead:
+    return GrowthOptimizationExecutionService(db).preflight(product_id, run_id)
+
+
+@router.post(
+    "/{product_id}/growth-optimization/plans/{run_id}/sandbox-executions",
+    response_model=GrowthOptimizationExecutionResult,
+)
+def execute_growth_optimization_sandbox(
+    product_id: int,
+    run_id: int,
+    data: GrowthOptimizationExecutionRequest,
+    db: DbSession,
+) -> GrowthOptimizationExecutionResult:
+    return GrowthOptimizationExecutionService(db).execute(product_id, run_id, data)
+
+
+@router.get(
+    "/{product_id}/growth-optimization/executions",
+    response_model=list[GrowthOptimizationExecutionRead],
+)
+def list_growth_optimization_executions(
+    product_id: int,
+    db: DbSession,
+) -> list[GrowthOptimizationExecutionRead]:
+    return GrowthOptimizationExecutionService(db).list(product_id)
+
+
+@router.post(
+    "/{product_id}/growth-optimization/executions/{execution_id}/rollback",
+    response_model=GrowthOptimizationExecutionResult,
+)
+def rollback_growth_optimization_execution(
+    product_id: int,
+    execution_id: int,
+    db: DbSession,
+) -> GrowthOptimizationExecutionResult:
+    return GrowthOptimizationExecutionService(db).rollback(product_id, execution_id)
 
 
 @router.post(

@@ -260,6 +260,49 @@ class GrowthOptimizationRunActivateRead(StrictGrowthModel):
     provider_calls: Literal[0] = 0
 
 
+class GrowthOptimizationExecutionPreflightRead(StrictGrowthModel):
+    product_id: int
+    optimization_run_id: int
+    source_context_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    ready: Literal[True] = True
+    execution_mode: Literal["SANDBOX"] = "SANDBOX"
+    provider_name: Literal["sandbox_ad_adapter"] = "sandbox_ad_adapter"
+    requires_explicit_confirmation: Literal[True] = True
+    external_mutation_allowed: Literal[False] = False
+    provider_calls: Literal[0] = 0
+    database_writes: Literal[0] = 0
+
+
+class GrowthOptimizationExecutionRequest(StrictGrowthModel):
+    idempotency_key: str = Field(min_length=8, max_length=160)
+    expected_context_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    confirm_sandbox_execution: Literal[True]
+
+
+class GrowthOptimizationExecutionRead(StrictGrowthModel):
+    id: int
+    product_id: int
+    optimization_run_id: int
+    idempotency_key: str
+    source_context_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    before_actions: list[GrowthPlatformOptimizationAction] = Field(min_length=1)
+    target_actions: list[GrowthPlatformOptimizationAction] = Field(min_length=1)
+    result_actions: list[GrowthPlatformOptimizationAction] = Field(min_length=1)
+    status: Literal["SUCCEEDED", "ROLLED_BACK"]
+    execution_mode: Literal["SANDBOX"]
+    provider_name: Literal["sandbox_ad_adapter"]
+    external_mutation_performed: Literal[False]
+    created_at: datetime
+    rolled_back_at: datetime | None
+
+
+class GrowthOptimizationExecutionResult(StrictGrowthModel):
+    execution: GrowthOptimizationExecutionRead
+    reused: bool
+    external_mutation_performed: Literal[False] = False
+    provider_calls: Literal[0] = 0
+
+
 def compute_recommendation_digest(
     *,
     product_id: int,

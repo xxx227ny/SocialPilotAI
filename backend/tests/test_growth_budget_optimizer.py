@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.models import (
     AdCampaign,
     CopyMatrix,
+    GrowthOptimizationExecution,
     GrowthOptimizationRun,
     MarketingStrategy,
     VideoProject,
@@ -318,4 +319,159 @@ def test_persisted_plan_rejects_key_conflict_and_stale_activation(
     assert activate.status_code == 409
     assert activate.json()["error"]["message"] == (
         "FeedbackContext changed; create a new optimization plan"
+    )
+
+
+def test_active_plan_sandbox_execution_is_confirmed_idempotent_and_rollbackable(
+    client: TestClient,
+    db_session: Session,
+    product_payload: dict[str, object],
+) -> None:
+    analysis = _ready_analysis(client, db_session, product_payload)
+    plans_path = f"/api/v1/products/{analysis.product_id}/growth-optimization/plans"
+    created = client.post(
+        plans_path,
+        json={
+            **_request(analysis),
+            "idempotency_key": "growth-sandbox-plan",
+            "activate_internal": True,
+        },
+    )
+    run = created.json()["run"]
+    execution_path = f"{plans_path}/{run['id']}/sandbox-executions"
+    before_count = int(
+        db_session.scalar(select(func.count()).select_from(GrowthOptimizationExecution))
+        or 0
+    )
+
+    preflight = client.get(f"{plans_path}/{run['id']}/execution-preflight")
+    assert preflight.status_code == 200
+    assert preflight.json() == {
+        "product_id": analysis.product_id,
+        "optimization_run_id": run["id"],
+        "source_context_digest": analysis.source_context_digest,
+        "ready": True,
+        "execution_mode": "SANDBOX",
+        "provider_name": "sandbox_ad_adapter",
+        "requires_explicit_confirmation": True,
+        "external_mutation_allowed": False,
+        "provider_calls": 0,
+        "database_writes": 0,
+    }
+    assert (
+        int(
+            db_session.scalar(
+                select(func.count()).select_from(GrowthOptimizationExecution)
+            )
+            or 0
+        )
+        == before_count
+    )
+    assert (
+        client.post(
+            execution_path,
+            json={
+                "idempotency_key": "growth-sandbox-execution",
+                "expected_context_digest": analysis.source_context_digest,
+                "confirm_sandbox_execution": False,
+            },
+        ).status_code
+        == 422
+    )
+
+    request = {
+        "idempotency_key": "growth-sandbox-execution",
+        "expected_context_digest": analysis.source_context_digest,
+        "confirm_sandbox_execution": True,
+    }
+    first = client.post(execution_path, json=request)
+    repeated = client.post(execution_path, json=request)
+    assert first.status_code == 200
+    assert repeated.status_code == 200
+    assert first.json()["reused"] is False
+    assert repeated.json()["reused"] is True
+    assert repeated.json()["execution"]["id"] == first.json()["execution"]["id"]
+    execution = first.json()["execution"]
+    assert execution["status"] == "SUCCEEDED"
+    assert execution["execution_mode"] == "SANDBOX"
+    assert execution["provider_name"] == "sandbox_ad_adapter"
+    assert execution["external_mutation_performed"] is False
+    assert first.json()["provider_calls"] == 0
+    assert all(item["action"] == "hold" for item in execution["before_actions"])
+    assert execution["result_actions"] == execution["target_actions"]
+    assert (
+        db_session.scalar(select(func.count()).select_from(GrowthOptimizationExecution))
+        == 1
+    )
+
+    listed = client.get(
+        f"/api/v1/products/{analysis.product_id}/growth-optimization/executions"
+    )
+    assert listed.status_code == 200
+    assert [item["id"] for item in listed.json()] == [execution["id"]]
+
+    rollback_path = (
+        f"/api/v1/products/{analysis.product_id}/growth-optimization/"
+        f"executions/{execution['id']}/rollback"
+    )
+    rolled_back = client.post(rollback_path)
+    repeated_rollback = client.post(rollback_path)
+    assert rolled_back.status_code == 200
+    assert rolled_back.json()["reused"] is False
+    assert repeated_rollback.json()["reused"] is True
+    restored = rolled_back.json()["execution"]
+    assert restored["status"] == "ROLLED_BACK"
+    assert restored["result_actions"] == restored["before_actions"]
+    assert restored["rolled_back_at"] is not None
+    assert rolled_back.json()["external_mutation_performed"] is False
+
+
+def test_sandbox_execution_rejects_proposed_stale_and_key_conflict(
+    client: TestClient,
+    db_session: Session,
+    product_payload: dict[str, object],
+) -> None:
+    analysis = _ready_analysis(client, db_session, product_payload)
+    plans_path = f"/api/v1/products/{analysis.product_id}/growth-optimization/plans"
+    proposed = client.post(
+        plans_path,
+        json={
+            **_request(analysis),
+            "idempotency_key": "growth-proposed-plan",
+            "activate_internal": False,
+        },
+    ).json()["run"]
+    assert (
+        client.get(f"{plans_path}/{proposed['id']}/execution-preflight").status_code
+        == 409
+    )
+
+    active = client.post(f"{plans_path}/{proposed['id']}/activate").json()["run"]
+    execution_path = f"{plans_path}/{active['id']}/sandbox-executions"
+    request = {
+        "idempotency_key": "growth-conflict-execution",
+        "expected_context_digest": analysis.source_context_digest,
+        "confirm_sandbox_execution": True,
+    }
+    assert client.post(execution_path, json=request).status_code == 200
+    conflicting = {**request, "expected_context_digest": "0" * 64}
+    assert client.post(execution_path, json=conflicting).status_code == 409
+
+    db_session.add(
+        AdCampaign(
+            product_id=analysis.product_id,
+            platform="Facebook",
+            campaign_name="Stale sandbox context",
+            date=date(2026, 8, 21),
+            impressions=10,
+            clicks=1,
+            conversions=0,
+            spend=Decimal("5"),
+            revenue=Decimal("0"),
+        )
+    )
+    db_session.commit()
+    assert (
+        client.get(f"{plans_path}/{active['id']}/execution-preflight").status_code
+        == 409
     )

@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import GrowthOptimizationRun
+from app.models import GrowthOptimizationExecution, GrowthOptimizationRun
 
 
 class GrowthOptimizationRepository:
@@ -32,5 +34,34 @@ class GrowthOptimizationRepository:
                 select(GrowthOptimizationRun)
                 .where(GrowthOptimizationRun.product_id == product_id)
                 .order_by(GrowthOptimizationRun.id.asc())
+            ).all()
+        )
+
+    def get_execution(
+        self, product_id: int, execution_id: int
+    ) -> GrowthOptimizationExecution | None:
+        return self.session.scalar(
+            select(GrowthOptimizationExecution).where(
+                GrowthOptimizationExecution.id == execution_id,
+                GrowthOptimizationExecution.product_id == product_id,
+            )
+        )
+
+    def get_execution_by_key(
+        self, product_id: int, idempotency_key: str
+    ) -> GrowthOptimizationExecution | None:
+        return self.session.scalar(
+            select(GrowthOptimizationExecution).where(
+                GrowthOptimizationExecution.product_id == product_id,
+                GrowthOptimizationExecution.idempotency_key == idempotency_key,
+            )
+        )
+
+    def list_executions(self, product_id: int) -> list[GrowthOptimizationExecution]:
+        return list(
+            self.session.scalars(
+                select(GrowthOptimizationExecution)
+                .where(GrowthOptimizationExecution.product_id == product_id)
+                .order_by(GrowthOptimizationExecution.id.asc())
             ).all()
         )
