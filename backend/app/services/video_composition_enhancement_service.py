@@ -174,6 +174,7 @@ class VideoCompositionEnhancementService:
                         font_size=style.font_size,
                         bottom_margin=style.bottom_margin,
                         outline_width=style.outline_width,
+                        voiceover_natural_duration_ms=voice.natural_duration_ms,
                     ),
                     output,
                 )

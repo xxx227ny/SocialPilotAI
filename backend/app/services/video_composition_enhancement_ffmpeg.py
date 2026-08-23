@@ -28,6 +28,7 @@ class EnhancementFFmpegInput:
     font_size: int
     bottom_margin: int
     outline_width: int
+    voiceover_natural_duration_ms: int | None = None
 
 
 class VideoCompositionEnhancementFFmpeg:
@@ -67,9 +68,10 @@ class VideoCompositionEnhancementFFmpeg:
         target_lufs = data.target_lufs_milli / 1000
         true_peak = data.true_peak_millidb / 1000
         ratio = max(2.0, min(20.0, data.ducking_reduction_millidb / 1500))
+        voice_timing = self._voice_timing_filter(data.voiceover_natural_duration_ms)
         audio_filters = (
             f"[1:a]aresample=48000,aformat=sample_fmts=fltp:"
-            f"channel_layouts=stereo,volume={voice_gain:.3f}dB,"
+            f"channel_layouts=stereo,{voice_timing}volume={voice_gain:.3f}dB,"
             "apad,atrim=0:15[voice]"
         )
         if data.music is not None:
@@ -114,8 +116,7 @@ class VideoCompositionEnhancementFFmpeg:
             ) from exc
         subtitle_name = burn_subtitle.name.replace("'", "")
         video_filter = (
-            f"[0:v]subtitles=filename='{subtitle_name}':"
-            "original_size=1080x1920[vout]"
+            f"[0:v]subtitles=filename='{subtitle_name}':original_size=1080x1920[vout]"
         )
         command.extend(
             [
@@ -173,9 +174,7 @@ class VideoCompositionEnhancementFFmpeg:
             or len(result.stderr) > self.MAX_DIAGNOSTIC_BYTES
             or not output.is_file()
         ):
-            raise VideoCompositionEnhancementFFmpegError(
-                "ENHANCEMENT_FFMPEG_FAILED"
-            )
+            raise VideoCompositionEnhancementFFmpegError("ENHANCEMENT_FFMPEG_FAILED")
 
     def _measure_mix(
         self,
@@ -253,3 +252,23 @@ class VideoCompositionEnhancementFFmpeg:
                 "ENHANCEMENT_LOUDNESS_ANALYSIS_FAILED"
             )
         return measured_lufs, measured_true_peak
+
+    @staticmethod
+    def _voice_timing_filter(natural_duration_ms: int | None) -> str:
+        """Fit short speech to 14 seconds while preserving pitch with atempo."""
+        target_ms = 14_000
+        if natural_duration_ms is None or natural_duration_ms >= target_ms:
+            return ""
+        if natural_duration_ms <= 0:
+            raise VideoCompositionEnhancementFFmpegError(
+                "ENHANCEMENT_PARAMETERS_INVALID"
+            )
+        ratio = natural_duration_ms / target_ms
+        factors: list[float] = []
+        while ratio < 0.5:
+            factors.append(0.5)
+            ratio /= 0.5
+        factors.append(ratio)
+        chain = ",".join(f"atempo={factor:.6f}" for factor in factors)
+        natural_seconds = natural_duration_ms / 1000
+        return f"atrim=0:{natural_seconds:.3f},{chain},"

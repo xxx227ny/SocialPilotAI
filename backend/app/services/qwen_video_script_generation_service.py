@@ -14,32 +14,14 @@ from app.schemas.video_script_version import QwenScriptProviderOutput
 def select_timed_narration(
     output: QwenScriptProviderOutput, *, max_words: int = 32
 ) -> str:
-    """Select complete scene utterances that fit a short-video voiceover budget."""
+    """Return every scene utterance, or reject a script that cannot fit."""
     scenes = sorted(output.scenes, key=lambda item: item.sequence)
     if not scenes or max_words < 1:
         raise AppError("Qwen script has no usable narration", 422)
-
-    edge_indices = [0]
-    if len(scenes) > 1:
-        edge_indices.append(len(scenes) - 1)
-    middle_indices = sorted(
-        range(1, max(1, len(scenes) - 1)),
-        key=lambda index: (
-            abs(((scenes[index].start_ms + scenes[index].end_ms) / 2 / 15000) - 0.5),
-            scenes[index].sequence,
-        ),
-    )
-
-    selected: set[int] = set()
-    used_words = 0
-    for index in [*edge_indices, *middle_indices]:
-        word_count = len(scenes[index].narration.split())
-        if word_count and used_words + word_count <= max_words:
-            selected.add(index)
-            used_words += word_count
-    if not selected:
+    narration = " ".join(scene.narration.strip() for scene in scenes)
+    if not narration or len(narration.split()) > max_words:
         raise AppError("Qwen narration cannot fit the 15-second budget", 422)
-    return " ".join(scenes[index].narration for index in sorted(selected))
+    return narration
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,9 +51,15 @@ class QwenVideoScriptGenerationService:
             "end_ms, shot_type, visual_description, action_description, narration, "
             "and subtitle_draft. Sequence must start at 1 and be continuous; the "
             "timeline must start at 0, have no gaps or overlaps, and end at 15000. "
-            "Keep the combined narration concise enough for 15 seconds at a "
-            "natural speaking rate: English narration must contain no more than "
-            "32 words, with equivalent brevity in other languages. "
+            "Every supplied product selling point must be communicated by a safe, "
+            "visibly demonstrable scene and by that scene's narration. Include a "
+            "clear hook, active product operation, benefit proof, and final CTA. "
+            "Do not invent capabilities or claims absent from the frozen input. "
+            "For every scene, subtitle_draft must exactly equal narration. Keep all "
+            "scene narration together concise enough for 15 seconds at a natural "
+            "speaking rate: English narration must contain 24-32 words total, with "
+            "equivalent brevity in other languages. Never omit a scene from the "
+            "spoken narration. "
             "Do not return source identities, digests, review state, activation, or "
             "top-level narration/subtitles. Frozen input: " + encoded_snapshot
         )

@@ -3,9 +3,11 @@ from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
 from threading import Barrier
 
+import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from app.core.exceptions import AppError
 from app.db.base import Base
 from app.execution.handlers.qwen_video_script import QwenVideoScriptGenerateV1Handler
 from app.execution.registry import ExecutionHandlerRegistry
@@ -49,7 +51,7 @@ VALID_RESPONSE = json.dumps(
                 "visual_description": "Show product",
                 "action_description": "Move product",
                 "narration": "First narration",
-                "subtitle_draft": "First subtitle",
+                "subtitle_draft": "First narration",
             },
             {
                 "sequence": 2,
@@ -59,7 +61,7 @@ VALID_RESPONSE = json.dumps(
                 "visual_description": "Show proof",
                 "action_description": "Close up",
                 "narration": "Second narration",
-                "subtitle_draft": "Second subtitle",
+                "subtitle_draft": "Second narration",
             },
         ],
     }
@@ -114,19 +116,10 @@ class FakeQwen(TextGenerationProvider):
         return self.response
 
 
-def test_over_budget_narration_uses_complete_temporal_anchor_scenes() -> None:
+def test_over_budget_narration_is_rejected_without_dropping_scenes() -> None:
     output = QwenScriptProviderOutput.model_validate_json(OVER_BUDGET_RESPONSE)
-
-    narration = select_timed_narration(output)
-
-    assert narration == " ".join(
-        (
-            output.scenes[0].narration,
-            output.scenes[2].narration,
-            output.scenes[4].narration,
-        )
-    )
-    assert len(narration.split()) <= 32
+    with pytest.raises(AppError, match="cannot fit"):
+        select_timed_narration(output)
 
 
 def enqueue(session, variant, strategy, settings, key: str):
@@ -216,7 +209,11 @@ def test_worker_is_unique_provider_boundary_and_creates_immutable_unreviewed_ver
         assert version.parent_version_id == active_id
         assert variant.active_script_version_id == active_id
         assert version.full_narration == "First narration Second narration"
-        assert version.full_subtitle_draft == "First subtitle Second subtitle"
+        assert version.full_subtitle_draft == "First narration Second narration"
+        assert [scene.subtitle_draft for scene in version.scenes] == [
+            "First narration",
+            "Second narration",
+        ]
         assert version.source_execution_job_id == job.id
         attempt = session.query(ExecutionAttempt).one()
         assert (attempt.provider_call_count, attempt.provider_submission_state) == (

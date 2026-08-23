@@ -188,9 +188,10 @@ def test_happyhorse_preflight_and_enqueue_freeze_exact_reference_images(
     )
     service = HappyHorseProductVideoService(db_session, settings)
     prompt = service._prompt(project)
-    assert "product-only studio tabletop" in prompt
-    assert "Do not show people, hands, faces, bodies" in prompt
-    assert "food preparation, blades, liquids, splashes, or ingestion" in prompt
+    assert "Visibly demonstrate the scripted product operation and benefits" in prompt
+    assert "rather than showing only a static rotating hero shot" in prompt
+    assert "Brief hands may safely load ingredients or operate the product" in prompt
+    assert "never expose blades" in prompt
     checked = service.preflight(product.id, request)
     assert checked.ready is True
     submit = HappyHorseVideoSubmitRequest(

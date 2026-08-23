@@ -274,9 +274,9 @@ def test_enhancement_queue_is_idempotent_and_http_stage_provider_free(
 ) -> None:
     product, _, composition, source, voice, music = _source(db_session, tmp_path)
     settings = _settings(tmp_path)
-    preflight = VideoCompositionEnhancementPreflightService(
-        db_session, settings
-    ).run(product.id, _request(composition, source, voice, music))
+    preflight = VideoCompositionEnhancementPreflightService(db_session, settings).run(
+        product.id, _request(composition, source, voice, music)
+    )
     submit = VideoCompositionEnhancementSubmitRequest(
         **_request(composition, source, voice, music).model_dump(),
         input_digest=preflight.input_digest,
@@ -340,9 +340,7 @@ def test_subtitle_webvtt_is_utf8_and_deterministic() -> None:
     ],
 )
 def test_subtitle_ass_is_fixed_safe_utf8_and_deterministic(text) -> None:
-    cues = [
-        SubtitleCueInput(sequence=1, start_ms=500, end_ms=4778, text=text)
-    ]
+    cues = [SubtitleCueInput(sequence=1, start_ms=500, end_ms=4778, text=text)]
     style = _request(
         type("C", (), {"id": 1})(),
         type("A", (), {"id": 1})(),
@@ -434,14 +432,13 @@ def test_enhancement_ffmpeg_builds_frozen_mix_graph(tmp_path, with_music) -> Non
                 font_size=48,
                 bottom_margin=280,
                 outline_width=3,
+                voiceover_natural_duration_ms=11440,
             ),
             output,
         )
     assert run.call_count == 2
     analysis_command = run.call_args_list[0].args[0]
-    analysis_graph = analysis_command[
-        analysis_command.index("-filter_complex") + 1
-    ]
+    analysis_graph = analysis_command[analysis_command.index("-filter_complex") + 1]
     first_input = analysis_command.index("-i")
     second_input = analysis_command.index("-i", first_input + 1)
     assert analysis_command[first_input + 1] == str(video)
@@ -463,6 +460,7 @@ def test_enhancement_ffmpeg_builds_frozen_mix_graph(tmp_path, with_music) -> Non
     assert "PlayResY: 1920" in burn_subtitle.read_text(encoding="utf-8")
     assert ("sidechaincompress" in graph) is with_music
     assert "anullsrc" not in graph
+    assert "atrim=0:11.440,atempo=0.817143" in graph
 
 
 def test_enhancement_ffmpeg_analysis_failure_never_encodes(tmp_path) -> None:

@@ -200,7 +200,11 @@ class VideoScriptVersionService:
                 if term and term in content_text:
                     raise AppError("Script contains a BrandKit forbidden term", 422)
         full_narration = select_timed_narration(output)
-        full_subtitle = " ".join(scene.subtitle_draft for scene in output.scenes)
+        persisted_scenes = [
+            scene.model_dump(mode="json") | {"subtitle_draft": scene.narration}
+            for scene in output.scenes
+        ]
+        full_subtitle = full_narration
         content_digest = stable_digest(
             {
                 "source_type": "QWEN_GENERATED",
@@ -211,7 +215,7 @@ class VideoScriptVersionService:
                 "concept": output.concept,
                 "hook": output.hook,
                 "cta": output.cta,
-                "scenes": [scene.model_dump(mode="json") for scene in output.scenes],
+                "scenes": persisted_scenes,
                 "full_narration": full_narration,
                 "full_subtitle_draft": full_subtitle,
             }
@@ -273,9 +277,9 @@ class VideoScriptVersionService:
             self.session.add_all(
                 [
                     VideoStoryboardSceneVersion(
-                        video_script_version_id=version.id, **scene.model_dump()
+                        video_script_version_id=version.id, **scene
                     )
-                    for scene in output.scenes
+                    for scene in persisted_scenes
                 ]
             )
             self.session.commit()
