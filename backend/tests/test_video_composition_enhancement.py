@@ -459,6 +459,12 @@ def test_enhancement_ffmpeg_builds_frozen_mix_graph(tmp_path, with_music) -> Non
     assert "PlayResX: 1080" in burn_subtitle.read_text(encoding="utf-8")
     assert "PlayResY: 1920" in burn_subtitle.read_text(encoding="utf-8")
     assert ("sidechaincompress" in graph) is with_music
+    assert (
+        "[voice_source]asplit=2[voice][voice_sidechain]" in analysis_graph
+    ) is with_music
+    assert ("[music][voice_sidechain]sidechaincompress" in analysis_graph) is with_music
+    assert ("[voice_source]asplit=2[voice][voice_sidechain]" in graph) is with_music
+    assert ("[music][voice_sidechain]sidechaincompress" in graph) is with_music
     assert "anullsrc" not in graph
     assert "atrim=0:11.440,atempo=0.817143" in graph
 

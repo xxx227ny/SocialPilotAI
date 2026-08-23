@@ -69,17 +69,20 @@ class VideoCompositionEnhancementFFmpeg:
         true_peak = data.true_peak_millidb / 1000
         ratio = max(2.0, min(20.0, data.ducking_reduction_millidb / 1500))
         voice_timing = self._voice_timing_filter(data.voiceover_natural_duration_ms)
+        voice_output = "voice_source" if data.music is not None else "voice"
         audio_filters = (
             f"[1:a]aresample=48000,aformat=sample_fmts=fltp:"
             f"channel_layouts=stereo,{voice_timing}volume={voice_gain:.3f}dB,"
-            "apad,atrim=0:15[voice]"
+            f"apad,atrim=0:15[{voice_output}]"
         )
         if data.music is not None:
             audio_filters += (
-                f";[2:a]aresample=48000,aformat=sample_fmts=fltp:"
+                ";[voice_source]asplit=2[voice][voice_sidechain];"
+                f"[2:a]aresample=48000,aformat=sample_fmts=fltp:"
                 f"channel_layouts=stereo,volume={music_gain:.3f}dB,"
                 "atrim=0:15[music];"
-                f"[music][voice]sidechaincompress=threshold=0.02:ratio={ratio:.3f}:"
+                f"[music][voice_sidechain]sidechaincompress="
+                f"threshold=0.02:ratio={ratio:.3f}:"
                 "attack=20:release=300[ducked];"
                 "[voice][ducked]amix=inputs=2:duration=longest:normalize=0[mix]"
             )
