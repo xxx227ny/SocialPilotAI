@@ -28,7 +28,10 @@ from app.schemas.video_script_version import (
     QwenScriptPreflightRequest,
     QwenScriptProviderOutput,
 )
-from app.services.qwen_video_script_generation_service import select_timed_narration
+from app.services.qwen_video_script_generation_service import (
+    select_timed_narration,
+    validate_timed_four_act_contract,
+)
 from app.services.qwen_video_script_job_service import QwenVideoScriptJobService
 from app.services.qwen_video_script_preflight import QwenVideoScriptPreflightService
 from app.services.video_script_version_service import VideoScriptVersionService
@@ -46,22 +49,44 @@ VALID_RESPONSE = json.dumps(
             {
                 "sequence": 1,
                 "start_ms": 0,
-                "end_ms": 6000,
+                "end_ms": 3000,
                 "shot_type": "wide",
                 "visual_description": "Show product",
                 "action_description": "Move product",
-                "narration": "First narration",
-                "subtitle_draft": "First narration",
+                "narration": "Fresh smoothies travel wherever your day goes.",
+                "subtitle_draft": "Fresh smoothies travel wherever your day goes.",
             },
             {
                 "sequence": 2,
-                "start_ms": 6000,
-                "end_ms": 15000,
+                "start_ms": 3000,
+                "end_ms": 8000,
                 "shot_type": "close",
-                "visual_description": "Show proof",
-                "action_description": "Close up",
-                "narration": "Second narration",
-                "subtitle_draft": "Second narration",
+                "visual_description": "Show active blending",
+                "action_description": "Operate the sealed product",
+                "narration": "Rechargeable power blends fruit smoothly without cords.",
+                "subtitle_draft": (
+                    "Rechargeable power blends fruit smoothly without cords."
+                ),
+            },
+            {
+                "sequence": 3,
+                "start_ms": 8000,
+                "end_ms": 12000,
+                "shot_type": "proof",
+                "visual_description": "Show easy cleaning",
+                "action_description": "Rinse the product",
+                "narration": "Quick rinsing keeps cleanup simple after blending.",
+                "subtitle_draft": "Quick rinsing keeps cleanup simple after blending.",
+            },
+            {
+                "sequence": 4,
+                "start_ms": 12000,
+                "end_ms": 15000,
+                "shot_type": "hero",
+                "visual_description": "Show final product",
+                "action_description": "Present the call to action",
+                "narration": "Choose portable freshness and blend anywhere today.",
+                "subtitle_draft": "Choose portable freshness and blend anywhere today.",
             },
         ],
     }
@@ -122,6 +147,28 @@ def test_over_budget_narration_is_rejected_without_dropping_scenes() -> None:
     output = QwenScriptProviderOutput.model_validate_json(OVER_BUDGET_RESPONSE)
     with pytest.raises(AppError, match="cannot fit"):
         select_timed_narration(output)
+
+
+def test_four_act_contract_enforces_timeline_subtitles_and_word_budgets() -> None:
+    output = QwenScriptProviderOutput.model_validate_json(VALID_RESPONSE)
+    validate_timed_four_act_contract(output, english=True)
+    assert len(select_timed_narration(output, min_words=24).split()) == 28
+
+    under_budget = output.model_copy(deep=True)
+    under_budget.scenes[0].narration = "Blend fresh drinks anywhere instantly."
+    under_budget.scenes[0].subtitle_draft = under_budget.scenes[0].narration
+    with pytest.raises(AppError, match="per-scene word budget"):
+        validate_timed_four_act_contract(under_budget, english=True)
+
+    wrong_timeline = output.model_copy(deep=True)
+    wrong_timeline.scenes[0].end_ms = 2999
+    with pytest.raises(AppError, match="timed four-act contract"):
+        validate_timed_four_act_contract(wrong_timeline, english=True)
+
+    mismatched_subtitle = output.model_copy(deep=True)
+    mismatched_subtitle.scenes[0].subtitle_draft = "Different subtitle"
+    with pytest.raises(AppError, match="subtitles must match narration"):
+        validate_timed_four_act_contract(mismatched_subtitle, english=True)
 
 
 def enqueue(session, variant, strategy, settings, key: str):
@@ -219,11 +266,19 @@ def test_worker_is_unique_provider_boundary_and_creates_immutable_unreviewed_ver
         ) == ("QWEN_GENERATED", "QWEN_PROVIDER", "UNREVIEWED")
         assert version.parent_version_id == active_id
         assert variant.active_script_version_id == active_id
-        assert version.full_narration == "First narration Second narration"
-        assert version.full_subtitle_draft == "First narration Second narration"
+        expected_narration = (
+            "Fresh smoothies travel wherever your day goes. "
+            "Rechargeable power blends fruit smoothly without cords. "
+            "Quick rinsing keeps cleanup simple after blending. "
+            "Choose portable freshness and blend anywhere today."
+        )
+        assert version.full_narration == expected_narration
+        assert version.full_subtitle_draft == expected_narration
         assert [scene.subtitle_draft for scene in version.scenes] == [
-            "First narration",
-            "Second narration",
+            "Fresh smoothies travel wherever your day goes.",
+            "Rechargeable power blends fruit smoothly without cords.",
+            "Quick rinsing keeps cleanup simple after blending.",
+            "Choose portable freshness and blend anywhere today.",
         ]
         assert version.source_execution_job_id == job.id
         attempt = session.query(ExecutionAttempt).one()

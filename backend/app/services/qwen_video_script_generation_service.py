@@ -12,16 +12,36 @@ from app.schemas.video_script_version import QwenScriptProviderOutput
 
 
 def select_timed_narration(
-    output: QwenScriptProviderOutput, *, max_words: int = 32
+    output: QwenScriptProviderOutput, *, min_words: int = 1, max_words: int = 32
 ) -> str:
     """Return every scene utterance, or reject a script that cannot fit."""
     scenes = sorted(output.scenes, key=lambda item: item.sequence)
-    if not scenes or max_words < 1:
+    if not scenes or min_words < 1 or max_words < min_words:
         raise AppError("Qwen script has no usable narration", 422)
     narration = " ".join(scene.narration.strip() for scene in scenes)
-    if not narration or len(narration.split()) > max_words:
+    word_count = len(narration.split())
+    if not narration or not min_words <= word_count <= max_words:
         raise AppError("Qwen narration cannot fit the 15-second budget", 422)
     return narration
+
+
+def validate_timed_four_act_contract(
+    output: QwenScriptProviderOutput, *, english: bool
+) -> None:
+    scenes = sorted(output.scenes, key=lambda item: item.sequence)
+    expected = (
+        (1, 0, 3000),
+        (2, 3000, 8000),
+        (3, 8000, 12000),
+        (4, 12000, 15000),
+    )
+    actual = tuple((scene.sequence, scene.start_ms, scene.end_ms) for scene in scenes)
+    if actual != expected:
+        raise AppError("Qwen script failed the timed four-act contract", 422)
+    if any(scene.subtitle_draft.strip() != scene.narration.strip() for scene in scenes):
+        raise AppError("Qwen subtitles must match narration", 422)
+    if english and any(not 6 <= len(scene.narration.split()) <= 8 for scene in scenes):
+        raise AppError("Qwen narration failed the per-scene word budget", 422)
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,7 +93,10 @@ class QwenVideoScriptGenerationService:
             raise AppError(
                 "Qwen script output failed strict validation", 422
             ) from error
-        select_timed_narration(output)
+        language = str(prompt_snapshot.get("language", "")).strip().lower()
+        english = language == "en" or language.startswith("en-")
+        validate_timed_four_act_contract(output, english=english)
+        select_timed_narration(output, min_words=24 if english else 1)
         return QwenScriptGenerationResult(
             output=output,
             prompt_digest=hashlib.sha256(prompt.encode()).hexdigest(),
