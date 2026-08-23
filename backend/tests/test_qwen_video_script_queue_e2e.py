@@ -107,10 +107,12 @@ class FakeQwen(TextGenerationProvider):
         self.error = error
         self.calls = 0
         self.prompt_digests: list[int] = []
+        self.prompts: list[str] = []
 
     def generate(self, prompt: str) -> str:
         self.calls += 1
         self.prompt_digests.append(hash(prompt))
+        self.prompts.append(prompt)
         if self.error is not None:
             raise self.error
         return self.response
@@ -192,6 +194,15 @@ def test_worker_is_unique_provider_boundary_and_creates_immutable_unreviewed_ver
     assert fake.calls == 0
     assert execution_worker.run_once().status == WorkerRunStatus.SUCCEEDED
     assert fake.calls == 1
+    assert "exactly 4 scenes" in fake.prompts[0]
+    assert "scene 1 is the hook from 0 to 3000 ms" in fake.prompts[0]
+    assert (
+        "scene 2 actively operates the product from 3000 to 8000 ms" in fake.prompts[0]
+    )
+    assert "scene 3 visibly proves the remaining benefits" in fake.prompts[0]
+    assert "scene 4 gives the CTA from 12000 to 15000 ms" in fake.prompts[0]
+    assert "English narration in each scene must contain 6-8 words" in fake.prompts[0]
+    assert "Count words before returning the JSON" in fake.prompts[0]
     assert execution_worker.run_once().status == WorkerRunStatus.NO_JOB
     with factory() as session:
         job = session.get(ExecutionJob, job_id)
