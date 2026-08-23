@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 from dataclasses import dataclass
 
@@ -38,27 +39,35 @@ class WanxImageProvider:
         self.transport = transport
         self.download_transport = download_transport
 
-    def generate(self, prompt: str) -> GeneratedWanxImage:
+    def generate(
+        self, prompt: str, *, reference_image: bytes | None = None
+    ) -> GeneratedWanxImage:
         if not self.api_key:
             raise WanxImageExplicitFailure("Wanx credentials are unavailable")
         if not prompt.strip():
             raise WanxImageExplicitFailure("Wanx prompt is empty")
+        content: list[dict[str, str]] = []
+        if reference_image is not None:
+            content.append({"image": self._reference_data_url(reference_image)})
+        content.append({"text": prompt.strip()})
+        parameters = {
+            "size": "2K" if reference_image is not None else "1440*2560",
+            "n": 1,
+            "watermark": False,
+        }
+        if reference_image is None:
+            parameters["thinking_mode"] = True
         payload = {
             "model": self.settings.wanx_image_model,
             "input": {
                 "messages": [
                     {
                         "role": "user",
-                        "content": [{"text": prompt.strip()}],
+                        "content": content,
                     }
                 ]
             },
-            "parameters": {
-                "size": "1440*2560",
-                "n": 1,
-                "watermark": False,
-                "thinking_mode": True,
-            },
+            "parameters": parameters,
         }
         try:
             with httpx.Client(
@@ -106,3 +115,17 @@ class WanxImageProvider:
             else None
         )
         return GeneratedWanxImage(image, request_digest)
+
+    def _reference_data_url(self, content: bytes) -> str:
+        if not content or len(content) > self.settings.product_asset_max_bytes:
+            raise WanxImageExplicitFailure("Wanx reference image size is invalid")
+        if content.startswith(b"\x89PNG\r\n\x1a\n"):
+            media_type = "image/png"
+        elif content.startswith(b"\xff\xd8\xff"):
+            media_type = "image/jpeg"
+        elif content.startswith(b"RIFF") and content[8:12] == b"WEBP":
+            media_type = "image/webp"
+        else:
+            raise WanxImageExplicitFailure("Wanx reference image format is invalid")
+        encoded = base64.b64encode(content).decode("ascii")
+        return f"data:{media_type};base64,{encoded}"

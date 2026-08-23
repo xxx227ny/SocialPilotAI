@@ -1,4 +1,5 @@
 import io
+import json
 import wave
 
 import httpx
@@ -105,4 +106,58 @@ def test_wanx_image_uses_token_plan_once_without_leaking_bearer() -> None:
     ).generate("A premium product photograph")
     assert generated.content == image
     assert generated.request_id_digest is not None
+    assert calls == {"generation": 1, "download": 1}
+
+
+def test_wanx_image_sends_one_controlled_reference_before_prompt() -> None:
+    calls = {"generation": 0, "download": 0}
+    reference = b"\x89PNG\r\n\x1a\n" + b"reference"
+    output = b"\x89PNG\r\n\x1a\n" + b"output"
+
+    def generate(request: httpx.Request) -> httpx.Response:
+        calls["generation"] += 1
+        payload = json.loads(request.content)
+        content = payload["input"]["messages"][0]["content"]
+        assert content == [
+            {"image": ("data:image/png;base64,iVBORw0KGgpyZWZlcmVuY2U=")},
+            {"text": "Keep the exact product identity and remove all text."},
+        ]
+        assert payload["parameters"] == {
+            "size": "2K",
+            "n": 1,
+            "watermark": False,
+        }
+        return httpx.Response(
+            200,
+            json={
+                "output": {
+                    "choices": [
+                        {
+                            "message": {
+                                "content": [
+                                    {"image": "https://signed.invalid/image.png"}
+                                ]
+                            }
+                        }
+                    ]
+                },
+                "request_id": "safe-request-id",
+            },
+        )
+
+    def download(request: httpx.Request) -> httpx.Response:
+        calls["download"] += 1
+        assert "authorization" not in request.headers
+        return httpx.Response(200, content=output)
+
+    settings = Settings(wanx_api_key="fake-token-plan-key")
+    generated = WanxImageProvider(
+        settings,
+        transport=httpx.MockTransport(generate),
+        download_transport=httpx.MockTransport(download),
+    ).generate(
+        "Keep the exact product identity and remove all text.",
+        reference_image=reference,
+    )
+    assert generated.content == output
     assert calls == {"generation": 1, "download": 1}
