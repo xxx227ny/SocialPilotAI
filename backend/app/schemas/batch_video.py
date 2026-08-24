@@ -104,6 +104,8 @@ class BatchVideoJobRead(BaseModel):
     cost_scope: str
     downstream_provider_cost_status: str
     cost_confirmed: bool
+    qwen_script_call_quota: int
+    qwen_script_calls_reserved: int
     frozen_constraints_json: dict[str, object]
     created_at: datetime
     updated_at: datetime

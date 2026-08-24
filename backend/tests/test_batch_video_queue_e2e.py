@@ -89,6 +89,11 @@ def test_exact_expansion_idempotency_worker_and_provider_free(tmp_path: Path) ->
         assert session.query(BatchVideoVariant).count() == 18
         assert session.query(ExecutionJob).count() == 18
         assert len({job.concurrency_key for job in session.query(ExecutionJob)}) == 3
+        batch = session.query(BatchVideoJob).one()
+        assert batch.qwen_script_call_quota == 18
+        assert batch.qwen_script_calls_reserved == 0
+        assert first.batch.qwen_script_call_quota == 18
+        assert first.batch.qwen_script_calls_reserved == 0
 
     registry = build_execution_handler_registry(
         session_factory=sessions,

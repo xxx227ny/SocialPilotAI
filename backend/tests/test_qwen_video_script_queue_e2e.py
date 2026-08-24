@@ -197,6 +197,81 @@ def enqueue(session, variant, strategy, settings, key: str):
     ), payload
 
 
+def test_one_batch_can_reserve_one_qwen_script_job_per_variant(db_session) -> None:
+    first = ready_variant(db_session)
+    first.batch.variant_count = 3
+    first.batch.qwen_script_call_quota = 3
+    variants = [first]
+    for index, platform in enumerate(("tiktok", "instagram"), 2):
+        variant = BatchVideoVariant(
+            batch_video_job_id=first.batch_video_job_id,
+            product_id=first.product_id,
+            platform=platform,
+            variant_index=1,
+            duration_seconds=15,
+            aspect_ratio="9:16",
+            language="zh-CN",
+            creative_angle="proof",
+            brand_kit_version_id=first.brand_kit_version_id,
+            brand_kit_version_digest=first.brand_kit_version_digest,
+            source_digest=f"{index + 500:064x}",
+            idempotency_key=f"multi-script-variant-{index}",
+            status="READY_FOR_SCRIPT",
+            result_entity_type="BatchVideoVariant",
+            result_entity_id=index,
+        )
+        db_session.add(variant)
+        variants.append(variant)
+    db_session.commit()
+    strategy = strategy_for(db_session, first.product_id)
+    settings = qwen_settings()
+
+    created = [
+        enqueue(db_session, variant, strategy, settings, f"multi-script-{variant.id}")
+        for variant in variants
+    ]
+    assert len({result.job.id for result, _ in created}) == 3
+    assert all(result.reused is False for result, _ in created)
+    assert first.batch.qwen_script_calls_reserved == 3
+    assert db_session.query(ExecutionJob).count() == 3
+
+    repeated = QwenVideoScriptJobService(db_session, settings).enqueue(
+        first.id, created[0][1]
+    )
+    assert repeated.reused is True
+    assert repeated.job.id == created[0][0].job.id
+    assert first.batch.qwen_script_calls_reserved == 3
+
+    blocked_request = QwenScriptPreflightRequest(
+        idempotency_key="multi-script-over-quota",
+        strategy_id=strategy.id,
+        copy_matrix_id=None,
+        parent_version_id=None,
+    )
+    blocked = QwenVideoScriptPreflightService(db_session, settings).run(
+        first.id, blocked_request
+    )
+    assert blocked.ready_for_execution is False
+    assert blocked.quota_remaining == 0
+    blocked_payload = QwenScriptJobCreateRequest(
+        **blocked_request.model_dump(),
+        frozen_input_digest=blocked.frozen_input_digest,
+        preflight_digest=blocked.preflight_digest,
+        preflight_expires_at=blocked.expires_at,
+        estimated_cost_min=blocked.estimated_cost_min,
+        estimated_cost_max=blocked.estimated_cost_max,
+        currency=blocked.currency,
+        cost_estimate_basis=blocked.cost_estimate_basis,
+        cost_confirmed=True,
+    )
+    with pytest.raises(AppError, match="Preflight is not ready"):
+        QwenVideoScriptJobService(db_session, settings).enqueue(
+            first.id, blocked_payload
+        )
+    assert first.batch.qwen_script_calls_reserved == 3
+    assert db_session.query(ExecutionJob).count() == 3
+
+
 def worker(factory, provider, settings) -> ExecutionWorker:
     registry = ExecutionHandlerRegistry()
     registry.register(

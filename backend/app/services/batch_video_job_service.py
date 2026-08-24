@@ -96,6 +96,11 @@ class BatchVideoJobService:
             cost_scope="orchestration_only",
             downstream_provider_cost_status="NOT_ESTIMATED",
             cost_confirmed=data.cost_confirmed,
+            # Every frozen Variant may require one independently billed Qwen
+            # script request.  Reserve the batch ceiling up front instead of
+            # inheriting the legacy single-Variant default.
+            qwen_script_call_quota=checked.variant_count,
+            qwen_script_calls_reserved=0,
             frozen_constraints_json={
                 "contract_version": checked.contract_version,
                 "product_ids": sorted(data.product_ids),
