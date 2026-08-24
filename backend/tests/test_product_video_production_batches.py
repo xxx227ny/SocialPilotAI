@@ -1,6 +1,7 @@
 import hashlib
 from decimal import Decimal
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -183,10 +184,44 @@ def test_production_batch_rejects_tampering_and_cross_product_recovery(
     assert all(word not in safe for word in ("sql", "select ", "path", "traceback"))
 
 
+@pytest.mark.parametrize(
+    "product_profile",
+    [
+        pytest.param(None, id="generic-consumer-product"),
+        pytest.param(
+            {
+                "name": "Smart Pet Feeder",
+                "category": "Pet care appliance",
+                "description": (
+                    "A sealed automatic feeder that serves scheduled portions."
+                ),
+                "selling_points": [
+                    "Scheduled portions",
+                    "Sealed food storage",
+                    "Easy-clean bowl",
+                ],
+                "concept": "Show a calm, reliable feeding routine",
+                "hook": "Never miss a scheduled meal",
+                "narration": (
+                    "Serve consistent portions on schedule and keep food protected."
+                ),
+                "subtitle": "Scheduled portions. Protected food.",
+                "visual": "Show the complete feeder beside a pet dining area",
+                "action": "Dispense one measured portion into the visible bowl",
+            },
+            id="smart-pet-feeder",
+        ),
+    ],
+)
 def test_advance_enqueues_wanx_jobs_once_and_recovers_exact_assets(
-    client: TestClient, db_session: Session, tmp_path
+    client: TestClient,
+    db_session: Session,
+    tmp_path,
+    product_profile: dict[str, object] | None,
 ) -> None:
-    product, asset, selections = create_three_platform_sources(db_session)
+    product, asset, selections = create_three_platform_sources(
+        db_session, product_profile
+    )
     app.dependency_overrides[get_settings] = lambda: _settings(tmp_path)
     payload = {
         "reference_product_asset_id": asset.id,
@@ -229,6 +264,15 @@ def test_advance_enqueues_wanx_jobs_once_and_recovers_exact_assets(
     assert len(jobs) == 6
     assert {job.status for job in jobs} == {"QUEUED"}
     assert sum(job.estimated_cost for job in jobs) == Decimal("0.60")
+    for job in jobs:
+        prompt = job.input_payload["prompt"]
+        assert product.name in prompt
+        assert product.category in prompt
+        assert all(point in prompt for point in product.selling_points)
+        assert all(
+            forbidden not in prompt.casefold()
+            for forbidden in ("blender", "smoothie", "juicer", "榨汁")
+        )
     before_updated_at = {
         item.id: item.updated_at
         for item in db_session.query(ProductVideoProductionItem).all()
@@ -599,6 +643,16 @@ def test_advance_enqueues_wanx_jobs_once_and_recovers_exact_assets(
         job.input_payload["music_artifact_id"] is None for job in enhancement_jobs
     )
     assert db_session.query(VideoCompositionEnhancement).count() == 3
+    expected_subtitle = (
+        str(product_profile["subtitle"])
+        if product_profile is not None
+        else "Product demonstration"
+    )
+    assert all(
+        [cue["text"] for cue in enhancement.subtitle_cues_json]
+        == [expected_subtitle, expected_subtitle]
+        for enhancement in db_session.query(VideoCompositionEnhancement).all()
+    )
     assert db_session.query(ExecutionJob).count() == 22
 
     repeated_enhancement = client.post(endpoint)

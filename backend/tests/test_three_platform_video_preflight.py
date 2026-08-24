@@ -22,12 +22,26 @@ from app.services.video_script_preflight import _model_payload, stable_digest
 
 def create_three_platform_sources(
     session: Session,
+    product_profile: dict[str, object] | None = None,
 ) -> tuple[Product, ProductAsset, list]:
+    profile = {
+        "name": "Generic Demo Product",
+        "category": "Consumer product",
+        "description": "A generic product used to verify three-platform production.",
+        "selling_points": ["Portable", "Durable"],
+        "concept": "Demonstrate the real product benefit",
+        "hook": "See the product in action",
+        "narration": "A concise product demonstration.",
+        "subtitle": "Product demonstration",
+        "visual": "Show the complete product",
+        "action": "Demonstrate a supported product action",
+    }
+    profile.update(product_profile or {})
     product = Product(
-        name="Generic Demo Product",
-        category="Consumer product",
-        description="A generic product used to verify three-platform production.",
-        selling_points=["Portable", "Durable"],
+        name=str(profile["name"]),
+        category=str(profile["category"]),
+        description=str(profile["description"]),
+        selling_points=list(profile["selling_points"]),
         target_markets=["US"],
     )
     session.add(product)
@@ -115,12 +129,12 @@ def create_three_platform_sources(
             strategy_digest=strategy_digest,
             platform=platform,
             language="en-US",
-            title=f"{platform} product demo",
-            concept="Demonstrate the real product benefit",
-            hook="See the product in action",
-            full_narration="A concise product demonstration.",
+            title=f"{platform} · {profile['name']}",
+            concept=str(profile["concept"]),
+            hook=str(profile["hook"]),
+            full_narration=str(profile["narration"]),
             cta="Learn more",
-            full_subtitle_draft="A concise product demonstration.",
+            full_subtitle_draft=str(profile["narration"]),
             created_by_kind="QWEN_PROVIDER",
             review_status="UNREVIEWED",
             provider_name="qwen",
@@ -132,10 +146,10 @@ def create_three_platform_sources(
                 start_ms=start_ms,
                 end_ms=end_ms,
                 shot_type="product_demo",
-                visual_description="Show the complete product",
-                action_description="Demonstrate a supported product action",
-                narration="A concise product demonstration.",
-                subtitle_draft="Product demonstration",
+                visual_description=str(profile["visual"]),
+                action_description=str(profile["action"]),
+                narration=str(profile["narration"]),
+                subtitle_draft=str(profile["subtitle"]),
             )
             for sequence, (start_ms, end_ms) in enumerate(((0, 7000), (7000, 15000)), 1)
         ]
