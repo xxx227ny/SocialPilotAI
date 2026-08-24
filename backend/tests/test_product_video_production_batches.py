@@ -12,6 +12,7 @@ from app.models import (
     ProductVideoProductionBatch,
     ProductVideoProductionItem,
     VideoProject,
+    VideoRenderArtifact,
     VideoRenderTask,
 )
 from tests.test_three_platform_video_preflight import create_three_platform_sources
@@ -322,6 +323,104 @@ def test_advance_enqueues_wanx_jobs_once_and_recovers_exact_assets(
         for item in task_recovery.json()["items"]
     )
     assert db_session.query(ExecutionJob).count() == 9
+
+    refresh_submit = client.post(endpoint)
+    assert refresh_submit.status_code == 200
+    refresh_items = refresh_submit.json()["items"]
+    refresh_jobs = (
+        db_session.query(ExecutionJob)
+        .filter_by(job_type="happyhorse.product_video.refresh.v1")
+        .order_by(ExecutionJob.id)
+        .all()
+    )
+    assert len(refresh_jobs) == 3
+    assert db_session.query(ExecutionJob).count() == 12
+    assert all(
+        item["stage_state_json"]["happyhorse_refresh_count"] == 1
+        and item["stage_state_json"]["happyhorse_refresh_job_id"]
+        in {job.id for job in refresh_jobs}
+        for item in refresh_items
+    )
+
+    repeated_refresh = client.post(endpoint)
+    assert repeated_refresh.status_code == 200
+    assert db_session.query(ExecutionJob).count() == 12
+
+    pending_item = refresh_items[0]
+    for item in refresh_items:
+        job = db_session.get(
+            ExecutionJob, item["stage_state_json"]["happyhorse_refresh_job_id"]
+        )
+        task = db_session.get(VideoRenderTask, item["cloud_render_task_id"])
+        job.status = "SUCCEEDED"
+        job.completed_at = job.created_at
+        if item["id"] == pending_item["id"]:
+            job.result_entity_type = "video_render_task"
+            job.result_entity_id = task.id
+            continue
+        artifact = VideoRenderArtifact(
+            video_render_task_id=task.id,
+            storage_path=f"happyhorse/item-{item['id']}.mp4",
+            artifact_metadata={"source": "fake-test"},
+        )
+        db_session.add(artifact)
+        db_session.flush()
+        job.result_entity_type = "video_render_artifact"
+        job.result_entity_id = artifact.id
+    db_session.commit()
+
+    first_refresh = client.post(endpoint)
+    assert first_refresh.status_code == 200
+    by_id = {item["id"]: item for item in first_refresh.json()["items"]}
+    assert by_id[pending_item["id"]]["stage"] == "GENERATING_VIDEO"
+    assert (
+        by_id[pending_item["id"]]["stage_state_json"]["happyhorse_refresh_job_id"]
+        is None
+    )
+    assert {
+        item["stage"]
+        for item in first_refresh.json()["items"]
+        if item["id"] != pending_item["id"]
+    } == {"COMPOSING"}
+
+    second_refresh = client.post(endpoint)
+    assert second_refresh.status_code == 200
+    pending_after = next(
+        item
+        for item in second_refresh.json()["items"]
+        if item["id"] == pending_item["id"]
+    )
+    assert pending_after["stage_state_json"]["happyhorse_refresh_count"] == 2
+    assert db_session.query(ExecutionJob).count() == 13
+    final_refresh_job = db_session.get(
+        ExecutionJob,
+        pending_after["stage_state_json"]["happyhorse_refresh_job_id"],
+    )
+    pending_task = db_session.get(
+        VideoRenderTask, pending_after["cloud_render_task_id"]
+    )
+    pending_artifact = VideoRenderArtifact(
+        video_render_task_id=pending_task.id,
+        storage_path=f"happyhorse/item-{pending_item['id']}.mp4",
+        artifact_metadata={"source": "fake-test"},
+    )
+    db_session.add(pending_artifact)
+    db_session.flush()
+    final_refresh_job.status = "SUCCEEDED"
+    final_refresh_job.result_entity_type = "video_render_artifact"
+    final_refresh_job.result_entity_id = pending_artifact.id
+    final_refresh_job.completed_at = final_refresh_job.created_at
+    db_session.commit()
+
+    all_downloaded = client.post(endpoint)
+    assert all_downloaded.status_code == 200
+    assert {item["stage"] for item in all_downloaded.json()["items"]} == {"COMPOSING"}
+    assert all(
+        item["cloud_render_artifact_id"] is not None
+        for item in all_downloaded.json()["items"]
+    )
+    assert db_session.query(VideoRenderArtifact).count() == 3
+    assert db_session.query(ExecutionJob).count() == 13
 
 
 def test_advance_failure_and_controls_are_provider_job_scoped(

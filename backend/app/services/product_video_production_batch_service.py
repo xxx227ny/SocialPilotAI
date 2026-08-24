@@ -12,6 +12,7 @@ from app.models import (
     ProductVideoProductionBatch,
     ProductVideoProductionItem,
     VideoProject,
+    VideoRenderArtifact,
     VideoRenderTask,
     VideoScriptVersion,
 )
@@ -19,6 +20,7 @@ from app.models.product import utc_now
 from app.schemas.product_marketing_video import (
     HappyHorseReferenceImage,
     HappyHorseVideoPreflightRequest,
+    HappyHorseVideoRefreshRequest,
     HappyHorseVideoSubmitRequest,
     ProductImageShotRequest,
     ProductVideoPrepareRequest,
@@ -44,6 +46,7 @@ PLATFORM_REQUEST_NAMES = {
     "instagram": "INSTAGRAM_REELS",
 }
 SHOT_MOTIONS = ("zoom_in", "pan_right", "zoom_out", "pan_left")
+MAX_HAPPYHORSE_REFRESHES = 90
 
 
 class ProductVideoProductionBatchService:
@@ -397,6 +400,7 @@ class ProductVideoProductionBatchService:
 
     def _refresh_happyhorse_submit(self, item: ProductVideoProductionItem) -> None:
         if item.cloud_render_task_id is not None:
+            self._advance_happyhorse_refresh(item)
             return
         job_id = item.stage_state_json.get("happyhorse_submit_job_id")
         job = (
@@ -427,6 +431,85 @@ class ProductVideoProductionBatchService:
             self._fail_item(item, "PRODUCTION_HAPPYHORSE_RESULT_INVALID")
             return
         item.cloud_render_task_id = task.id
+        item.stage_state_json = {
+            **item.stage_state_json,
+            "happyhorse_refresh_count": 0,
+            "happyhorse_refresh_job_id": None,
+        }
+
+    def _advance_happyhorse_refresh(self, item: ProductVideoProductionItem) -> None:
+        task = self.session.get(VideoRenderTask, item.cloud_render_task_id)
+        if (
+            task is None
+            or task.video_project_id != item.video_project_id
+            or task.provider_name != "happyhorse"
+        ):
+            self._fail_item(item, "PRODUCTION_HAPPYHORSE_TASK_INVALID")
+            return
+        raw_job_id = item.stage_state_json.get("happyhorse_refresh_job_id")
+        if isinstance(raw_job_id, int):
+            job = self.session.get(ExecutionJob, raw_job_id)
+            if job is None:
+                self._fail_item(item, "PRODUCTION_HAPPYHORSE_REFRESH_JOB_INVALID")
+                return
+            if job.status == "SUBMIT_UNKNOWN":
+                self._fail_item(item, "PRODUCTION_HAPPYHORSE_REFRESH_UNKNOWN")
+                return
+            if job.status in {"FAILED", "CANCELLED"}:
+                self._fail_item(item, "PRODUCTION_HAPPYHORSE_REFRESH_FAILED")
+                return
+            if job.status != "SUCCEEDED":
+                return
+            if job.result_entity_type == "video_render_artifact":
+                artifact = self.session.get(VideoRenderArtifact, job.result_entity_id)
+                if (
+                    artifact is None
+                    or artifact.video_render_task_id != task.id
+                    or not artifact.storage_path
+                ):
+                    self._fail_item(item, "PRODUCTION_HAPPYHORSE_ARTIFACT_INVALID")
+                    return
+                item.cloud_render_artifact_id = artifact.id
+                item.stage = "COMPOSING"
+                return
+            if (
+                job.result_entity_type != "video_render_task"
+                or job.result_entity_id != task.id
+            ):
+                self._fail_item(item, "PRODUCTION_HAPPYHORSE_REFRESH_RESULT_INVALID")
+                return
+            item.stage_state_json = {
+                **item.stage_state_json,
+                "happyhorse_refresh_job_id": None,
+            }
+            return
+
+        refresh_count = item.stage_state_json.get("happyhorse_refresh_count", 0)
+        if not isinstance(refresh_count, int) or refresh_count < 0:
+            self._fail_item(item, "PRODUCTION_HAPPYHORSE_REFRESH_STATE_INVALID")
+            return
+        if refresh_count >= MAX_HAPPYHORSE_REFRESHES:
+            self._fail_item(item, "PRODUCTION_HAPPYHORSE_REFRESH_LIMIT")
+            return
+        next_count = refresh_count + 1
+        submitted = HappyHorseProductVideoService(
+            self.session, self.settings
+        ).enqueue_refresh(
+            item.batch.product_id,
+            task.id,
+            HappyHorseVideoRefreshRequest(
+                video_project_id=item.video_project_id,
+                refresh_request_id=(
+                    f"production:{item.production_batch_id}:item:{item.id}:"
+                    f"refresh:{next_count}"
+                ),
+            ),
+        )
+        item.stage_state_json = {
+            **item.stage_state_json,
+            "happyhorse_refresh_count": next_count,
+            "happyhorse_refresh_job_id": submitted.job.id,
+        }
 
     @staticmethod
     def _fail_item(item: ProductVideoProductionItem, code: str) -> None:
