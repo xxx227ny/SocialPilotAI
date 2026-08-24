@@ -150,14 +150,22 @@ def test_wanx_job_freezes_and_resolves_exact_product_reference(
     assert submitted.job.input_payload["reference_product_asset_id"] == asset.id
     assert submitted.job.input_payload["reference_product_asset_sha256"] == digest
     assert "authoritative product identity" in submitted.job.input_payload["prompt"]
-    assert "zero written characters" in submitted.job.input_payload["prompt"]
+    assert "Add zero new written characters" in submitted.job.input_payload["prompt"]
     assert (
         "Never add, move, or redesign buttons, ports, cables"
         in (submitted.job.input_payload["prompt"])
     )
     assert (
-        "ingredients, liquid motion, natural hand placement"
+        "category-appropriate visible state changes, natural product usage"
         in (submitted.job.input_payload["prompt"])
+    )
+    assert (
+        "Never assume food, liquid, electronics"
+        in submitted.job.input_payload["prompt"]
+    )
+    assert (
+        "Preserve packaging, labels, and brand marks"
+        in submitted.job.input_payload["prompt"]
     )
     assert service.reference_content(product.id, asset.id, digest) == content
     with pytest.raises(AppError, match="reference product asset"):
@@ -297,8 +305,9 @@ def test_happyhorse_preflight_and_enqueue_freeze_exact_reference_images(
     prompt = service._prompt(project)
     assert "Visibly demonstrate the scripted product operation and benefits" in prompt
     assert "rather than showing only a static rotating hero shot" in prompt
-    assert "Brief hands may safely load ingredients or operate the product" in prompt
-    assert "never expose blades" in prompt
+    assert "supported by its category, script, and reference images" in prompt
+    assert "Never expose hazardous internals" in prompt
+    assert "Preserve existing product identity marks" in prompt
     checked = service.preflight(product.id, request)
     assert checked.ready is True
     submit = HappyHorseVideoSubmitRequest(

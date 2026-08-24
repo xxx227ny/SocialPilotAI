@@ -260,11 +260,14 @@ class HappyHorseProductVideoService:
             "reference images to keep the exact same product identity in every "
             "shot. Visibly demonstrate the scripted product operation and benefits, "
             "rather than showing only a static rotating hero shot. Brief hands may "
-            "safely load ingredients or operate the product, but show no faces or "
-            "full bodies. Keep every lid secured while powered, never expose blades, "
-            "and avoid unsafe splashes, ingestion, or unsupported capabilities. Use "
-            "smooth cinematic motion and coherent commercial lighting. No subtitles, "
-            "logos, watermarks, or generated on-screen text."
+            "safely interact with the product only in ways supported by its category, "
+            "script, and reference images, but show no faces or full bodies. Keep all "
+            "safety covers and guards shown in the reference secured during operation. "
+            "Never expose hazardous internals, depict direct human contact with active "
+            "mechanisms, or invent unsupported capabilities. Use smooth cinematic "
+            "motion and coherent commercial lighting. Preserve existing product "
+            "identity marks, but add no subtitles, logos, watermarks, UI, or generated "
+            "on-screen text."
         )
 
     def _existing(self, key: str) -> ExecutionJob | None:
