@@ -4,6 +4,7 @@ import type {
   HappyHorseVideoPreflight,
   MarketingJobResult,
   ProductVideoPrepare,
+  ProductVideoProductionResult,
   ProductVideoSource,
   ThreePlatformVideoPreflight,
   UploadedProductImage,
@@ -29,6 +30,69 @@ export async function preflightThreePlatformVideo(
   );
   return response.data;
 }
+
+export async function createProductVideoProductionBatch(
+  productId: number,
+  payload: Record<string, unknown>,
+  signal?: AbortSignal,
+) {
+  const response = await apiClient.post<ProductVideoProductionResult>(
+    `/products/${productId}/real-product-video/production-batches`,
+    payload,
+    { signal },
+  );
+  return response.data;
+}
+
+export async function getProductVideoProductionBatch(
+  productId: number,
+  batchId: number,
+  signal?: AbortSignal,
+) {
+  const response = await apiClient.get<ProductVideoProductionResult>(
+    `/products/${productId}/real-product-video/production-batches/${batchId}`,
+    { signal },
+  );
+  return response.data;
+}
+
+async function controlProductVideoProductionBatch(
+  productId: number,
+  batchId: number,
+  action: "advance" | "pause" | "resume" | "cancel",
+  signal?: AbortSignal,
+) {
+  const response = await apiClient.post<ProductVideoProductionResult>(
+    `/products/${productId}/real-product-video/production-batches/${batchId}/${action}`,
+    undefined,
+    { signal },
+  );
+  return response.data;
+}
+
+export const advanceProductVideoProductionBatch = (
+  productId: number,
+  batchId: number,
+  signal?: AbortSignal,
+) => controlProductVideoProductionBatch(productId, batchId, "advance", signal);
+
+export const pauseProductVideoProductionBatch = (
+  productId: number,
+  batchId: number,
+  signal?: AbortSignal,
+) => controlProductVideoProductionBatch(productId, batchId, "pause", signal);
+
+export const resumeProductVideoProductionBatch = (
+  productId: number,
+  batchId: number,
+  signal?: AbortSignal,
+) => controlProductVideoProductionBatch(productId, batchId, "resume", signal);
+
+export const cancelProductVideoProductionBatch = (
+  productId: number,
+  batchId: number,
+  signal?: AbortSignal,
+) => controlProductVideoProductionBatch(productId, batchId, "cancel", signal);
 
 export async function prepareProductVideo(
   productId: number,

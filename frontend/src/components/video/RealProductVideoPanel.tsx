@@ -2,14 +2,20 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { getApiErrorMessage } from "../../api/client";
 import {
+  advanceProductVideoProductionBatch,
+  cancelProductVideoProductionBatch,
+  createProductVideoProductionBatch,
   getExactMarketingJob,
   getProductImageAsset,
+  getProductVideoProductionBatch,
   happyHorseVideoContentUrl,
   listProductVideoSources,
+  pauseProductVideoProductionBatch,
   preflightThreePlatformVideo,
   preflightHappyHorseVideo,
   prepareProductVideo,
   refreshHappyHorseVideo,
+  resumeProductVideoProductionBatch,
   submitHappyHorseVideo,
   submitProductImageJob,
   submitWanxProductImageJob,
@@ -32,6 +38,7 @@ import { usePresentationMode } from "../../context/PresentationModeContext";
 import type { Product } from "../../types/product";
 import type {
   ProductVideoSource,
+  ProductVideoProductionResult,
   RealProductVideoPhase,
   ThreePlatformVideoPreflight,
   UploadedProductImage,
@@ -39,6 +46,10 @@ import type {
 import {
   buildThreePlatformPreflightPayload,
   pollExactJob,
+  productionBatchTerminal,
+  productionFailureMessage,
+  productionProgress,
+  productionStageLabel,
   RealProductVideoOperation,
   requireSuccessfulResult,
   selectThreePlatformSources,
@@ -55,12 +66,11 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
   const [message, setMessage] = useState("");
   const [result, setResult] = useState<{ video: number; subtitle: number } | null>(null);
   const [cloudVideoArtifactId, setCloudVideoArtifactId] = useState<number | null>(null);
-  const [batchResults, setBatchResults] = useState<
-    Array<{ platform: string; video: number; subtitle: number }>
-  >([]);
   const [batchPreflight, setBatchPreflight] =
     useState<ThreePlatformVideoPreflight | null>(null);
   const [batchCostConfirmed, setBatchCostConfirmed] = useState(false);
+  const [production, setProduction] =
+    useState<ProductVideoProductionResult | null>(null);
   const referenceAssets = useMemo(
     () =>
       product.assets.filter(
@@ -77,6 +87,9 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
     () => sources.find((item) => item.variant_id === sourceId) ?? null,
     [sourceId, sources],
   );
+  const productionActive = Boolean(
+    production && !productionBatchTerminal(production.batch, production.items),
+  );
 
   useEffect(() => {
     operation.current.stop();
@@ -84,7 +97,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
     setSourceId(0);
     setResult(null);
     setCloudVideoArtifactId(null);
-    setBatchResults([]);
+    setProduction(null);
     setReferenceAssetId(referenceAssets[0]?.id ?? 0);
     if (!realProductVideoEnabled || isPresentation) return;
     const active = operation.current.begin();
@@ -102,6 +115,24 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
       });
     return () => operation.current.stop();
   }, [isPresentation, product.id, referenceAssets]);
+
+  useEffect(() => {
+    if (!realProductVideoEnabled || isPresentation) return;
+    const stored = window.localStorage.getItem(
+      `socialpilot.productionBatch.${product.id}`,
+    );
+    const batchId = Number(stored);
+    if (!Number.isInteger(batchId) || batchId <= 0) return;
+    const controller = new AbortController();
+    getProductVideoProductionBatch(product.id, batchId, controller.signal)
+      .then((value) => {
+        setProduction(value);
+      })
+      .catch(() => {
+        window.localStorage.removeItem(`socialpilot.productionBatch.${product.id}`);
+      });
+    return () => controller.abort();
+  }, [isPresentation, product.id]);
 
   useEffect(() => {
     setBatchPreflight(null);
@@ -556,7 +587,6 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
     if (!source) return;
     const active = operation.current.begin();
     setCloudVideoArtifactId(null);
-    setBatchResults([]);
     setMessage("");
     try {
       const output = await generateCloudFinal(source, active);
@@ -598,11 +628,59 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
     }
   }
 
+  function applyProduction(value: ProductVideoProductionResult) {
+    setProduction(value);
+  }
+
+  async function waitForProduction(signal: AbortSignal) {
+    await new Promise<void>((resolve, reject) => {
+      const timer = window.setTimeout(resolve, 2000);
+      signal.addEventListener(
+        "abort",
+        () => {
+          window.clearTimeout(timer);
+          reject(new DOMException("Aborted", "AbortError"));
+        },
+        { once: true },
+      );
+    });
+  }
+
+  async function driveProductionBatch(
+    initial: ProductVideoProductionResult,
+    active: { id: number; signal: AbortSignal },
+  ) {
+    let current = initial;
+    for (let attempt = 0; attempt < 1800; attempt += 1) {
+      if (current.batch.status === "PAUSED") return;
+      if (productionBatchTerminal(current.batch, current.items)) {
+        applyProduction(current);
+        if (current.batch.status === "SUCCEEDED") {
+          setPhase("SUCCEEDED");
+          setMessage("三平台完整成片已生成，可分别预览和下载。");
+        } else {
+          setPhase("FAILED");
+          setMessage("批次已结束，失败平台保留明确原因，成功平台结果仍可下载。");
+        }
+        return;
+      }
+      current = await advanceProductVideoProductionBatch(
+        product.id,
+        current.batch.id,
+        active.signal,
+      );
+      if (!operation.current.current(active.id)) return;
+      applyProduction(current);
+      if (!productionBatchTerminal(current.batch, current.items)) {
+        await waitForProduction(active.signal);
+      }
+    }
+    throw new Error("批量生产等待超时，已保留批次，可稍后继续。 ");
+  }
+
   async function generateThreePlatformBatch() {
-    const selected = selectThreePlatformSources(sources);
     const payload = buildThreePlatformPreflightPayload(sources, referenceAsset);
     if (
-      selected.length !== 3 ||
       !payload ||
       !batchPreflight?.ready ||
       !batchCostConfirmed
@@ -612,8 +690,8 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
     }
     const active = operation.current.begin();
     setResult(null);
-    setBatchResults([]);
-    setMessage("三平台批量将按顺序执行，任一失败即停止。每个平台包含万象图、HappyHorse视频和千问TTS调用。");
+    setPhase("GENERATING_IMAGES");
+    setMessage("正在创建可恢复的三平台生产批次……");
     try {
       const current = await preflightThreePlatformVideo(
         product.id,
@@ -623,26 +701,78 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
       if (!current.ready || current.input_digest !== batchPreflight.input_digest) {
         throw new Error("三平台生成条件或费用已变化，请重新检查并确认。");
       }
-      const completed: Array<{ platform: string; video: number; subtitle: number }> = [];
-      for (const selectedSource of selected) {
-        const output = await generateCloudFinal(
-          selectedSource,
-          active,
-          batchCostConfirmed,
-        );
-        completed.push({
-          platform: selectedSource.platform,
-          video: output.video,
-          subtitle: output.subtitle,
-        });
-        if (operation.current.current(active.id)) setBatchResults([...completed]);
-      }
-      if (operation.current.current(active.id)) {
-        setPhase("SUCCEEDED");
-        setMessage("TikTok、YouTube Shorts和Instagram Reels三条完整成片已生成。");
-      }
+      const created = await createProductVideoProductionBatch(
+        product.id,
+        {
+          ...payload,
+          input_digest: current.input_digest,
+          idempotency_key: `product-video-production:${product.id}:${current.input_digest}`,
+          cost_confirmed: true,
+        },
+        active.signal,
+      );
+      window.localStorage.setItem(
+        `socialpilot.productionBatch.${product.id}`,
+        String(created.batch.id),
+      );
+      applyProduction(created);
+      setMessage("三平台正在并行推进，刷新页面后仍可恢复此批次。");
+      await driveProductionBatch(created, active);
     } catch (error) {
-      fail(active.id, error, "三平台批量成片在首个失败处停止。");
+      fail(active.id, error, "三平台持久化生产失败。");
+    }
+  }
+
+  async function continueProductionBatch() {
+    if (!production) return;
+    const active = operation.current.begin();
+    try {
+      const resumed =
+        production.batch.status === "PAUSED"
+          ? await resumeProductVideoProductionBatch(
+              product.id,
+              production.batch.id,
+              active.signal,
+            )
+          : production;
+      applyProduction(resumed);
+      setMessage("已继续推进现有批次。");
+      await driveProductionBatch(resumed, active);
+    } catch (error) {
+      fail(active.id, error, "继续批次失败。");
+    }
+  }
+
+  async function pauseProductionBatch() {
+    if (!production) return;
+    const active = operation.current.begin();
+    try {
+      const paused = await pauseProductVideoProductionBatch(
+        product.id,
+        production.batch.id,
+        active.signal,
+      );
+      applyProduction(paused);
+      setMessage("批次已暂停，已完成内容和当前进度均已保留。");
+    } catch (error) {
+      fail(active.id, error, "暂停批次失败。");
+    }
+  }
+
+  async function cancelProductionBatch() {
+    if (!production) return;
+    const active = operation.current.begin();
+    try {
+      const cancelled = await cancelProductVideoProductionBatch(
+        product.id,
+        production.batch.id,
+        active.signal,
+      );
+      applyProduction(cancelled);
+      setPhase("FAILED");
+      setMessage("批次已取消；已生成的安全结果仍然保留。");
+    } catch (error) {
+      fail(active.id, error, "取消批次失败。");
     }
   }
 
@@ -741,6 +871,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
           !referenceAsset ||
           !batchPreflight?.ready ||
           !batchCostConfirmed ||
+          productionActive ||
           !["IDLE", "FAILED", "SUCCEEDED"].includes(phase)
         }
         onClick={() => void generateThreePlatformBatch()}
@@ -748,9 +879,86 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
         批量生成三平台完整成片
       </button>
       <p>
-        三平台批量将按顺序执行，每个平台会产生万象商品图、HappyHorse视频和千问TTS费用；
-        任一平台失败即停止，已完成结果会保留。
+        三个平台独立推进：一个平台失败不会阻塞其他平台；刷新页面后可按精确Batch继续。
       </p>
+      {production && (
+        <section className="production-batch-status" aria-label="三平台生产进度">
+          <header>
+            <strong>生产批次 #{production.batch.id}</strong>
+            <span>状态：{production.batch.status}</span>
+          </header>
+          <div className="production-batch-actions">
+            <button
+              type="button"
+              disabled={!["WAITING", "RUNNING"].includes(production.batch.status)}
+              onClick={() => void pauseProductionBatch()}
+            >
+              暂停批次
+            </button>
+            <button
+              type="button"
+              disabled={productionBatchTerminal(
+                production.batch,
+                production.items,
+              )}
+              onClick={() => void continueProductionBatch()}
+            >
+              继续推进
+            </button>
+            <button
+              type="button"
+              disabled={productionBatchTerminal(
+                production.batch,
+                production.items,
+              )}
+              onClick={() => void cancelProductionBatch()}
+            >
+              取消批次
+            </button>
+          </div>
+          <div className="production-platform-grid">
+            {production.items.map((item) => (
+              <article key={item.id} className="production-platform-card">
+                <strong>{item.platform}</strong>
+                <span>{productionStageLabel(item)}</span>
+                <progress value={productionProgress(item)} max={100} />
+                <small>{productionProgress(item)}%</small>
+                {item.safe_error_code && (
+                  <p role="alert">
+                    {productionFailureMessage(item.safe_error_code)}
+                  </p>
+                )}
+                {item.final_video_artifact_id && item.subtitle_artifact_id && (
+                  <div>
+                    <video
+                      controls
+                      src={compositionEnhancementContentUrl(
+                        item.final_video_artifact_id,
+                      )}
+                    />
+                    <a
+                      href={compositionEnhancementContentUrl(
+                        item.final_video_artifact_id,
+                      )}
+                      download
+                    >
+                      下载{item.platform} MP4
+                    </a>
+                    <a
+                      href={compositionSubtitleContentUrl(
+                        item.subtitle_artifact_id,
+                      )}
+                      download
+                    >
+                      下载{item.platform} WebVTT
+                    </a>
+                  </div>
+                )}
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
       {cloudVideoArtifactId && (
         <div>
           <video controls src={happyHorseVideoContentUrl(cloudVideoArtifactId)} />
@@ -770,18 +978,6 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
           </a>
         </div>
       )}
-      {batchResults.map((item) => (
-        <div key={item.platform}>
-          <strong>{item.platform}</strong>
-          <video controls src={compositionEnhancementContentUrl(item.video)} />
-          <a href={compositionEnhancementContentUrl(item.video)} download>
-            下载{item.platform} MP4
-          </a>
-          <a href={compositionSubtitleContentUrl(item.subtitle)} download>
-            下载{item.platform} WebVTT
-          </a>
-        </div>
-      ))}
       {message && <p role="status">{message}</p>}
     </section>
   );

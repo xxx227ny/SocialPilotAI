@@ -99,6 +99,38 @@ try {
     null,
   );
   behavior++;
+  const productionItem = {
+    status: "RUNNING",
+    stage: "GENERATING_VOICEOVER",
+  };
+  assert.equal(state.productionStageLabel(productionItem), "千问生成配音");
+  assert.equal(state.productionProgress(productionItem), 78);
+  assert.match(
+    state.productionFailureMessage("PRODUCTION_WANX_SUBMIT_UNKNOWN"),
+    /避免重复扣费/,
+  );
+  behavior++;
+  assert.equal(
+    state.productionBatchTerminal(
+      { status: "PARTIAL_FAILED" },
+      [
+        { status: "SUCCEEDED" },
+        { status: "RUNNING" },
+      ],
+    ),
+    false,
+  );
+  assert.equal(
+    state.productionBatchTerminal(
+      { status: "PARTIAL_FAILED" },
+      [
+        { status: "SUCCEEDED" },
+        { status: "FAILED" },
+      ],
+    ),
+    true,
+  );
+  behavior++;
 
   const panel = await fs.readFile(
     path.join(root, "src/components/video/RealProductVideoPanel.tsx"),
@@ -108,6 +140,10 @@ try {
   const feature = await fs.readFile(path.join(root, "src/config/features.ts"), "utf8");
   const enhancementApi = await fs.readFile(
     path.join(root, "src/api/videoCompositionEnhancements.ts"),
+    "utf8",
+  );
+  const productVideoApi = await fs.readFile(
+    path.join(root, "src/api/productMarketingVideo.ts"),
     "utf8",
   );
   for (const required of [
@@ -139,7 +175,17 @@ try {
     "我已确认上述调用次数",
     "千问TTS费用尚未配置",
     "current.input_digest !== batchPreflight.input_digest",
-    "三平台批量将按顺序执行",
+    "三个平台独立推进",
+    "createProductVideoProductionBatch",
+    "advanceProductVideoProductionBatch",
+    "pauseProductVideoProductionBatch",
+    "resumeProductVideoProductionBatch",
+    "cancelProductVideoProductionBatch",
+    "socialpilot.productionBatch.",
+    "三平台生产进度",
+    "刷新页面后仍可恢复此批次",
+    "productionStageLabel",
+    "productionFailureMessage",
     "旁白若超过15秒会安全停止",
     "下载MP4",
     "下载WebVTT",
@@ -155,6 +201,10 @@ try {
     enhancementApi,
     /preflight_expires_at:\s*preflight\.expires_at/,
   );
+  for (const action of ["advance", "pause", "resume", "cancel"]) {
+    assert.ok(productVideoApi.includes(`\"${action}\"`));
+    safety++;
+  }
   safety += 5;
   console.log(
     `Real Product Video: ${behavior} product-state behavior scenarios, ${safety} static/safety assertions passed`,

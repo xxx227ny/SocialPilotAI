@@ -1,7 +1,74 @@
 import type { ExecutionJob } from "../../types/execution";
-import type { ProductVideoSource } from "../../types/productMarketingVideo";
+import type {
+  ProductVideoProductionBatch,
+  ProductVideoProductionItem,
+  ProductVideoSource,
+} from "../../types/productMarketingVideo";
 
 const PLATFORM_ORDER = ["tiktok", "youtube", "instagram"] as const;
+
+const STAGE_PROGRESS: Record<ProductVideoProductionItem["stage"], number> = {
+  QUEUED: 0,
+  GENERATING_IMAGES: 15,
+  PREPARING_VIDEO: 30,
+  GENERATING_VIDEO: 45,
+  COMPOSING: 65,
+  GENERATING_VOICEOVER: 78,
+  ENHANCING: 90,
+  COMPLETE: 100,
+};
+
+const STAGE_LABELS: Record<ProductVideoProductionItem["stage"], string> = {
+  QUEUED: "等待开始",
+  GENERATING_IMAGES: "万象生成商品画面",
+  PREPARING_VIDEO: "冻结视频方案",
+  GENERATING_VIDEO: "生成商品动态视频",
+  COMPOSING: "标准化视频画面",
+  GENERATING_VOICEOVER: "千问生成配音",
+  ENHANCING: "同步字幕并生成最终成片",
+  COMPLETE: "已完成",
+};
+
+const ERROR_MESSAGES: Record<string, string> = {
+  PRODUCTION_WANX_IMAGE_FAILED: "万象商品图生成失败，可保留其他平台结果后重试。",
+  PRODUCTION_WANX_SUBMIT_UNKNOWN: "万象提交状态不确定，系统已停止自动重试以避免重复扣费。",
+  PRODUCTION_HAPPYHORSE_SUBMIT_FAILED: "商品动态视频提交失败。",
+  PRODUCTION_HAPPYHORSE_SUBMIT_UNKNOWN:
+    "商品动态视频提交状态不确定，系统已停止自动重试以避免重复扣费。",
+  PRODUCTION_HAPPYHORSE_REFRESH_FAILED: "商品动态视频结果读取失败。",
+  PRODUCTION_HAPPYHORSE_REFRESH_LIMIT: "商品动态视频等待超时。",
+  PRODUCTION_COMPOSITION_FAILED: "视频标准化合成失败。",
+  PRODUCTION_VOICEOVER_FAILED: "千问配音生成失败。",
+  PRODUCTION_VOICEOVER_SUBMIT_UNKNOWN:
+    "千问配音提交状态不确定，系统已停止自动重试以避免重复扣费。",
+  PRODUCTION_ENHANCEMENT_FAILED: "最终字幕与音频合成失败。",
+  PRODUCTION_ENHANCEMENT_PERSIST_UNKNOWN: "最终成片保存状态不确定，请勿重复生成。",
+};
+
+export function productionStageLabel(item: ProductVideoProductionItem): string {
+  return STAGE_LABELS[item.stage] ?? item.stage;
+}
+
+export function productionProgress(item: ProductVideoProductionItem): number {
+  return STAGE_PROGRESS[item.stage] ?? 0;
+}
+
+export function productionFailureMessage(code?: string | null): string {
+  if (!code) return "生成失败，请查看当前步骤后重试。";
+  return ERROR_MESSAGES[code] ?? `生成失败（${code}）`;
+}
+
+export function productionBatchTerminal(
+  batch: ProductVideoProductionBatch,
+  items: ProductVideoProductionItem[] = [],
+): boolean {
+  if (["SUCCEEDED", "FAILED", "CANCELLED"].includes(batch.status)) return true;
+  return (
+    batch.status === "PARTIAL_FAILED" &&
+    items.length > 0 &&
+    items.every((item) => ["SUCCEEDED", "FAILED", "CANCELLED"].includes(item.status))
+  );
+}
 
 export function selectThreePlatformSources(
   sources: ProductVideoSource[],
