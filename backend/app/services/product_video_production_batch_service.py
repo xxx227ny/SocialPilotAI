@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
@@ -13,6 +15,7 @@ from app.models import (
     ProductVideoProductionItem,
     VideoComposition,
     VideoCompositionArtifact,
+    VideoCompositionAudioArtifact,
     VideoProject,
     VideoRenderArtifact,
     VideoRenderTask,
@@ -31,6 +34,7 @@ from app.schemas.product_marketing_video import (
     ProductVideoProductionCreateRequest,
     ProductVideoProductionItemRead,
     ThreePlatformVideoPreflightRequest,
+    VoiceoverSubmitRequest,
     WanxProductImageSubmitRequest,
 )
 from app.schemas.video_composition import (
@@ -48,6 +52,10 @@ from app.services.video_artifact_storage import LocalVideoArtifactStorage
 from app.services.video_composition_job_service import VideoCompositionJobService
 from app.services.video_composition_preflight import VideoCompositionPreflightService
 from app.services.video_script_project_bridge import VideoScriptProjectBridge
+from app.services.voiceover_generation_service import (
+    VOICEOVER_GENERATE_V1,
+    VoiceoverGenerationService,
+)
 from app.services.wanx_product_image_service import WanxProductImageService
 
 PLATFORM_REQUEST_NAMES = {
@@ -170,6 +178,8 @@ class ProductVideoProductionBatchService:
                 self._refresh_happyhorse_submit(item)
             elif item.stage == "COMPOSING":
                 self._advance_composition(batch, item)
+            elif item.stage == "GENERATING_VOICEOVER":
+                self._advance_voiceover(batch, item)
         self._sync_batch_status(batch)
         self.session.commit()
         return self._create_read(self._required(product_id, batch_id), reused=True)
@@ -638,6 +648,105 @@ class ProductVideoProductionBatchService:
             Path(self.settings.video_artifact_storage_root or ""),
             self.settings.video_artifact_max_bytes,
         )
+
+    def _advance_voiceover(
+        self,
+        batch: ProductVideoProductionBatch,
+        item: ProductVideoProductionItem,
+    ) -> None:
+        raw_job_id = item.stage_state_json.get("voiceover_job_id")
+        if isinstance(raw_job_id, int):
+            self._recover_voiceover(batch, item, raw_job_id)
+            return
+        if "voiceover_job_id" in item.stage_state_json:
+            self._fail_item(item, "PRODUCTION_VOICEOVER_JOB_INVALID")
+            return
+
+        composition = self.session.get(VideoComposition, item.composition_id)
+        composition_artifact = self.session.get(
+            VideoCompositionArtifact,
+            item.stage_state_json.get("composition_artifact_id"),
+        )
+        version = self.session.get(VideoScriptVersion, item.script_version_id)
+        if (
+            composition is None
+            or composition.product_id != batch.product_id
+            or composition.video_project_id != item.video_project_id
+            or composition.status != "SUCCEEDED"
+            or composition_artifact is None
+            or composition_artifact.composition_id != composition.id
+            or version is None
+            or version.product_id != batch.product_id
+            or version.batch_video_variant_id != item.batch_video_variant_id
+            or version.platform != item.platform
+            or not version.full_narration.strip()
+        ):
+            self._fail_item(item, "PRODUCTION_VOICEOVER_SOURCE_INVALID")
+            return
+
+        narration_digest = hashlib.sha256(
+            version.full_narration.encode("utf-8")
+        ).hexdigest()
+        submitted = VoiceoverGenerationService(self.session, self.settings).enqueue(
+            batch.product_id,
+            VoiceoverSubmitRequest(
+                composition_id=composition.id,
+                script_version_id=version.id,
+                language=version.language,
+                voice=self.settings.qwen_tts_voice,
+                speaking_rate=1.0,
+                narration_digest=narration_digest,
+                idempotency_key=(
+                    f"production:{batch.id}:item:{item.id}:qwen-voiceover"
+                ),
+            ),
+        )
+        item.stage_state_json = {
+            **item.stage_state_json,
+            "voiceover_job_id": submitted.job.id,
+        }
+
+    def _recover_voiceover(
+        self,
+        batch: ProductVideoProductionBatch,
+        item: ProductVideoProductionItem,
+        job_id: int,
+    ) -> None:
+        job = self.session.get(ExecutionJob, job_id)
+        if (
+            job is None
+            or job.job_type != VOICEOVER_GENERATE_V1
+            or job.source_type != "video_composition"
+            or job.source_id != item.composition_id
+        ):
+            self._fail_item(item, "PRODUCTION_VOICEOVER_JOB_INVALID")
+            return
+        if job.status == "SUBMIT_UNKNOWN":
+            self._fail_item(item, "PRODUCTION_VOICEOVER_SUBMIT_UNKNOWN")
+            return
+        if job.status in {"FAILED", "CANCELLED"}:
+            self._fail_item(item, "PRODUCTION_VOICEOVER_FAILED")
+            return
+        if job.status != "SUCCEEDED":
+            return
+        artifact = (
+            self.session.get(VideoCompositionAudioArtifact, job.result_entity_id)
+            if job.result_entity_type == "video_composition_audio_artifact"
+            and job.result_entity_id is not None
+            else None
+        )
+        if (
+            artifact is None
+            or artifact.kind != "voiceover"
+            or artifact.product_id != batch.product_id
+            or artifact.video_project_id != item.video_project_id
+            or artifact.composition_id != item.composition_id
+            or artifact.duration_ms != 15000
+        ):
+            self._fail_item(item, "PRODUCTION_VOICEOVER_RESULT_INVALID")
+            return
+        item.voiceover_artifact_id = artifact.id
+        item.stage = "ENHANCING"
 
     @staticmethod
     def _fail_item(item: ProductVideoProductionItem, code: str) -> None:

@@ -13,6 +13,7 @@ from app.models import (
     ProductVideoProductionItem,
     VideoComposition,
     VideoCompositionArtifact,
+    VideoCompositionAudioArtifact,
     VideoProject,
     VideoRenderArtifact,
     VideoRenderTask,
@@ -509,6 +510,64 @@ def test_advance_enqueues_wanx_jobs_once_and_recovers_exact_assets(
     )
     assert db_session.query(VideoCompositionArtifact).count() == 3
     assert db_session.query(ExecutionJob).count() == 16
+
+    voiceover_submitted = client.post(endpoint)
+    assert voiceover_submitted.status_code == 200
+    voiceover_items = voiceover_submitted.json()["items"]
+    assert {item["stage"] for item in voiceover_items} == {"GENERATING_VOICEOVER"}
+    voiceover_jobs = (
+        db_session.query(ExecutionJob)
+        .filter_by(job_type="tts.voiceover.generate.v1")
+        .order_by(ExecutionJob.id)
+        .all()
+    )
+    assert len(voiceover_jobs) == 3
+    assert all(
+        job.input_payload["target_duration_ms"] == 15000 for job in voiceover_jobs
+    )
+    assert all(
+        job.input_payload["voice"] == _settings(tmp_path).qwen_tts_voice
+        for job in voiceover_jobs
+    )
+    assert db_session.query(ExecutionJob).count() == 19
+
+    repeated_voiceover = client.post(endpoint)
+    assert repeated_voiceover.status_code == 200
+    assert db_session.query(ExecutionJob).count() == 19
+
+    for item in voiceover_items:
+        job = db_session.get(ExecutionJob, item["stage_state_json"]["voiceover_job_id"])
+        artifact = VideoCompositionAudioArtifact(
+            product_id=product.id,
+            video_project_id=item["video_project_id"],
+            composition_id=item["composition_id"],
+            kind="voiceover",
+            storage_path=f"voiceover/item-{item['id']}.wav",
+            content_type="audio/wav",
+            size_bytes=256,
+            sha256=f"{item['id'] + 100:064x}",
+            duration_ms=15000,
+            natural_duration_ms=12000,
+        )
+        db_session.add(artifact)
+        db_session.flush()
+        job.status = "SUCCEEDED"
+        job.result_entity_type = "video_composition_audio_artifact"
+        job.result_entity_id = artifact.id
+        job.completed_at = job.created_at
+    db_session.commit()
+
+    voiceover_recovered = client.post(endpoint)
+    assert voiceover_recovered.status_code == 200
+    assert {item["stage"] for item in voiceover_recovered.json()["items"]} == {
+        "ENHANCING"
+    }
+    assert all(
+        item["voiceover_artifact_id"] is not None
+        for item in voiceover_recovered.json()["items"]
+    )
+    assert db_session.query(VideoCompositionAudioArtifact).count() == 3
+    assert db_session.query(ExecutionJob).count() == 19
 
 
 def test_advance_failure_and_controls_are_provider_job_scoped(
