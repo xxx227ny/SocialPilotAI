@@ -25,6 +25,7 @@ if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
 }
 
 [System.IO.Directory]::CreateDirectory($temporaryRoot) | Out-Null
+$validationSucceeded = $false
 try {
     Push-Location $backendRoot
     try {
@@ -83,10 +84,11 @@ try {
 
     git -C $repoRoot diff --check
     Assert-ExitCode "Git whitespace check"
+    $validationSucceeded = $true
     Write-Host "SocialPilotAI quality gate passed without Provider calls."
 }
 finally {
-    if (Test-Path -LiteralPath $temporaryRoot) {
+    if ($validationSucceeded -and (Test-Path -LiteralPath $temporaryRoot)) {
         $resolvedTemporary = (Resolve-Path -LiteralPath $temporaryRoot).Path
         $resolvedParent = [System.IO.Directory]::GetParent($resolvedTemporary).FullName
         $expectedParent = [System.IO.Path]::GetFullPath($temporaryParent)
@@ -97,5 +99,8 @@ finally {
         ) {
             Remove-Item -LiteralPath $resolvedTemporary -Recurse -Force
         }
+    }
+    elseif (Test-Path -LiteralPath $temporaryRoot) {
+        Write-Warning "Validation evidence preserved at: $temporaryRoot"
     }
 }

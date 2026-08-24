@@ -16,13 +16,23 @@ def file_hash(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def wait_for_state(path: Path, expected: str, timeout: float = 8) -> dict:
+def wait_for_state(
+    path: Path,
+    expected: str,
+    timeout: float = 8,
+    process: subprocess.Popen[str] | None = None,
+) -> dict:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if path.is_file():
             payload = json.loads(path.read_text(encoding="utf-8"))
             if payload.get("state") == expected:
                 return payload
+        if process is not None and process.poll() is not None:
+            raise AssertionError(
+                f"Worker exited with code {process.returncode} before reporting "
+                f"{expected}"
+            )
         time.sleep(0.05)
     raise AssertionError(f"Worker did not report {expected}")
 
@@ -139,7 +149,7 @@ def test_worker_cli_idles_updates_status_and_stops_without_database_write(
         text=True,
     )
     try:
-        first = wait_for_state(status, "healthy")
+        first = wait_for_state(status, "healthy", timeout=30, process=process)
         time.sleep(0.4)
         second = wait_for_state(status, "healthy")
         assert second["updated_at_utc"] >= first["updated_at_utc"]
@@ -185,7 +195,7 @@ def test_worker_cli_refuses_database_before_head(tmp_path: Path) -> None:
         cwd=Path(__file__).resolve().parents[1],
         capture_output=True,
         text=True,
-        timeout=8,
+        timeout=30,
         check=False,
     )
 

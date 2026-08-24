@@ -277,7 +277,11 @@ def run_youtube_worker(
         session_factory=sessions,
         registry=registry,
         worker_id=worker_id,
-        heartbeat_interval_seconds=0.05,
+        # These publishing tests use one StaticPool connection. Keep the
+        # background heartbeat outside the short handler execution so it cannot
+        # race the handler transaction on that same in-memory SQLite connection.
+        # Dedicated Worker tests exercise concurrent heartbeat behavior.
+        heartbeat_interval_seconds=5,
     ).run_once()
 
 

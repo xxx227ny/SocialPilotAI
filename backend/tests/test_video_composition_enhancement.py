@@ -450,7 +450,7 @@ def test_enhancement_ffmpeg_builds_frozen_mix_graph(tmp_path, with_music) -> Non
     command = run.call_args_list[1].args[0]
     graph = command[command.index("-filter_complex") + 1]
     assert "loudnorm=" not in graph
-    assert "volume=5.980dB" in graph
+    assert "volume=6.510dB" in graph
     assert "alimiter=limit=0.891251:level=false" in graph
     assert "subtitles=filename='subtitles.ass':original_size=1080x1920" in graph
     assert "force_style" not in graph
@@ -548,22 +548,24 @@ def _valid_enhancement_media() -> EnhancementMedia:
 
 
 @pytest.mark.parametrize(
-    ("field", "value"),
+    ("field", "value", "failed_check"),
     [
-        ("duration_ms", 15035),
-        ("audio_profile", "he-aac"),
-        ("measured_lufs_milli", -17000),
-        ("measured_true_peak_millidb", -600),
-        ("audio_video_sync_offset_ms", 35),
-        ("longest_black_segment_ms", 35),
+        ("duration_ms", 15035, "duration"),
+        ("audio_profile", "he-aac", "audio_profile"),
+        ("measured_lufs_milli", -17000, "integrated_loudness"),
+        ("measured_true_peak_millidb", -600, "true_peak"),
+        ("audio_video_sync_offset_ms", 35, "sync"),
+        ("longest_black_segment_ms", 35, "black_segment"),
     ],
 )
-def test_enhancement_qa_rejects_invalid_media_contract(field, value) -> None:
+def test_enhancement_qa_rejects_invalid_media_contract(
+    field, value, failed_check
+) -> None:
     media = _valid_enhancement_media()
     invalid = replace(media, **{field: value})
     with pytest.raises(
         VideoCompositionEnhancementProbeError,
-        match="ENHANCEMENT_OUTPUT_CONTRACT_FAILED",
+        match=f"ENHANCEMENT_OUTPUT_CONTRACT_FAILED:{failed_check}",
     ):
         VideoCompositionEnhancementProbe("ffprobe", "ffmpeg", 30).validate(
             invalid,

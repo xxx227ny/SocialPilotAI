@@ -95,10 +95,10 @@ class VideoCompositionEnhancementFFmpeg:
             target_lufs,
             true_peak,
         )
-        fixed_gain = min(
-            target_lufs - measured_lufs,
-            true_peak - measured_true_peak,
-        )
+        # Normalize integrated loudness first. The limiter below is the authority
+        # for peak protection; capping this gain by the source peak leaves
+        # high-crest-factor speech materially quieter than the frozen target.
+        fixed_gain = target_lufs - measured_lufs
         audio_filters += (
             f";[mix]volume={fixed_gain:.3f}dB,"
             f"alimiter=limit={limit:.6f}:level=false[aout]"

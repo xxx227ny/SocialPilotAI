@@ -94,8 +94,7 @@ class VideoCompositionEnhancementProbe:
             )
             numerator, denominator = video["avg_frame_rate"].split("/", 1)
             integrated = [
-                float(value)
-                for value in re.findall(r"I:\s*(-?[0-9.]+) LUFS", loudness)
+                float(value) for value in re.findall(r"I:\s*(-?[0-9.]+) LUFS", loudness)
             ][-1]
             peak = [
                 float(value)
@@ -105,9 +104,7 @@ class VideoCompositionEnhancementProbe:
             audio_start = float(audio.get("start_time", 0) or 0)
             black_durations = [
                 float(value)
-                for value in re.findall(
-                    r"black_duration:([0-9.]+)", black_detection
-                )
+                for value in re.findall(r"black_duration:([0-9.]+)", black_detection)
             ]
             return EnhancementMedia(
                 duration_ms=round(float(payload["format"]["duration"]) * 1000),
@@ -125,9 +122,7 @@ class VideoCompositionEnhancementProbe:
                 container=str(payload["format"]["format_name"]).casefold(),
                 measured_lufs_milli=round(integrated * 1000),
                 measured_true_peak_millidb=round(peak * 1000),
-                audio_video_sync_offset_ms=round(
-                    abs(video_start - audio_start) * 1000
-                ),
+                audio_video_sync_offset_ms=round(abs(video_start - audio_start) * 1000),
                 longest_black_segment_ms=round(
                     max(black_durations, default=0.0) * 1000
                 ),
@@ -146,30 +141,37 @@ class VideoCompositionEnhancementProbe:
     def validate(
         self, media: EnhancementMedia, target_lufs: int, true_peak: int
     ) -> None:
-        if not all(
+        checks = (
+            ("duration", abs(media.duration_ms - 15000) <= 34),
+            ("dimensions", media.width == 1080 and media.height == 1920),
             (
-                abs(media.duration_ms - 15000) <= 34,
-                media.width == 1080,
-                media.height == 1920,
-                media.fps_numerator == 30,
-                media.fps_denominator == 1,
-                media.video_codec == "h264",
-                "high" in media.video_profile,
-                media.pixel_format == "yuv420p",
-                media.audio_codec == "aac",
-                "lc" in media.audio_profile,
-                media.audio_sample_rate == 48000,
-                media.audio_channels == 2,
-                "mp4" in media.container,
-                media.measured_lufs_milli > -60000,
+                "frame_rate",
+                media.fps_numerator == 30 and media.fps_denominator == 1,
+            ),
+            ("video_codec", media.video_codec == "h264"),
+            ("video_profile", "high" in media.video_profile),
+            ("pixel_format", media.pixel_format == "yuv420p"),
+            ("audio_codec", media.audio_codec == "aac"),
+            ("audio_profile", "lc" in media.audio_profile),
+            ("audio_sample_rate", media.audio_sample_rate == 48000),
+            ("audio_channels", media.audio_channels == 2),
+            ("container", "mp4" in media.container),
+            ("audio_non_silent", media.measured_lufs_milli > -60000),
+            (
+                "integrated_loudness",
                 abs(media.measured_lufs_milli - target_lufs) <= 1500,
+            ),
+            (
+                "true_peak",
                 media.measured_true_peak_millidb <= true_peak + 300,
-                media.audio_video_sync_offset_ms <= 34,
-                media.longest_black_segment_ms <= 34,
-            )
-        ):
+            ),
+            ("sync", media.audio_video_sync_offset_ms <= 34),
+            ("black_segment", media.longest_black_segment_ms <= 34),
+        )
+        failed = next((name for name, passed in checks if not passed), None)
+        if failed is not None:
             raise VideoCompositionEnhancementProbeError(
-                "ENHANCEMENT_OUTPUT_CONTRACT_FAILED"
+                f"ENHANCEMENT_OUTPUT_CONTRACT_FAILED:{failed}"
             )
 
     def _run(self, command: list[str], *, include_stderr: bool = False) -> str:
