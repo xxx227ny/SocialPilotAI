@@ -4,6 +4,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.schemas.execution import ExecutionJobRead
+from app.schemas.video_script_version import QwenScriptPreflightRead
+
 Platform = Literal["youtube", "tiktok", "instagram"]
 
 
@@ -116,3 +119,51 @@ class BatchVideoCreateRead(BaseModel):
     batch: BatchVideoJobRead
     variants: list[BatchVideoVariantRead]
     reused: bool
+
+
+class BatchQwenScriptRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    product_id: int = Field(gt=0)
+    variant_ids: list[int] = Field(min_length=3, max_length=3)
+    strategy_id: int = Field(gt=0)
+    copy_matrix_id: int | None = Field(default=None, gt=0)
+
+
+class BatchQwenScriptPreflightRead(BatchQwenScriptRequest):
+    batch_id: int
+    items: list[QwenScriptPreflightRead]
+    preflight_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    expires_at: datetime
+    ready_for_execution: bool
+    estimated_provider_calls: int
+    estimated_cost_min: Decimal
+    estimated_cost_max: Decimal
+    currency: str
+    cost_estimate_basis: str
+    requires_cost_confirmation: Literal[True] = True
+    will_auto_activate_exact_results: Literal[True] = True
+    provider_call_count: Literal[0] = 0
+    database_writes: Literal[0] = 0
+
+
+class BatchQwenScriptCreateRequest(BatchQwenScriptRequest):
+    preflight_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    preflight_expires_at: datetime
+    cost_confirmed: Literal[True]
+
+
+class BatchQwenScriptItemRead(BaseModel):
+    variant_id: int
+    platform: Platform
+    status: Literal["QUEUED", "RUNNING", "READY", "FAILED", "SUBMIT_UNKNOWN"]
+    job: ExecutionJobRead
+    script_version_id: int | None
+    active: bool
+    safe_error_code: str | None
+
+
+class BatchQwenScriptCreateRead(BaseModel):
+    batch_id: int
+    status: Literal["RUNNING", "READY", "PARTIAL_FAILED", "FAILED"]
+    items: list[BatchQwenScriptItemRead]

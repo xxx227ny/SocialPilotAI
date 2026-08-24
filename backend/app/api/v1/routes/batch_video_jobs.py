@@ -3,8 +3,13 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
+from app.core.config import Settings, get_settings
 from app.db.session import get_db
 from app.schemas.batch_video import (
+    BatchQwenScriptCreateRead,
+    BatchQwenScriptCreateRequest,
+    BatchQwenScriptPreflightRead,
+    BatchQwenScriptRequest,
     BatchVideoCreateRead,
     BatchVideoCreateRequest,
     BatchVideoJobRead,
@@ -12,11 +17,13 @@ from app.schemas.batch_video import (
     BatchVideoRequest,
     BatchVideoVariantRead,
 )
+from app.services.batch_qwen_script_service import BatchQwenScriptService
 from app.services.batch_video_job_service import BatchVideoJobService
 from app.services.batch_video_preflight import BatchVideoPreflightService
 
 router = APIRouter()
 Db = Annotated[Session, Depends(get_db)]
+SettingsDep = Annotated[Settings, Depends(get_settings)]
 
 
 @router.post("/batch-video-jobs/preflight", response_model=BatchVideoPreflightRead)
@@ -64,3 +71,27 @@ def resume(batch_id: int, db: Db) -> BatchVideoJobRead:
 @router.post("/batch-video-jobs/{batch_id}/cancel", response_model=BatchVideoJobRead)
 def cancel(batch_id: int, db: Db) -> BatchVideoJobRead:
     return BatchVideoJobService(db).cancel(batch_id)
+
+
+@router.post(
+    "/batch-video-jobs/{batch_id}/qwen-scripts/preflight",
+    response_model=BatchQwenScriptPreflightRead,
+)
+def preflight_qwen_scripts(
+    batch_id: int, data: BatchQwenScriptRequest, db: Db, settings: SettingsDep
+) -> BatchQwenScriptPreflightRead:
+    return BatchQwenScriptService(db, settings).preflight(batch_id, data)
+
+
+@router.post(
+    "/batch-video-jobs/{batch_id}/qwen-scripts",
+    response_model=BatchQwenScriptCreateRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_or_recover_qwen_scripts(
+    batch_id: int,
+    data: BatchQwenScriptCreateRequest,
+    db: Db,
+    settings: SettingsDep,
+) -> BatchQwenScriptCreateRead:
+    return BatchQwenScriptService(db, settings).create_or_recover(batch_id, data)
