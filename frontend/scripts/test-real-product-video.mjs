@@ -131,6 +131,26 @@ try {
     true,
   );
   behavior++;
+  const oneClickRequest = state.buildBatchQwenScriptRequest(
+    [
+      { id: 9, product_id: 3, platform: "instagram", variant_index: 2, status: "READY_FOR_SCRIPT" },
+      { id: 6, product_id: 3, platform: "tiktok", variant_index: 1, status: "READY_FOR_SCRIPT" },
+      { id: 8, product_id: 3, platform: "instagram", variant_index: 1, status: "READY_FOR_SCRIPT" },
+      { id: 7, product_id: 3, platform: "youtube", variant_index: 1, status: "READY_FOR_SCRIPT" },
+      { id: 5, product_id: 4, platform: "tiktok", variant_index: 1, status: "READY_FOR_SCRIPT" },
+    ],
+    3,
+    21,
+    31,
+  );
+  assert.deepEqual(oneClickRequest, {
+    product_id: 3,
+    variant_ids: [6, 7, 8],
+    strategy_id: 21,
+    copy_matrix_id: 31,
+  });
+  assert.equal(state.buildBatchQwenScriptRequest([], 3, 21, null), null);
+  behavior++;
 
   const panel = await fs.readFile(
     path.join(root, "src/components/video/RealProductVideoPanel.tsx"),
@@ -144,6 +164,10 @@ try {
   );
   const productVideoApi = await fs.readFile(
     path.join(root, "src/api/productMarketingVideo.ts"),
+    "utf8",
+  );
+  const batchVideoApi = await fs.readFile(
+    path.join(root, "src/api/batchVideoJobs.ts"),
     "utf8",
   );
   for (const required of [
@@ -189,6 +213,16 @@ try {
     "旁白若超过15秒会安全停止",
     "下载MP4",
     "下载WebVTT",
+    "检查脚本到成片的完整调用与费用",
+    "确认并一键生成三平台完整成片",
+    "buildBatchQwenScriptRequest",
+    "preflightBatchQwenScripts",
+    "createOrRecoverBatchQwenScripts",
+    "will_auto_activate_exact_results",
+    "total_known_cost_max",
+    "known_downstream_cost",
+    "脚本生成后的成片调用次数或费用与确认值不一致",
+    "socialpilot.scriptBatch.",
   ]) {
     assert.ok(panel.includes(required));
     safety++;
@@ -205,6 +239,10 @@ try {
     assert.ok(productVideoApi.includes(`\"${action}\"`));
     safety++;
   }
+  assert.ok(batchVideoApi.includes("/qwen-scripts/preflight"));
+  assert.ok(batchVideoApi.includes("/qwen-scripts"));
+  assert.ok(batchVideoApi.includes("cost_confirmed: true"));
+  safety += 3;
   safety += 5;
   console.log(
     `Real Product Video: ${behavior} product-state behavior scenarios, ${safety} static/safety assertions passed`,

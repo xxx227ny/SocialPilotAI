@@ -2,6 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { getApiErrorMessage } from "../../api/client";
 import {
+  createOrRecoverBatchQwenScripts,
+  listBatchVideoVariants,
+  preflightBatchQwenScripts,
+} from "../../api/batchVideoJobs";
+import {
   advanceProductVideoProductionBatch,
   cancelProductVideoProductionBatch,
   createProductVideoProductionBatch,
@@ -37,6 +42,10 @@ import { realProductVideoEnabled } from "../../config/features";
 import { usePresentationMode } from "../../context/PresentationModeContext";
 import type { Product } from "../../types/product";
 import type {
+  BatchQwenScriptPreflight,
+  BatchQwenScriptRequest,
+} from "../../types/batchVideo";
+import type {
   ProductVideoSource,
   ProductVideoProductionResult,
   RealProductVideoPhase,
@@ -45,6 +54,7 @@ import type {
 } from "../../types/productMarketingVideo";
 import {
   buildThreePlatformPreflightPayload,
+  buildBatchQwenScriptRequest,
   pollExactJob,
   productionBatchTerminal,
   productionFailureMessage,
@@ -69,6 +79,14 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
   const [batchPreflight, setBatchPreflight] =
     useState<ThreePlatformVideoPreflight | null>(null);
   const [batchCostConfirmed, setBatchCostConfirmed] = useState(false);
+  const [scriptBatchId, setScriptBatchId] = useState("");
+  const [strategyId, setStrategyId] = useState(0);
+  const [copyMatrixId, setCopyMatrixId] = useState<number | null>(null);
+  const [oneClickRequest, setOneClickRequest] =
+    useState<BatchQwenScriptRequest | null>(null);
+  const [oneClickPreflight, setOneClickPreflight] =
+    useState<BatchQwenScriptPreflight | null>(null);
+  const [oneClickCostConfirmed, setOneClickCostConfirmed] = useState(false);
   const [production, setProduction] =
     useState<ProductVideoProductionResult | null>(null);
   const referenceAssets = useMemo(
@@ -98,6 +116,12 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
     setResult(null);
     setCloudVideoArtifactId(null);
     setProduction(null);
+    setOneClickRequest(null);
+    setOneClickPreflight(null);
+    setOneClickCostConfirmed(false);
+    setScriptBatchId(
+      window.localStorage.getItem(`socialpilot.scriptBatch.${product.id}`) ?? "",
+    );
     setReferenceAssetId(referenceAssets[0]?.id ?? 0);
     if (!realProductVideoEnabled || isPresentation) return;
     const active = operation.current.begin();
@@ -137,6 +161,8 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
   useEffect(() => {
     setBatchPreflight(null);
     setBatchCostConfirmed(false);
+    setOneClickPreflight(null);
+    setOneClickCostConfirmed(false);
   }, [referenceAssetId, sources]);
 
   if (!realProductVideoEnabled || isPresentation) return null;
@@ -628,6 +654,159 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
     }
   }
 
+  async function checkOneClickPreflight() {
+    const batchId = Number(scriptBatchId);
+    if (!Number.isInteger(batchId) || batchId <= 0 || !referenceAsset) {
+      setMessage("请输入精确Batch ID、Strategy ID并选择商品主参考图。");
+      return;
+    }
+    const active = operation.current.begin();
+    setOneClickRequest(null);
+    setOneClickPreflight(null);
+    setOneClickCostConfirmed(false);
+    setMessage("正在核对三平台Variant和完整模型调用费用……");
+    try {
+      const variants = await listBatchVideoVariants(batchId, active.signal);
+      const request = buildBatchQwenScriptRequest(
+        variants,
+        product.id,
+        strategyId,
+        copyMatrixId,
+      );
+      if (!request) {
+        throw new Error("该Batch没有当前商品的三个READY平台Variant。");
+      }
+      const checked = await preflightBatchQwenScripts(
+        batchId,
+        request,
+        active.signal,
+      );
+      if (!operation.current.current(active.id)) return;
+      setOneClickRequest(request);
+      setOneClickPreflight(checked);
+      window.localStorage.setItem(
+        `socialpilot.scriptBatch.${product.id}`,
+        String(batchId),
+      );
+      setMessage(
+        checked.ready_for_execution
+          ? "完整链路Preflight通过，请确认模型调用次数和费用。"
+          : "千问脚本费用或批次配额尚未就绪。",
+      );
+    } catch (error) {
+      fail(active.id, error, "一键完整生产Preflight失败。");
+    }
+  }
+
+  async function driveBatchQwenScripts(
+    batchId: number,
+    request: BatchQwenScriptRequest,
+    checked: BatchQwenScriptPreflight,
+    active: { id: number; signal: AbortSignal },
+  ) {
+    for (let attempt = 0; attempt < 900; attempt += 1) {
+      const current = await createOrRecoverBatchQwenScripts(
+        batchId,
+        request,
+        checked,
+        active.signal,
+      );
+      if (!operation.current.current(active.id)) {
+        throw new DOMException("Aborted", "AbortError");
+      }
+      if (current.status === "READY") return current;
+      if (["FAILED", "PARTIAL_FAILED"].includes(current.status)) {
+        const failures = current.items
+          .filter((item) => item.status === "FAILED" || item.status === "SUBMIT_UNKNOWN")
+          .map((item) => `${item.platform}:${item.safe_error_code ?? item.status}`);
+        throw new Error(`三平台脚本生成未完成：${failures.join("、")}`);
+      }
+      setMessage("千问正在生成三个平台脚本，任务可按精确Batch恢复……");
+      await waitForProduction(active.signal);
+    }
+    throw new Error("三平台脚本等待超时，已保留Job，可稍后继续。");
+  }
+
+  async function generateOneClickBatch() {
+    const batchId = Number(scriptBatchId);
+    if (
+      !oneClickRequest ||
+      !oneClickPreflight?.ready_for_execution ||
+      !oneClickCostConfirmed ||
+      !referenceAsset?.sha256 ||
+      !Number.isInteger(batchId) ||
+      batchId <= 0
+    ) {
+      setMessage("请先完成完整链路Preflight并确认费用。");
+      return;
+    }
+    const active = operation.current.begin();
+    setPhase("GENERATING_SCRIPTS");
+    setResult(null);
+    setMessage("正在复核费用并创建三平台千问脚本Job……");
+    try {
+      const current = oneClickPreflight;
+      await driveBatchQwenScripts(batchId, oneClickRequest, current, active);
+      const refreshedSources = await listProductVideoSources(
+        product.id,
+        active.signal,
+      );
+      const selectedIds = new Set(oneClickRequest.variant_ids);
+      const exactSources = selectThreePlatformSources(
+        refreshedSources.filter((item) => selectedIds.has(item.variant_id)),
+      );
+      if (exactSources.length !== 3) {
+        throw new Error("三平台脚本已生成，但精确激活来源恢复失败。");
+      }
+      setSources(refreshedSources);
+      setSourceId(exactSources[0].variant_id);
+      const payload = buildThreePlatformPreflightPayload(
+        exactSources,
+        referenceAsset,
+      );
+      if (!payload) throw new Error("三平台成片输入不完整。");
+      const videoChecked = await preflightThreePlatformVideo(
+        product.id,
+        payload,
+        active.signal,
+      );
+      if (
+        !videoChecked.ready ||
+        videoChecked.wanx_image_generation_calls !==
+          current.wanx_image_generation_calls ||
+        videoChecked.happyhorse_generation_calls !==
+          current.happyhorse_generation_calls ||
+        videoChecked.qwen_tts_generation_calls !==
+          current.qwen_tts_generation_calls ||
+        videoChecked.known_estimated_cost !== current.known_downstream_cost
+      ) {
+        throw new Error("脚本生成后的成片调用次数或费用与确认值不一致。");
+      }
+      setBatchPreflight(videoChecked);
+      setBatchCostConfirmed(true);
+      setPhase("GENERATING_IMAGES");
+      const created = await createProductVideoProductionBatch(
+        product.id,
+        {
+          ...payload,
+          input_digest: videoChecked.input_digest,
+          idempotency_key: `product-video-production:${product.id}:${videoChecked.input_digest}`,
+          cost_confirmed: true,
+        },
+        active.signal,
+      );
+      window.localStorage.setItem(
+        `socialpilot.productionBatch.${product.id}`,
+        String(created.batch.id),
+      );
+      applyProduction(created);
+      setMessage("脚本已激活，正在继续生成画面、配音、字幕和成片……");
+      await driveProductionBatch(created, active);
+    } catch (error) {
+      fail(active.id, error, "一键完整生产失败，现有Batch和Job均已保留。");
+    }
+  }
+
   function applyProduction(value: ProductVideoProductionResult) {
     setProduction(value);
   }
@@ -812,6 +991,108 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
           ))}
         </select>
       </label>
+      <fieldset>
+        <legend>一键生成：三平台脚本 → 画面 → 配音 → 成片</legend>
+        <p>
+          使用批量编排中同一商品的TikTok、YouTube Shorts和Instagram
+          Reels第一个READY Variant；所有身份均按ID冻结，不读取模糊的最近记录。
+        </p>
+        <label>
+          精确Batch ID
+          <input
+            type="number"
+            min="1"
+            value={scriptBatchId}
+            onChange={(event) => {
+              setScriptBatchId(event.target.value);
+              setOneClickPreflight(null);
+              setOneClickCostConfirmed(false);
+            }}
+          />
+        </label>
+        <label>
+          精确Strategy ID
+          <input
+            type="number"
+            min="1"
+            value={strategyId || ""}
+            onChange={(event) => {
+              setStrategyId(Number(event.target.value) || 0);
+              setOneClickPreflight(null);
+              setOneClickCostConfirmed(false);
+            }}
+          />
+        </label>
+        <label>
+          可选精确CopyMatrix ID
+          <input
+            type="number"
+            min="1"
+            value={copyMatrixId ?? ""}
+            onChange={(event) => {
+              setCopyMatrixId(Number(event.target.value) || null);
+              setOneClickPreflight(null);
+              setOneClickCostConfirmed(false);
+            }}
+          />
+        </label>
+        <button
+          type="button"
+          disabled={
+            !referenceAsset ||
+            strategyId <= 0 ||
+            !["IDLE", "FAILED", "SUCCEEDED"].includes(phase)
+          }
+          onClick={() => void checkOneClickPreflight()}
+        >
+          检查脚本到成片的完整调用与费用
+        </button>
+        {oneClickPreflight && (
+          <div className="preflight-summary">
+            <p>
+              千问脚本 {oneClickPreflight.estimated_provider_calls} 次 · 万象图片
+              {oneClickPreflight.wanx_image_generation_calls} 次 · HappyHorse视频
+              {oneClickPreflight.happyhorse_generation_calls} 次 · 千问TTS
+              {oneClickPreflight.qwen_tts_generation_calls} 次
+            </p>
+            <p>
+              已知费用区间：{oneClickPreflight.total_known_cost_min}–
+              {oneClickPreflight.total_known_cost_max} {oneClickPreflight.currency}。
+              千问TTS尚未计价，最终总费用可能更高。
+            </p>
+            <p>
+              Variant：{oneClickPreflight.variant_ids.join(" / ")}；成功脚本将保持
+              UNREVIEWED，
+              {oneClickPreflight.will_auto_activate_exact_results
+                ? "为完成一键链路会自动激活精确Version。"
+                : "需要人工激活后才能继续。"}
+            </p>
+            <label>
+              <input
+                type="checkbox"
+                checked={oneClickCostConfirmed}
+                disabled={!oneClickPreflight.ready_for_execution}
+                onChange={(event) =>
+                  setOneClickCostConfirmed(event.target.checked)
+                }
+              />
+              我已确认全部模型调用、已知费用区间及未计价的千问TTS
+            </label>
+            <button
+              type="button"
+              disabled={
+                !oneClickCostConfirmed ||
+                !oneClickPreflight.ready_for_execution ||
+                productionActive ||
+                !["IDLE", "FAILED", "SUCCEEDED"].includes(phase)
+              }
+              onClick={() => void generateOneClickBatch()}
+            >
+              确认并一键生成三平台完整成片
+            </button>
+          </div>
+        )}
+      </fieldset>
       <p>万象将按每个分镜自动生成一致的商品广告视觉；阶段：{phase}</p>
       <button
         type="button"

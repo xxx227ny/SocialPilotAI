@@ -139,8 +139,16 @@ class BatchQwenScriptPreflightRead(BatchQwenScriptRequest):
     estimated_provider_calls: int
     estimated_cost_min: Decimal
     estimated_cost_max: Decimal
+    wanx_image_generation_calls: int
+    happyhorse_generation_calls: int
+    qwen_tts_generation_calls: int
+    known_downstream_cost: Decimal
+    total_known_cost_min: Decimal
+    total_known_cost_max: Decimal
     currency: str
     cost_estimate_basis: str
+    cost_estimate_complete: Literal[False] = False
+    unpriced_cost_components: list[str] = Field(default_factory=lambda: ["qwen_tts"])
     requires_cost_confirmation: Literal[True] = True
     will_auto_activate_exact_results: Literal[True] = True
     provider_call_count: Literal[0] = 0

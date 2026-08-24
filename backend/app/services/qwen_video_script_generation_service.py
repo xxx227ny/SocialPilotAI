@@ -10,6 +10,8 @@ from app.core.exceptions import AppError
 from app.providers import TextGenerationProvider
 from app.schemas.video_script_version import QwenScriptProviderOutput
 
+TIMED_FOUR_ACT_SCENE_COUNT = 4
+
 
 def select_timed_narration(
     output: QwenScriptProviderOutput, *, min_words: int = 1, max_words: int = 32

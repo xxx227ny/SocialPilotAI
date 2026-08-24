@@ -67,6 +67,14 @@ def test_batch_qwen_preflight_enqueue_recover_and_activate_exact_versions(
     assert checked["estimated_provider_calls"] == 3
     assert checked["estimated_cost_min"] == "0.06"
     assert checked["estimated_cost_max"] == "0.24"
+    assert checked["wanx_image_generation_calls"] == 12
+    assert checked["happyhorse_generation_calls"] == 3
+    assert checked["qwen_tts_generation_calls"] == 3
+    assert checked["known_downstream_cost"] == "4.20"
+    assert checked["total_known_cost_min"] == "4.26"
+    assert checked["total_known_cost_max"] == "4.44"
+    assert checked["cost_estimate_complete"] is False
+    assert checked["unpriced_cost_components"] == ["qwen_tts"]
     assert checked["will_auto_activate_exact_results"] is True
     assert checked["provider_call_count"] == checked["database_writes"] == 0
     assert (

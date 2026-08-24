@@ -239,7 +239,10 @@ try {
     assert.ok(!panel.toLowerCase().includes(forbidden));
     staticAssertions += 1;
   }
-  assert.ok(!batchApiSource.toLowerCase().includes("qwen"));
+  assert.ok(batchApiSource.includes("preflightBatchQwenScripts"));
+  assert.ok(batchApiSource.includes("createOrRecoverBatchQwenScripts"));
+  assert.ok(batchApiSource.includes("/qwen-scripts/preflight"));
+  assert.ok(batchApiSource.includes("/qwen-scripts"));
   assert.ok(!batchStateSource.toLowerCase().includes("qwen"));
   assert.ok(panel.includes("qwenEnabled={qwenScriptEnabled}"));
   assert.ok(

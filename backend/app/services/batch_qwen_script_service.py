@@ -23,6 +23,9 @@ from app.schemas.video_script_version import (
     QwenScriptPreflightRead,
     QwenScriptPreflightRequest,
 )
+from app.services.qwen_video_script_generation_service import (
+    TIMED_FOUR_ACT_SCENE_COUNT,
+)
 from app.services.qwen_video_script_job_service import QwenVideoScriptJobService
 from app.services.qwen_video_script_preflight import QwenVideoScriptPreflightService
 from app.services.video_script_version_service import VideoScriptVersionService
@@ -78,6 +81,19 @@ class BatchQwenScriptService:
         digest = hashlib.sha256(
             json.dumps(material, ensure_ascii=False, sort_keys=True).encode()
         ).hexdigest()
+        qwen_cost_min = sum(
+            (item.estimated_cost_min or Decimal("0") for item in items),
+            Decimal("0"),
+        )
+        qwen_cost_max = sum(
+            (item.estimated_cost_max or Decimal("0") for item in items),
+            Decimal("0"),
+        )
+        wanx_calls = len(items) * TIMED_FOUR_ACT_SCENE_COUNT
+        downstream_cost = (
+            self.settings.wanx_image_estimated_cost * wanx_calls
+            + self.settings.happyhorse_estimated_cost * len(items)
+        )
         return BatchQwenScriptPreflightRead(
             **data.model_dump(),
             batch_id=batch_id,
@@ -86,14 +102,14 @@ class BatchQwenScriptService:
             expires_at=expiry,
             ready_for_execution=all(item.ready_for_execution for item in items),
             estimated_provider_calls=len(items),
-            estimated_cost_min=sum(
-                (item.estimated_cost_min or Decimal("0") for item in items),
-                Decimal("0"),
-            ),
-            estimated_cost_max=sum(
-                (item.estimated_cost_max or Decimal("0") for item in items),
-                Decimal("0"),
-            ),
+            estimated_cost_min=qwen_cost_min,
+            estimated_cost_max=qwen_cost_max,
+            wanx_image_generation_calls=wanx_calls,
+            happyhorse_generation_calls=len(items),
+            qwen_tts_generation_calls=len(items),
+            known_downstream_cost=downstream_cost,
+            total_known_cost_min=qwen_cost_min + downstream_cost,
+            total_known_cost_max=qwen_cost_max + downstream_cost,
             currency=currencies.pop(),
             cost_estimate_basis=bases.pop(),
         )

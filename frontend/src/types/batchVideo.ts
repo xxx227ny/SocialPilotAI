@@ -1,3 +1,6 @@
+import type { ExecutionJob } from "./execution";
+import type { QwenScriptPreflight } from "./videoScriptVersion";
+
 export type BatchPlatform = "youtube" | "tiktok" | "instagram";
 export type BatchVariantStatus =
   | "WAITING"
@@ -75,4 +78,52 @@ export interface BatchProductOption {
   id: number;
   name: string;
   brand_kit_version_id: number | null;
+}
+
+export interface BatchQwenScriptRequest {
+  product_id: number;
+  variant_ids: number[];
+  strategy_id: number;
+  copy_matrix_id: number | null;
+}
+
+export interface BatchQwenScriptPreflight extends BatchQwenScriptRequest {
+  batch_id: number;
+  items: QwenScriptPreflight[];
+  preflight_digest: string;
+  expires_at: string;
+  ready_for_execution: boolean;
+  estimated_provider_calls: number;
+  estimated_cost_min: string;
+  estimated_cost_max: string;
+  wanx_image_generation_calls: number;
+  happyhorse_generation_calls: number;
+  qwen_tts_generation_calls: number;
+  known_downstream_cost: string;
+  total_known_cost_min: string;
+  total_known_cost_max: string;
+  currency: string;
+  cost_estimate_basis: string;
+  cost_estimate_complete: false;
+  unpriced_cost_components: string[];
+  requires_cost_confirmation: true;
+  will_auto_activate_exact_results: true;
+  provider_call_count: 0;
+  database_writes: 0;
+}
+
+export interface BatchQwenScriptItem {
+  variant_id: number;
+  platform: BatchPlatform;
+  status: "QUEUED" | "RUNNING" | "READY" | "FAILED" | "SUBMIT_UNKNOWN";
+  job: ExecutionJob;
+  script_version_id: number | null;
+  active: boolean;
+  safe_error_code: string | null;
+}
+
+export interface BatchQwenScriptResult {
+  batch_id: number;
+  status: "RUNNING" | "READY" | "PARTIAL_FAILED" | "FAILED";
+  items: BatchQwenScriptItem[];
 }

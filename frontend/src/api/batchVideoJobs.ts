@@ -1,5 +1,8 @@
 import { apiClient } from "./client";
 import type {
+  BatchQwenScriptPreflight,
+  BatchQwenScriptRequest,
+  BatchQwenScriptResult,
   BatchProductOption,
   BatchVideoCreateResult,
   BatchVideoJob,
@@ -7,6 +10,38 @@ import type {
   BatchVideoRequest,
   BatchVideoVariant,
 } from "../types/batchVideo";
+
+export async function preflightBatchQwenScripts(
+  batchId: number,
+  data: BatchQwenScriptRequest,
+  signal?: AbortSignal,
+) {
+  const response = await apiClient.post<BatchQwenScriptPreflight>(
+    `/batch-video-jobs/${batchId}/qwen-scripts/preflight`,
+    data,
+    { signal },
+  );
+  return response.data;
+}
+
+export async function createOrRecoverBatchQwenScripts(
+  batchId: number,
+  data: BatchQwenScriptRequest,
+  preflight: BatchQwenScriptPreflight,
+  signal?: AbortSignal,
+) {
+  const response = await apiClient.post<BatchQwenScriptResult>(
+    `/batch-video-jobs/${batchId}/qwen-scripts`,
+    {
+      ...data,
+      preflight_digest: preflight.preflight_digest,
+      preflight_expires_at: preflight.expires_at,
+      cost_confirmed: true,
+    },
+    { signal },
+  );
+  return response.data;
+}
 
 export async function listBatchProducts(signal?: AbortSignal) {
   const response = await apiClient.get<BatchProductOption[]>("/products", { signal });

@@ -1,5 +1,9 @@
 import type { ExecutionJob } from "../../types/execution";
 import type {
+  BatchQwenScriptRequest,
+  BatchVideoVariant,
+} from "../../types/batchVideo";
+import type {
   ProductVideoProductionBatch,
   ProductVideoProductionItem,
   ProductVideoSource,
@@ -76,6 +80,41 @@ export function selectThreePlatformSources(
   return PLATFORM_ORDER.map((platform) =>
     sources.find((source) => source.platform === platform),
   ).filter((source): source is ProductVideoSource => source !== undefined);
+}
+
+export function selectOneClickVariants(
+  variants: BatchVideoVariant[],
+  productId: number,
+): BatchVideoVariant[] {
+  return PLATFORM_ORDER.map((platform) =>
+    variants
+      .filter(
+        (variant) =>
+          variant.product_id === productId &&
+          variant.platform === platform &&
+          variant.status === "READY_FOR_SCRIPT",
+      )
+      .sort(
+        (left, right) =>
+          left.variant_index - right.variant_index || left.id - right.id,
+      )[0],
+  ).filter((variant): variant is BatchVideoVariant => variant !== undefined);
+}
+
+export function buildBatchQwenScriptRequest(
+  variants: BatchVideoVariant[],
+  productId: number,
+  strategyId: number,
+  copyMatrixId: number | null,
+): BatchQwenScriptRequest | null {
+  const selected = selectOneClickVariants(variants, productId);
+  if (selected.length !== 3 || strategyId <= 0) return null;
+  return {
+    product_id: productId,
+    variant_ids: selected.map((variant) => variant.id),
+    strategy_id: strategyId,
+    copy_matrix_id: copyMatrixId,
+  };
 }
 
 export function buildThreePlatformPreflightPayload(

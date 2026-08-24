@@ -158,6 +158,7 @@ export interface ProductVideoProductionResult {
 export type RealProductVideoPhase =
   | "IDLE"
   | "UPLOADING"
+  | "GENERATING_SCRIPTS"
   | "GENERATING_IMAGES"
   | "PREPARING_SHOTS"
   | "CLOUD_VIDEO"
