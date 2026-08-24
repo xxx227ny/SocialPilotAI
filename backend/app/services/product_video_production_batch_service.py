@@ -16,6 +16,9 @@ from app.models import (
     VideoComposition,
     VideoCompositionArtifact,
     VideoCompositionAudioArtifact,
+    VideoCompositionEnhancement,
+    VideoCompositionEnhancementArtifact,
+    VideoCompositionSubtitleArtifact,
     VideoProject,
     VideoRenderArtifact,
     VideoRenderTask,
@@ -42,6 +45,11 @@ from app.schemas.video_composition import (
     VideoCompositionPreflightRequest,
     VideoCompositionSubmitRequest,
 )
+from app.schemas.video_composition_enhancement import (
+    SubtitleCueInput,
+    VideoCompositionEnhancementPreflightRequest,
+    VideoCompositionEnhancementSubmitRequest,
+)
 from app.services.happyhorse_product_video_service import (
     HappyHorseProductVideoService,
 )
@@ -49,6 +57,12 @@ from app.services.three_platform_video_preflight import (
     ThreePlatformVideoPreflightService,
 )
 from app.services.video_artifact_storage import LocalVideoArtifactStorage
+from app.services.video_composition_enhancement_job_service import (
+    VideoCompositionEnhancementJobService,
+)
+from app.services.video_composition_enhancement_preflight import (
+    VideoCompositionEnhancementPreflightService,
+)
 from app.services.video_composition_job_service import VideoCompositionJobService
 from app.services.video_composition_preflight import VideoCompositionPreflightService
 from app.services.video_script_project_bridge import VideoScriptProjectBridge
@@ -180,6 +194,8 @@ class ProductVideoProductionBatchService:
                 self._advance_composition(batch, item)
             elif item.stage == "GENERATING_VOICEOVER":
                 self._advance_voiceover(batch, item)
+            elif item.stage == "ENHANCING":
+                self._advance_enhancement(batch, item)
         self._sync_batch_status(batch)
         self.session.commit()
         return self._create_read(self._required(product_id, batch_id), reused=True)
@@ -747,6 +763,175 @@ class ProductVideoProductionBatchService:
             return
         item.voiceover_artifact_id = artifact.id
         item.stage = "ENHANCING"
+
+    def _advance_enhancement(
+        self,
+        batch: ProductVideoProductionBatch,
+        item: ProductVideoProductionItem,
+    ) -> None:
+        raw_job_id = item.stage_state_json.get("enhancement_job_id")
+        if isinstance(raw_job_id, int):
+            self._recover_enhancement(batch, item, raw_job_id)
+            return
+        if "enhancement_job_id" in item.stage_state_json:
+            self._fail_item(item, "PRODUCTION_ENHANCEMENT_JOB_INVALID")
+            return
+
+        composition = self.session.get(VideoComposition, item.composition_id)
+        source = self.session.get(
+            VideoCompositionArtifact,
+            item.stage_state_json.get("composition_artifact_id"),
+        )
+        voice = self.session.get(
+            VideoCompositionAudioArtifact, item.voiceover_artifact_id
+        )
+        version = self.session.get(VideoScriptVersion, item.script_version_id)
+        if (
+            composition is None
+            or composition.product_id != batch.product_id
+            or composition.video_project_id != item.video_project_id
+            or composition.status != "SUCCEEDED"
+            or source is None
+            or source.composition_id != composition.id
+            or voice is None
+            or voice.product_id != batch.product_id
+            or voice.video_project_id != item.video_project_id
+            or voice.composition_id != composition.id
+            or voice.kind != "voiceover"
+            or version is None
+            or version.product_id != batch.product_id
+            or not version.scenes
+        ):
+            self._fail_item(item, "PRODUCTION_ENHANCEMENT_SOURCE_INVALID")
+            return
+
+        cues = self._subtitle_cues(version, voice)
+        preflight_request = VideoCompositionEnhancementPreflightRequest(
+            composition_id=composition.id,
+            source_artifact_id=source.id,
+            voiceover_artifact_id=voice.id,
+            music_artifact_id=None,
+            cues=cues,
+        )
+        checked = VideoCompositionEnhancementPreflightService(
+            self.session, self.settings
+        ).run(batch.product_id, preflight_request)
+        if not checked.ready:
+            self._fail_item(item, "PRODUCTION_ENHANCEMENT_NOT_READY")
+            return
+        submitted = VideoCompositionEnhancementJobService(
+            self.session, self.settings
+        ).enqueue(
+            batch.product_id,
+            VideoCompositionEnhancementSubmitRequest(
+                **preflight_request.model_dump(),
+                input_digest=checked.input_digest,
+                source_chain_digest=checked.source_chain_digest,
+                preflight_digest=checked.preflight_digest,
+                preflight_expires_at=checked.expires_at,
+                local_cpu_cost_confirmed=True,
+            ),
+        )
+        item.enhancement_id = submitted.enhancement.id
+        item.stage_state_json = {
+            **item.stage_state_json,
+            "enhancement_job_id": submitted.job.id,
+            "subtitle_timeline_ms": cues[-1].end_ms,
+        }
+
+    def _recover_enhancement(
+        self,
+        batch: ProductVideoProductionBatch,
+        item: ProductVideoProductionItem,
+        job_id: int,
+    ) -> None:
+        job = self.session.get(ExecutionJob, job_id)
+        enhancement = self.session.get(VideoCompositionEnhancement, item.enhancement_id)
+        if (
+            job is None
+            or enhancement is None
+            or job.job_type != "video.composition.enhance.v1"
+            or job.source_type != "video_composition_enhancement"
+            or job.source_id != enhancement.id
+            or enhancement.product_id != batch.product_id
+            or enhancement.video_project_id != item.video_project_id
+            or enhancement.composition_id != item.composition_id
+            or enhancement.voiceover_artifact_id != item.voiceover_artifact_id
+        ):
+            self._fail_item(item, "PRODUCTION_ENHANCEMENT_JOB_INVALID")
+            return
+        if job.status == "SUBMIT_UNKNOWN":
+            self._fail_item(item, "PRODUCTION_ENHANCEMENT_PERSIST_UNKNOWN")
+            return
+        if job.status in {"FAILED", "CANCELLED"}:
+            self._fail_item(item, "PRODUCTION_ENHANCEMENT_FAILED")
+            return
+        if job.status != "SUCCEEDED":
+            return
+        artifact = (
+            self.session.get(VideoCompositionEnhancementArtifact, job.result_entity_id)
+            if job.result_entity_type == "video_composition_enhancement_artifact"
+            and job.result_entity_id is not None
+            else None
+        )
+        subtitle = (
+            self.session.get(
+                VideoCompositionSubtitleArtifact, artifact.subtitle_artifact_id
+            )
+            if artifact is not None
+            else None
+        )
+        if (
+            artifact is None
+            or artifact.enhancement_id != enhancement.id
+            or subtitle is None
+            or subtitle.enhancement_id != enhancement.id
+            or enhancement.status != "SUCCEEDED"
+        ):
+            self._fail_item(item, "PRODUCTION_ENHANCEMENT_RESULT_INVALID")
+            return
+        item.final_video_artifact_id = artifact.id
+        item.subtitle_artifact_id = subtitle.id
+        item.status = "SUCCEEDED"
+        item.stage = "COMPLETE"
+        item.completed_at = utc_now()
+
+    @staticmethod
+    def _subtitle_cues(
+        version: VideoScriptVersion,
+        voice: VideoCompositionAudioArtifact,
+    ) -> list[SubtitleCueInput]:
+        spoken_duration = (
+            14000
+            if voice.natural_duration_ms is not None
+            and voice.natural_duration_ms < 14000
+            else min(voice.duration_ms, 15000)
+        )
+        source_end = max(scene.end_ms for scene in version.scenes)
+        if source_end <= 0 or spoken_duration <= 0:
+            raise AppError("Subtitle timeline source is invalid", 409)
+        cues: list[SubtitleCueInput] = []
+        previous_end = 0
+        for index, scene in enumerate(version.scenes, 1):
+            start_ms = previous_end
+            end_ms = (
+                spoken_duration
+                if index == len(version.scenes)
+                else max(
+                    start_ms + 1,
+                    round(scene.end_ms * spoken_duration / source_end),
+                )
+            )
+            cues.append(
+                SubtitleCueInput(
+                    sequence=index,
+                    start_ms=start_ms,
+                    end_ms=end_ms,
+                    text=scene.subtitle_draft.strip() or scene.narration.strip(),
+                )
+            )
+            previous_end = end_ms
+        return cues
 
     @staticmethod
     def _fail_item(item: ProductVideoProductionItem, code: str) -> None:

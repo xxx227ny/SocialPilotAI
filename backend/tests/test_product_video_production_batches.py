@@ -1,3 +1,4 @@
+import hashlib
 from decimal import Decimal
 
 from fastapi.testclient import TestClient
@@ -14,6 +15,9 @@ from app.models import (
     VideoComposition,
     VideoCompositionArtifact,
     VideoCompositionAudioArtifact,
+    VideoCompositionEnhancement,
+    VideoCompositionEnhancementArtifact,
+    VideoCompositionSubtitleArtifact,
     VideoProject,
     VideoRenderArtifact,
     VideoRenderTask,
@@ -471,12 +475,16 @@ def test_advance_enqueues_wanx_jobs_once_and_recovers_exact_assets(
             ExecutionJob, item["stage_state_json"]["composition_job_id"]
         )
         composition = db_session.get(VideoComposition, item["composition_id"])
+        composition_content = f"composition-{item['id']}".encode()
+        composition_name = f"composition-item-{item['id']}.mp4"
+        composition_path = tmp_path / "videos" / composition_name
+        composition_path.write_bytes(composition_content)
         artifact = VideoCompositionArtifact(
             composition_id=composition.id,
-            storage_path=f"compositions/item-{item['id']}.mp4",
+            storage_path=composition_name,
             content_type="video/mp4",
-            size_bytes=123,
-            sha256=f"{item['id']:064x}",
+            size_bytes=len(composition_content),
+            sha256=hashlib.sha256(composition_content).hexdigest(),
             duration_ms=15000,
             width=1080,
             height=1920,
@@ -537,15 +545,18 @@ def test_advance_enqueues_wanx_jobs_once_and_recovers_exact_assets(
 
     for item in voiceover_items:
         job = db_session.get(ExecutionJob, item["stage_state_json"]["voiceover_job_id"])
+        voice_content = f"voiceover-{item['id']}".encode()
+        voice_name = f"voiceover-item-{item['id']}.wav"
+        (tmp_path / "videos" / voice_name).write_bytes(voice_content)
         artifact = VideoCompositionAudioArtifact(
             product_id=product.id,
             video_project_id=item["video_project_id"],
             composition_id=item["composition_id"],
             kind="voiceover",
-            storage_path=f"voiceover/item-{item['id']}.wav",
+            storage_path=voice_name,
             content_type="audio/wav",
-            size_bytes=256,
-            sha256=f"{item['id'] + 100:064x}",
+            size_bytes=len(voice_content),
+            sha256=hashlib.sha256(voice_content).hexdigest(),
             duration_ms=15000,
             natural_duration_ms=12000,
         )
@@ -568,6 +579,99 @@ def test_advance_enqueues_wanx_jobs_once_and_recovers_exact_assets(
     )
     assert db_session.query(VideoCompositionAudioArtifact).count() == 3
     assert db_session.query(ExecutionJob).count() == 19
+
+    enhancement_submitted = client.post(endpoint)
+    assert enhancement_submitted.status_code == 200
+    enhancement_items = enhancement_submitted.json()["items"]
+    assert {item["stage"] for item in enhancement_items} == {"ENHANCING"}
+    assert all(
+        item["stage_state_json"]["subtitle_timeline_ms"] == 14000
+        for item in enhancement_items
+    )
+    enhancement_jobs = (
+        db_session.query(ExecutionJob)
+        .filter_by(job_type="video.composition.enhance.v1")
+        .order_by(ExecutionJob.id)
+        .all()
+    )
+    assert len(enhancement_jobs) == 3
+    assert all(
+        job.input_payload["music_artifact_id"] is None for job in enhancement_jobs
+    )
+    assert db_session.query(VideoCompositionEnhancement).count() == 3
+    assert db_session.query(ExecutionJob).count() == 22
+
+    repeated_enhancement = client.post(endpoint)
+    assert repeated_enhancement.status_code == 200
+    assert db_session.query(VideoCompositionEnhancement).count() == 3
+    assert db_session.query(ExecutionJob).count() == 22
+
+    for item in enhancement_items:
+        job = db_session.get(
+            ExecutionJob, item["stage_state_json"]["enhancement_job_id"]
+        )
+        enhancement = db_session.get(
+            VideoCompositionEnhancement, item["enhancement_id"]
+        )
+        subtitle = VideoCompositionSubtitleArtifact(
+            enhancement_id=enhancement.id,
+            storage_path=f"subtitle-item-{item['id']}.vtt",
+            content_type="text/vtt; charset=utf-8",
+            size_bytes=64,
+            sha256=f"{item['id'] + 200:064x}",
+            format="webvtt",
+            cue_count=2,
+        )
+        db_session.add(subtitle)
+        db_session.flush()
+        final = VideoCompositionEnhancementArtifact(
+            enhancement_id=enhancement.id,
+            subtitle_artifact_id=subtitle.id,
+            storage_path=f"final-item-{item['id']}.mp4",
+            content_type="video/mp4",
+            size_bytes=1024,
+            sha256=f"{item['id'] + 300:064x}",
+            duration_ms=15000,
+            width=1080,
+            height=1920,
+            fps_numerator=30,
+            fps_denominator=1,
+            video_codec="h264",
+            video_profile="high",
+            pixel_format="yuv420p",
+            audio_codec="aac",
+            audio_profile="lc",
+            audio_sample_rate=48000,
+            audio_channels=2,
+            container="mp4",
+            measured_lufs_milli=-14000,
+            measured_true_peak_millidb=-1000,
+            audio_video_sync_offset_ms=0,
+            longest_black_segment_ms=0,
+            subtitle_format="webvtt",
+            subtitle_cue_count=2,
+            subtitle_sha256=subtitle.sha256,
+            source_chain_digest=enhancement.source_chain_digest,
+        )
+        db_session.add(final)
+        db_session.flush()
+        enhancement.status = "SUCCEEDED"
+        enhancement.completed_at = enhancement.created_at
+        job.status = "SUCCEEDED"
+        job.result_entity_type = "video_composition_enhancement_artifact"
+        job.result_entity_id = final.id
+        job.completed_at = job.created_at
+    db_session.commit()
+
+    completed = client.post(endpoint)
+    assert completed.status_code == 200
+    completed_body = completed.json()
+    assert completed_body["batch"]["status"] == "SUCCEEDED"
+    assert {item["status"] for item in completed_body["items"]} == {"SUCCEEDED"}
+    assert {item["stage"] for item in completed_body["items"]} == {"COMPLETE"}
+    assert all(item["final_video_artifact_id"] for item in completed_body["items"])
+    assert all(item["subtitle_artifact_id"] for item in completed_body["items"])
+    assert db_session.query(ExecutionJob).count() == 22
 
 
 def test_advance_failure_and_controls_are_provider_job_scoped(
