@@ -1,5 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -189,3 +190,63 @@ class ThreePlatformVideoPreflightRead(ThreePlatformVideoPreflightRequest):
     missing_requirements: list[str]
     provider_call_count: int = 0
     database_writes: int = 0
+
+
+class ProductVideoProductionCreateRequest(ThreePlatformVideoPreflightRequest):
+    input_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    idempotency_key: str = Field(
+        min_length=8, max_length=200, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]+$"
+    )
+    cost_confirmed: Literal[True]
+
+
+class ProductVideoProductionBatchRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    product_id: int
+    reference_product_asset_id: int
+    reference_product_asset_sha256: str
+    input_digest: str
+    idempotency_key: str
+    status: str
+    known_estimated_cost: Decimal
+    currency: str
+    cost_estimate_complete: bool
+    cost_confirmed: bool
+    provider_call_budget: int
+    safe_error_code: str | None
+    created_at: datetime
+    updated_at: datetime
+    completed_at: datetime | None
+
+
+class ProductVideoProductionItemRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    production_batch_id: int
+    batch_video_variant_id: int
+    script_version_id: int
+    platform: str
+    status: str
+    stage: str
+    stage_state_json: dict[str, object]
+    video_project_id: int | None
+    cloud_render_task_id: int | None
+    cloud_render_artifact_id: int | None
+    composition_id: int | None
+    voiceover_artifact_id: int | None
+    enhancement_id: int | None
+    final_video_artifact_id: int | None
+    subtitle_artifact_id: int | None
+    safe_error_code: str | None
+    created_at: datetime
+    updated_at: datetime
+    completed_at: datetime | None
+
+
+class ProductVideoProductionCreateRead(BaseModel):
+    batch: ProductVideoProductionBatchRead
+    items: list[ProductVideoProductionItemRead]
+    reused: bool

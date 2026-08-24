@@ -16,6 +16,8 @@ from app.schemas.product_marketing_video import (
     ProductImageRenderSubmitRequest,
     ProductVideoPrepareRead,
     ProductVideoPrepareRequest,
+    ProductVideoProductionCreateRead,
+    ProductVideoProductionCreateRequest,
     ProductVideoSceneRead,
     ProductVideoSourceRead,
     ThreePlatformVideoPreflightRead,
@@ -27,6 +29,9 @@ from app.services.happyhorse_product_video_service import (
     HappyHorseProductVideoService,
 )
 from app.services.product_image_render_service import ProductImageRenderService
+from app.services.product_video_production_batch_service import (
+    ProductVideoProductionBatchService,
+)
 from app.services.three_platform_video_preflight import (
     ThreePlatformVideoPreflightService,
 )
@@ -99,6 +104,60 @@ def preflight_three_platform_video(
     settings: SettingsDep,
 ) -> ThreePlatformVideoPreflightRead:
     return ThreePlatformVideoPreflightService(db, settings).run(product_id, data)
+
+
+@router.post(
+    "/production-batches",
+    response_model=ProductVideoProductionCreateRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_product_video_production_batch(
+    product_id: int,
+    data: ProductVideoProductionCreateRequest,
+    db: Db,
+    settings: SettingsDep,
+) -> ProductVideoProductionCreateRead:
+    return ProductVideoProductionBatchService(db, settings).create(product_id, data)
+
+
+@router.get(
+    "/production-batches/{batch_id}",
+    response_model=ProductVideoProductionCreateRead,
+)
+def get_product_video_production_batch(
+    product_id: int, batch_id: int, db: Db, settings: SettingsDep
+) -> ProductVideoProductionCreateRead:
+    return ProductVideoProductionBatchService(db, settings).get(product_id, batch_id)
+
+
+@router.post(
+    "/production-batches/{batch_id}/pause",
+    response_model=ProductVideoProductionCreateRead,
+)
+def pause_product_video_production_batch(
+    product_id: int, batch_id: int, db: Db, settings: SettingsDep
+) -> ProductVideoProductionCreateRead:
+    return ProductVideoProductionBatchService(db, settings).pause(product_id, batch_id)
+
+
+@router.post(
+    "/production-batches/{batch_id}/resume",
+    response_model=ProductVideoProductionCreateRead,
+)
+def resume_product_video_production_batch(
+    product_id: int, batch_id: int, db: Db, settings: SettingsDep
+) -> ProductVideoProductionCreateRead:
+    return ProductVideoProductionBatchService(db, settings).resume(product_id, batch_id)
+
+
+@router.post(
+    "/production-batches/{batch_id}/cancel",
+    response_model=ProductVideoProductionCreateRead,
+)
+def cancel_product_video_production_batch(
+    product_id: int, batch_id: int, db: Db, settings: SettingsDep
+) -> ProductVideoProductionCreateRead:
+    return ProductVideoProductionBatchService(db, settings).cancel(product_id, batch_id)
 
 
 @router.post("/prepare", response_model=ProductVideoPrepareRead)

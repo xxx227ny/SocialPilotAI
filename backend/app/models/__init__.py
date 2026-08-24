@@ -15,6 +15,10 @@ from app.models.growth_optimization import (
 from app.models.marketing import MarketingBrief
 from app.models.presentation_snapshot import PresentationSnapshot
 from app.models.product import Product, ProductAsset
+from app.models.product_video_production import (
+    ProductVideoProductionBatch,
+    ProductVideoProductionItem,
+)
 from app.models.social import OAuthSession, PublishTask, SocialAccount
 from app.models.strategy import MarketingStrategy
 from app.models.video import VideoProject
@@ -52,6 +56,8 @@ __all__ = [
     "MarketingStrategy",
     "Product",
     "ProductAsset",
+    "ProductVideoProductionBatch",
+    "ProductVideoProductionItem",
     "PresentationSnapshot",
     "SocialAccount",
     "OAuthSession",
