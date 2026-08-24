@@ -19,7 +19,7 @@ export interface VideoProject extends VideoProjectRequest {
   id: number;
   product_id: number;
   marketing_strategy_id: number;
-  copy_matrix_id: number;
+  copy_matrix_id: number | null;
   title: string;
   concept: string;
   scenes: VideoScene[];

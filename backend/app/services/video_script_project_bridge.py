@@ -12,6 +12,9 @@ from app.schemas.product_marketing_video import (
     ProductVideoPrepareRead,
     ProductVideoPrepareRequest,
 )
+from app.services.video_script_source_identity import (
+    validate_video_script_source_identity,
+)
 
 PLATFORMS = {
     "TIKTOK": "TikTok",
@@ -59,6 +62,12 @@ class VideoScriptProjectBridge:
         }[variant.platform]
         if data.platform != expected_platform:
             raise AppError("Platform does not match Variant", 409)
+        source_identity = validate_video_script_source_identity(
+            self.session,
+            version,
+            product_id=product_id,
+            platform=variant.platform,
+        )
         scenes = list(version.scenes)
         if len(data.shots) != len(scenes):
             raise AppError("Every ScriptVersion Scene requires an image", 422)
@@ -100,12 +109,12 @@ class VideoScriptProjectBridge:
                 input_digest=input_digest,
                 shots=frozen,
             )
-        if version.strategy_id is None or version.copy_matrix_id is None:
-            raise AppError("ScriptVersion lacks exact Strategy or Copy identity", 409)
         project = VideoProject(
             product_id=product_id,
-            marketing_strategy_id=version.strategy_id,
-            copy_matrix_id=version.copy_matrix_id,
+            marketing_strategy_id=source_identity.strategy.id,
+            copy_matrix_id=(
+                source_identity.copy_matrix.id if source_identity.copy_matrix else None
+            ),
             platform=PLATFORMS[data.platform],
             title=version.title,
             concept=version.concept,

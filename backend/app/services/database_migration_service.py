@@ -35,7 +35,8 @@ GROWTH_OPTIMIZATION_REVISION = "0015_growth_optimization_runs"
 GROWTH_SANDBOX_REVISION = "0016_growth_sandbox_executions"
 GROWTH_AUTOMATION_REVISION = "0017_growth_automation_controls"
 GROWTH_MONITORING_REVISION = "0018_growth_automation_cycles"
-HEAD_REVISION = "0019_growth_replan_resolutions"
+GROWTH_REPLAN_REVISION = "0019_growth_replan_resolutions"
+HEAD_REVISION = "0020_video_project_copy_optional"
 UNVERSIONED = "unversioned"
 MANIFEST_VERSION = 1
 ALEMBIC_INI = Path(__file__).resolve().parents[2] / "alembic.ini"
@@ -245,7 +246,7 @@ def schema_fingerprint(path: Path) -> str:
     return hashlib.sha256(encoded).hexdigest().upper()
 
 
-@lru_cache(maxsize=8)
+@lru_cache(maxsize=32)
 def expected_schema_fingerprint(revision: str) -> str:
     if revision not in {
         PRE_X2_REVISION,
@@ -261,6 +262,7 @@ def expected_schema_fingerprint(revision: str) -> str:
         GROWTH_SANDBOX_REVISION,
         GROWTH_AUTOMATION_REVISION,
         GROWTH_MONITORING_REVISION,
+        GROWTH_REPLAN_REVISION,
         HEAD_REVISION,
     }:
         raise ValueError(f"Unknown expected revision: {revision}")
@@ -551,6 +553,8 @@ def _classify_unversioned_schema(path: Path) -> str:
         return "growth_automation_runtime"
     if fingerprint == expected_schema_fingerprint(GROWTH_MONITORING_REVISION):
         return "growth_monitoring_runtime"
+    if fingerprint == expected_schema_fingerprint(GROWTH_REPLAN_REVISION):
+        return "growth_replan_runtime"
     if fingerprint == expected_schema_fingerprint(HEAD_REVISION):
         return "unversioned_head"
     raise IncompatibleSchemaError(
@@ -641,6 +645,7 @@ def get_database_migration_status(database_path: Path) -> DatabaseMigrationStatu
             GROWTH_SANDBOX_REVISION,
             GROWTH_AUTOMATION_REVISION,
             GROWTH_MONITORING_REVISION,
+            GROWTH_REPLAN_REVISION,
             HEAD_REVISION,
         }:
             raise IncompatibleSchemaError("Unsupported Alembic revision")
@@ -673,6 +678,7 @@ def get_database_migration_status(database_path: Path) -> DatabaseMigrationStatu
             GROWTH_SANDBOX_REVISION: "growth_sandbox_runtime",
             GROWTH_AUTOMATION_REVISION: "growth_automation_runtime",
             GROWTH_MONITORING_REVISION: "growth_monitoring_runtime",
+            GROWTH_REPLAN_REVISION: "growth_replan_runtime",
         }
         return DatabaseMigrationStatus(
             state=state_by_revision[revision],
@@ -733,6 +739,7 @@ def _upgrade_sqlite_database_unlocked(
                     "growth_sandbox_runtime": GROWTH_SANDBOX_REVISION,
                     "growth_automation_runtime": GROWTH_AUTOMATION_REVISION,
                     "growth_monitoring_runtime": GROWTH_MONITORING_REVISION,
+                    "growth_replan_runtime": GROWTH_REPLAN_REVISION,
                     "unversioned_head": HEAD_REVISION,
                 }[schema_state]
                 _run_alembic(database, "stamp", stamp_revision)
@@ -753,6 +760,7 @@ def _upgrade_sqlite_database_unlocked(
                     GROWTH_SANDBOX_REVISION,
                     GROWTH_AUTOMATION_REVISION,
                     GROWTH_MONITORING_REVISION,
+                    GROWTH_REPLAN_REVISION,
                     HEAD_REVISION,
                 }:
                     raise IncompatibleSchemaError(

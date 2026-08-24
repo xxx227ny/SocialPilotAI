@@ -1,7 +1,7 @@
 from decimal import Decimal
 
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
@@ -10,11 +10,14 @@ from app.models import (
     BatchVideoJob,
     BatchVideoVariant,
     ExecutionJob,
+    MarketingStrategy,
     Product,
     ProductAsset,
+    VideoProject,
     VideoScriptVersion,
     VideoStoryboardSceneVersion,
 )
+from app.services.video_script_preflight import _model_payload, stable_digest
 
 
 def create_three_platform_sources(
@@ -29,6 +32,30 @@ def create_three_platform_sources(
     )
     session.add(product)
     session.flush()
+    strategy = MarketingStrategy(
+        product_id=product.id,
+        positioning="Practical product value",
+        audience_insights=["People who value useful demonstrations"],
+        angles=["Show the product solving a real problem"],
+        risks=["Avoid unsupported claims"],
+        evidence=["Use the frozen product facts"],
+    )
+    session.add(strategy)
+    session.flush()
+    strategy_digest = stable_digest(
+        _model_payload(
+            strategy,
+            (
+                "id",
+                "product_id",
+                "positioning",
+                "audience_insights",
+                "angles",
+                "risks",
+                "evidence",
+            ),
+        )
+    )
     asset = ProductAsset(
         product_id=product.id,
         file_name="product.png",
@@ -84,6 +111,8 @@ def create_three_platform_sources(
             idempotency_key=f"three-platform-script-{platform}",
             product_id=product.id,
             product_content_digest="c" * 64,
+            strategy_id=strategy.id,
+            strategy_digest=strategy_digest,
             platform=platform,
             language="en-US",
             title=f"{platform} product demo",
@@ -99,16 +128,16 @@ def create_three_platform_sources(
         )
         version.scenes = [
             VideoStoryboardSceneVersion(
-                sequence=scene,
-                start_ms=(scene - 1) * 7500,
-                end_ms=scene * 7500,
+                sequence=sequence,
+                start_ms=start_ms,
+                end_ms=end_ms,
                 shot_type="product_demo",
                 visual_description="Show the complete product",
                 action_description="Demonstrate a supported product action",
                 narration="A concise product demonstration.",
                 subtitle_draft="Product demonstration",
             )
-            for scene in (1, 2)
+            for sequence, (start_ms, end_ms) in enumerate(((0, 7000), (7000, 15000)), 1)
         ]
         session.add(version)
         session.flush()
@@ -199,3 +228,93 @@ def test_three_platform_preflight_reports_missing_execution_requirements(
     assert "happyhorse_execution_disabled" in response.json()["missing_requirements"]
     assert "qwen_credentials" in response.json()["missing_requirements"]
     assert "wanx_credentials" in response.json()["missing_requirements"]
+
+
+def test_three_platform_preflight_rejects_missing_strategy_before_provider_calls(
+    client: TestClient, db_session: Session, tmp_path
+) -> None:
+    product, asset, selections = create_three_platform_sources(db_session)
+    db_session.execute(
+        update(VideoScriptVersion)
+        .where(VideoScriptVersion.id == selections[0]["script_version_id"])
+        .values(strategy_id=None, strategy_digest=None)
+        .execution_options(synchronize_session=False)
+    )
+    db_session.commit()
+    db_session.expire_all()
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        _env_file=None,
+        enable_real_product_video=True,
+        enable_happyhorse_product_video=True,
+        enable_video_render_execution=True,
+        enable_video_composition=True,
+        enable_video_composition_enhancement=True,
+        qwen_api_key="fake-qwen-key",
+        wanx_api_key="fake-wanx-key",
+        product_asset_storage_root=str(tmp_path / "images"),
+        video_artifact_storage_root=str(tmp_path / "videos"),
+    )
+    before = int(db_session.scalar(select(func.count()).select_from(ExecutionJob)) or 0)
+
+    response = client.post(
+        f"/api/v1/products/{product.id}/real-product-video/three-platform-preflight",
+        json={
+            "reference_product_asset_id": asset.id,
+            "reference_product_asset_sha256": asset.sha256,
+            "selections": selections,
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["message"] == (
+        "ScriptVersion lacks exact Strategy identity"
+    )
+    assert (
+        int(db_session.scalar(select(func.count()).select_from(ExecutionJob)) or 0)
+        == before
+    )
+
+
+def test_youtube_script_without_copy_matrix_prepares_exact_video_project(
+    client: TestClient, db_session: Session, tmp_path
+) -> None:
+    product, asset, selections = create_three_platform_sources(db_session)
+    youtube = next(
+        selection
+        for selection in selections
+        if db_session.get(BatchVideoVariant, selection["variant_id"]).platform
+        == "youtube"
+    )
+    version = db_session.get(VideoScriptVersion, youtube["script_version_id"])
+    assert version.copy_matrix_id is None
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        _env_file=None,
+        enable_real_product_video=True,
+        product_asset_storage_root=str(tmp_path / "images"),
+        video_artifact_storage_root=str(tmp_path / "videos"),
+    )
+
+    response = client.post(
+        f"/api/v1/products/{product.id}/real-product-video/prepare",
+        json={
+            "variant_id": youtube["variant_id"],
+            "script_version_id": youtube["script_version_id"],
+            "platform": "YOUTUBE_SHORTS",
+            "shots": [
+                {
+                    "scene_id": scene.id,
+                    "product_asset_id": asset.id,
+                    "product_asset_sha256": asset.sha256,
+                    "motion": "zoom_in",
+                }
+                for scene in version.scenes
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    project = db_session.get(VideoProject, response.json()["video_project_id"])
+    assert project is not None
+    assert project.marketing_strategy_id == version.strategy_id
+    assert project.copy_matrix_id is None
+    assert project.source_script_version_id == version.id

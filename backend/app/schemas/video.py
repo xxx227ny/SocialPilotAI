@@ -81,7 +81,7 @@ class VideoProjectSchema(VideoPlanSchema):
     id: int
     product_id: int
     marketing_strategy_id: int
-    copy_matrix_id: int
+    copy_matrix_id: int | None
     status: str
     created_at: datetime
     updated_at: datetime
@@ -103,9 +103,7 @@ class InitialVideoProjectSourceRead(StrictInitialVideoModel):
     product_id: int
     strategy_id: int
     copy_matrix_id: int
-    selected_by: Literal["latest_valid_copy_matrix"] = (
-        "latest_valid_copy_matrix"
-    )
+    selected_by: Literal["latest_valid_copy_matrix"] = "latest_valid_copy_matrix"
     provider_calls: Literal[0] = 0
     database_writes: Literal[0] = 0
 
@@ -153,9 +151,7 @@ class InitialVideoProjectPreflightRead(StrictInitialVideoModel):
 
 
 class InitialVideoProjectExecutionRead(StrictInitialVideoModel):
-    version: Literal["initial-video-project-v1"] = (
-        "initial-video-project-v1"
-    )
+    version: Literal["initial-video-project-v1"] = "initial-video-project-v1"
     product_id: int
     strategy_id: int
     copy_matrix_id: int
@@ -200,24 +196,18 @@ class V2VideoSceneProviderOutput(StrictV2VideoModel):
 class V2VideoProjectProviderOutput(StrictV2VideoModel):
     title: str = Field(min_length=1, max_length=300)
     concept: str = Field(min_length=1, max_length=1600)
-    scenes: list[V2VideoSceneProviderOutput] = Field(
-        min_length=1, max_length=12
-    )
+    scenes: list[V2VideoSceneProviderOutput] = Field(min_length=1, max_length=12)
     cta: str = Field(min_length=1, max_length=400)
 
     @model_validator(mode="after")
-    def validate_timeline(
-        self, info: ValidationInfo
-    ) -> "V2VideoProjectProviderOutput":
+    def validate_timeline(self, info: ValidationInfo) -> "V2VideoProjectProviderOutput":
         sequences = [scene.sequence for scene in self.scenes]
         if sequences != list(range(1, len(self.scenes) + 1)):
             raise ValueError(
                 "scene sequences must start at 1 and be ordered and continuous"
             )
         expected_duration = (
-            info.context.get("duration_seconds")
-            if info.context is not None
-            else None
+            info.context.get("duration_seconds") if info.context is not None else None
         )
         if expected_duration is not None and sum(
             scene.duration_seconds for scene in self.scenes
@@ -258,9 +248,7 @@ class V2VideoProjectPreflightRead(StrictV2VideoModel):
 
 
 class V2VideoProjectExecutionRead(StrictV2VideoModel):
-    version: Literal["v2-video-project-candidate-v1"] = (
-        "v2-video-project-candidate-v1"
-    )
+    version: Literal["v2-video-project-candidate-v1"] = "v2-video-project-candidate-v1"
     product_id: int
     source_context_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     source_recommendation_digest: str = Field(pattern=r"^[0-9a-f]{64}$")

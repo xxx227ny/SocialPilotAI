@@ -41,9 +41,9 @@ class VideoProject(Base):
         nullable=False,
         index=True,
     )
-    copy_matrix_id: Mapped[int] = mapped_column(
+    copy_matrix_id: Mapped[int | None] = mapped_column(
         ForeignKey("copy_matrices.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
     platform: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -70,7 +70,9 @@ class VideoProject(Base):
     marketing_strategy: Mapped[MarketingStrategy] = relationship(
         back_populates="video_projects"
     )
-    copy_matrix: Mapped[CopyMatrix] = relationship(back_populates="video_projects")
+    copy_matrix: Mapped[CopyMatrix | None] = relationship(
+        back_populates="video_projects"
+    )
     render_tasks: Mapped[list[VideoRenderTask]] = relationship(
         back_populates="video_project", cascade="all, delete-orphan"
     )

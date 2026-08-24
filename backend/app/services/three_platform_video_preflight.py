@@ -22,6 +22,9 @@ from app.schemas.product_marketing_video import (
     ThreePlatformVideoPreflightRead,
     ThreePlatformVideoPreflightRequest,
 )
+from app.services.video_script_source_identity import (
+    validate_video_script_source_identity,
+)
 
 PLATFORM_ORDER = ("tiktok", "youtube", "instagram")
 
@@ -72,6 +75,12 @@ class ThreePlatformVideoPreflightService:
                 raise AppError(
                     "Three-platform selections must cover each platform", 422
                 )
+            validate_video_script_source_identity(
+                self.session,
+                version,
+                product_id=product_id,
+                platform=variant.platform,
+            )
             selected[variant.platform] = (variant, version)
         if set(selected) != set(PLATFORM_ORDER):
             raise AppError("Three-platform selections must cover each platform", 422)

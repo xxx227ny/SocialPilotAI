@@ -106,6 +106,10 @@ try {
   );
   const page = await fs.readFile(path.join(root, "src/pages/ProductCenterPage.tsx"), "utf8");
   const feature = await fs.readFile(path.join(root, "src/config/features.ts"), "utf8");
+  const enhancementApi = await fs.readFile(
+    path.join(root, "src/api/videoCompositionEnhancements.ts"),
+    "utf8",
+  );
   for (const required of [
     "realProductVideoEnabled || isPresentation",
     "submitWanxProductImageJob",
@@ -147,7 +151,11 @@ try {
   assert.ok(feature.includes("VITE_ENABLE_REAL_PRODUCT_VIDEO"));
   assert.ok(!panel.toLowerCase().includes("latest"));
   assert.ok(!panel.includes("uploadProductImage"));
-  safety += 4;
+  assert.match(
+    enhancementApi,
+    /preflight_expires_at:\s*preflight\.expires_at/,
+  );
+  safety += 5;
   console.log(
     `Real Product Video: ${behavior} product-state behavior scenarios, ${safety} static/safety assertions passed`,
   );

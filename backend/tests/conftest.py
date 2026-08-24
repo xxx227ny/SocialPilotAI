@@ -115,7 +115,9 @@ def db_session() -> Generator[Session, None, None]:
     testing_session = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
     with testing_session() as session:
         yield session
-    Base.metadata.drop_all(engine)
+    # StaticPool owns one in-memory SQLite database. Disposing the engine removes
+    # it completely; drop_all() is redundant and emits hundreds of false-positive
+    # cycle warnings for the intentional immutable ScriptVersion/VideoProject FKs.
     engine.dispose()
 
 
