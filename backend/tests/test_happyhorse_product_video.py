@@ -151,6 +151,14 @@ def test_wanx_job_freezes_and_resolves_exact_product_reference(
     assert submitted.job.input_payload["reference_product_asset_sha256"] == digest
     assert "authoritative product identity" in submitted.job.input_payload["prompt"]
     assert "zero written characters" in submitted.job.input_payload["prompt"]
+    assert (
+        "Never add, move, or redesign buttons, ports, cables"
+        in (submitted.job.input_payload["prompt"])
+    )
+    assert (
+        "ingredients, liquid motion, natural hand placement"
+        in (submitted.job.input_payload["prompt"])
+    )
     assert service.reference_content(product.id, asset.id, digest) == content
     with pytest.raises(AppError, match="reference product asset"):
         service.enqueue(
