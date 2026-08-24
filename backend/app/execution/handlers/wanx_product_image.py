@@ -1,6 +1,7 @@
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.config import Settings
+from app.core.exceptions import AppError
 from app.execution.contracts import ExecutionContext, HandlerResult
 from app.providers.wanx_image_provider import (
     WanxImageExplicitFailure,
@@ -20,6 +21,8 @@ class WanxProductImageInput(BaseModel):
     script_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     scene_id: int = Field(gt=0)
     scene_sequence: int = Field(ge=1, le=12)
+    reference_product_asset_id: int = Field(gt=0)
+    reference_product_asset_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     prompt: str = Field(min_length=1, max_length=5000)
     model: str
     input_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -38,9 +41,24 @@ class WanxProductImageGenerateV1Handler:
 
     def execute(self, context: ExecutionContext, payload: BaseModel) -> HandlerResult:
         data = WanxProductImageInput.model_validate(payload)
+        try:
+            with self.session_factory() as session:
+                service = WanxProductImageService(session, self.settings)
+                reference = service.reference_content(
+                    data.product_id,
+                    data.reference_product_asset_id,
+                    data.reference_product_asset_sha256,
+                )
+        except AppError:
+            return HandlerResult.failed(
+                "WANX_REFERENCE_ASSET_INVALID",
+                provider_submission_state="NOT_SUBMITTED",
+            )
         context.before_provider_call(may_submit_external=True)
         try:
-            generated = self.provider_factory(self.settings).generate(data.prompt)
+            generated = self.provider_factory(self.settings).generate(
+                data.prompt, reference_image=reference
+            )
         except WanxImageSubmissionUnknown:
             return HandlerResult.submit_unknown(
                 "WANX_IMAGE_RESULT_UNKNOWN", provider_name="wanx"

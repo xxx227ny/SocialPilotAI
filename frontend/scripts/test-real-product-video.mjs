@@ -91,6 +91,9 @@ try {
   for (const required of [
     "realProductVideoEnabled || isPresentation",
     "submitWanxProductImageJob",
+    "reference_product_asset_id",
+    "reference_product_asset_sha256",
+    "商品主参考图（所有分镜冻结复用）",
     "preflightHappyHorseVideo",
     "submitHappyHorseVideo",
     "refreshHappyHorseVideo",

@@ -3,9 +3,11 @@ import hashlib
 from pathlib import Path
 
 import httpx
+import pytest
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import Settings
+from app.core.exceptions import AppError
 from app.execution.handlers.happyhorse_product_video import (
     HappyHorseProductVideoRefreshV1Handler,
     HappyHorseProductVideoSubmitV1Handler,
@@ -19,6 +21,8 @@ from app.models import (
     VideoProject,
     VideoRenderArtifact,
     VideoRenderTask,
+    VideoScriptVersion,
+    VideoStoryboardSceneVersion,
 )
 from app.providers.happyhorse_provider import HappyHorseProvider
 from app.providers.visual_base import (
@@ -33,11 +37,13 @@ from app.schemas.product_marketing_video import (
     HappyHorseVideoPreflightRequest,
     HappyHorseVideoRefreshRequest,
     HappyHorseVideoSubmitRequest,
+    WanxProductImageSubmitRequest,
 )
 from app.services.happyhorse_product_video_service import (
     HappyHorseProductVideoService,
 )
 from app.services.video_artifact_storage import LocalVideoArtifactStorage
+from app.services.wanx_product_image_service import WanxProductImageService
 from tests.test_video_render_execution_service import FakeOutputFetcher
 
 
@@ -59,6 +65,99 @@ class FakeHappyHorse(VisualGenerationProvider):
             status="SUCCEEDED",
             provider_output_url="https://provider.example/video.mp4",
         )
+
+
+def test_wanx_job_freezes_and_resolves_exact_product_reference(
+    db_session: Session, tmp_path: Path
+) -> None:
+    product = Product(
+        name="Reference Blender",
+        category="Portable appliance",
+        description="A fictional portable blender for a controlled demo.",
+        selling_points=["Portable", "Rechargeable", "Easy cleaning"],
+        target_markets=["US"],
+    )
+    db_session.add(product)
+    db_session.flush()
+    content = b"\x89PNG\r\n\x1a\nreference-product"
+    digest = hashlib.sha256(content).hexdigest()
+    identity = f"product-images/{digest[:2]}/{digest}.png"
+    asset = ProductAsset(
+        product_id=product.id,
+        file_name="reference.png",
+        file_path=identity,
+        file_type="png",
+        content_type="image/png",
+        size_bytes=len(content),
+        sha256=digest,
+        width=1440,
+        height=2560,
+        storage_identity=identity,
+    )
+    version = VideoScriptVersion(
+        batch_video_variant_id=1,
+        version_number=1,
+        source_type="QWEN_GENERATED",
+        source_digest="a" * 64,
+        content_digest="b" * 64,
+        idempotency_key="wanx-reference-version",
+        product_id=product.id,
+        product_content_digest="c" * 64,
+        platform="youtube",
+        language="en-US",
+        title="Reference product demo",
+        concept="Show the exact reference product in action",
+        hook="Blend anywhere",
+        full_narration="Blend anywhere with portable power.",
+        cta="Shop now",
+        full_subtitle_draft="Blend anywhere with portable power.",
+        created_by_kind="QWEN_PROVIDER",
+        review_status="UNREVIEWED",
+    )
+    version.scenes = [
+        VideoStoryboardSceneVersion(
+            sequence=1,
+            start_ms=0,
+            end_ms=3000,
+            shot_type="close",
+            visual_description="Show active blending",
+            action_description="Press the button and blend fruit",
+            narration="Blend anywhere with portable power.",
+            subtitle_draft="Blend anywhere with portable power.",
+        )
+    ]
+    db_session.add_all([asset, version])
+    db_session.commit()
+    image_path = tmp_path / "images" / identity
+    image_path.parent.mkdir(parents=True)
+    image_path.write_bytes(content)
+    settings = Settings(
+        qwen_api_key="fake-token-plan-key",
+        enable_real_product_video=True,
+        product_asset_storage_root=str(tmp_path / "images"),
+    )
+    service = WanxProductImageService(db_session, settings)
+    request = WanxProductImageSubmitRequest(
+        script_version_id=version.id,
+        scene_sequence=1,
+        reference_product_asset_id=asset.id,
+        reference_product_asset_sha256=digest,
+        idempotency_key="wanx-reference-job",
+        cost_confirmed=True,
+    )
+    submitted = service.enqueue(product.id, request)
+    assert submitted.reused is False
+    assert submitted.job.input_payload["reference_product_asset_id"] == asset.id
+    assert submitted.job.input_payload["reference_product_asset_sha256"] == digest
+    assert "authoritative product identity" in submitted.job.input_payload["prompt"]
+    assert "zero written characters" in submitted.job.input_payload["prompt"]
+    assert service.reference_content(product.id, asset.id, digest) == content
+    with pytest.raises(AppError, match="reference product asset"):
+        service.enqueue(
+            product.id,
+            request.model_copy(update={"reference_product_asset_sha256": "d" * 64}),
+        )
+    assert db_session.query(ExecutionJob).count() == 1
 
 
 def test_happyhorse_provider_submits_exact_r2v_contract_without_leaking_key() -> None:

@@ -35,6 +35,8 @@ class WanxProductImageSubmitRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     script_version_id: int = Field(gt=0)
     scene_sequence: int = Field(ge=1, le=12)
+    reference_product_asset_id: int = Field(gt=0)
+    reference_product_asset_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     idempotency_key: str = Field(min_length=1, max_length=200)
     cost_confirmed: bool
 

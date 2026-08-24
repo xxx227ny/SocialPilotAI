@@ -55,6 +55,18 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
   const [batchResults, setBatchResults] = useState<
     Array<{ platform: string; video: number; subtitle: number }>
   >([]);
+  const referenceAssets = useMemo(
+    () =>
+      product.assets.filter(
+        (asset) => asset.sha256 && asset.content_type?.startsWith("image/"),
+      ),
+    [product.assets],
+  );
+  const [referenceAssetId, setReferenceAssetId] = useState(0);
+  const referenceAsset = useMemo(
+    () => referenceAssets.find((asset) => asset.id === referenceAssetId) ?? null,
+    [referenceAssetId, referenceAssets],
+  );
   const source = useMemo(
     () => sources.find((item) => item.variant_id === sourceId) ?? null,
     [sourceId, sources],
@@ -67,6 +79,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
     setResult(null);
     setCloudVideoArtifactId(null);
     setBatchResults([]);
+    setReferenceAssetId(referenceAssets[0]?.id ?? 0);
     if (!realProductVideoEnabled || isPresentation) return;
     const active = operation.current.begin();
     listProductVideoSources(product.id, active.signal)
@@ -82,12 +95,12 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
         }
       });
     return () => operation.current.stop();
-  }, [isPresentation, product.id]);
+  }, [isPresentation, product.id, referenceAssets]);
 
   if (!realProductVideoEnabled || isPresentation) return null;
 
   async function generate() {
-    if (!source) return;
+    if (!source || !referenceAsset?.sha256) return;
     const active = operation.current.begin();
     setResult(null);
     setMessage("");
@@ -100,6 +113,8 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
           {
             script_version_id: source.script_version_id,
             scene_sequence: scene.sequence,
+            reference_product_asset_id: referenceAsset.id,
+            reference_product_asset_sha256: referenceAsset.sha256,
             idempotency_key: crypto.randomUUID(),
             cost_confirmed: true,
           },
@@ -286,6 +301,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
     selectedSource: ProductVideoSource,
     active: { id: number; signal: AbortSignal },
   ) {
+      if (!referenceAsset?.sha256) throw new Error("请选择商品主参考图");
       setPhase("GENERATING_IMAGES");
       const images: UploadedProductImage[] = [];
       for (const scene of selectedSource.scenes) {
@@ -294,7 +310,16 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
           {
             script_version_id: selectedSource.script_version_id,
             scene_sequence: scene.sequence,
-            idempotency_key: `real-product-wanx:${product.id}:${selectedSource.script_version_id}:${scene.sequence}`,
+            reference_product_asset_id: referenceAsset.id,
+            reference_product_asset_sha256: referenceAsset.sha256,
+            idempotency_key: [
+              "real-product-wanx",
+              product.id,
+              selectedSource.script_version_id,
+              scene.sequence,
+              referenceAsset.id,
+              referenceAsset.sha256,
+            ].join(":"),
             cost_confirmed: true,
           },
           active.signal,
@@ -585,17 +610,35 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
           ))}
         </select>
       </label>
+      <label>
+        商品主参考图（所有分镜冻结复用）
+        <select
+          value={referenceAssetId}
+          onChange={(event) => setReferenceAssetId(Number(event.target.value))}
+        >
+          <option value={0}>选择商品主参考图</option>
+          {referenceAssets.map((asset) => (
+            <option key={asset.id} value={asset.id}>
+              Asset #{asset.id} · {asset.file_name}
+            </option>
+          ))}
+        </select>
+      </label>
       <p>万象将按每个分镜自动生成一致的商品广告视觉；阶段：{phase}</p>
       <button
         type="button"
-        disabled={!source || !["IDLE", "FAILED"].includes(phase)}
+        disabled={!source || !referenceAsset || !["IDLE", "FAILED"].includes(phase)}
         onClick={() => void generate()}
       >
         生成15秒视频
       </button>
       <button
         type="button"
-        disabled={!source || !["IDLE", "FAILED", "SUCCEEDED"].includes(phase)}
+        disabled={
+          !source ||
+          !referenceAsset ||
+          !["IDLE", "FAILED", "SUCCEEDED"].includes(phase)
+        }
         onClick={() => void generateCloudVideo()}
       >
         生成单平台完整云成片
@@ -604,6 +647,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
         type="button"
         disabled={
           selectThreePlatformSources(sources).length !== 3 ||
+          !referenceAsset ||
           !["IDLE", "FAILED", "SUCCEEDED"].includes(phase)
         }
         onClick={() => void generateThreePlatformBatch()}
