@@ -1,5 +1,8 @@
 import asyncio
 import hashlib
+import struct
+import subprocess
+import zlib
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -7,6 +10,7 @@ import httpx
 import pytest
 from sqlalchemy.orm import Session, sessionmaker
 
+import app.services.happyhorse_product_video_service as happyhorse_service_module
 from app.core.config import Settings
 from app.core.exceptions import AppError
 from app.execution.handlers.happyhorse_product_video import (
@@ -43,6 +47,11 @@ from app.schemas.product_marketing_video import (
 from app.services.happyhorse_product_video_service import (
     HappyHorseProductVideoService,
 )
+from app.services.happyhorse_reference_media import (
+    HAPPYHORSE_REFERENCE_MAX_BYTES,
+    HAPPYHORSE_REFERENCE_MEDIA_CONTRACT,
+    HappyHorseReferenceMedia,
+)
 from app.services.video_artifact_storage import LocalVideoArtifactStorage
 from app.services.wanx_product_image_service import WanxProductImageService
 from tests.test_video_render_execution_service import FakeOutputFetcher
@@ -53,10 +62,12 @@ class FakeHappyHorse(VisualGenerationProvider):
         self.submit_calls = 0
         self.fetch_calls = 0
         self.reference_count = 0
+        self.references: tuple[VisualReferenceImage, ...] = ()
 
     async def submit(self, request: VisualGenerationRequest) -> VisualTaskSubmission:
         self.submit_calls += 1
         self.reference_count = len(request.reference_images)
+        self.references = request.reference_images
         return VisualTaskSubmission("happyhorse-task-1", None, "PENDING")
 
     async def fetch(self, provider_task_id: str) -> VisualTaskSnapshot:
@@ -66,6 +77,56 @@ class FakeHappyHorse(VisualGenerationProvider):
             status="SUCCEEDED",
             provider_output_url="https://provider.example/video.mp4",
         )
+
+
+def png_bytes(width: int = 1080, height: int = 1920) -> bytes:
+    def chunk(kind: bytes, payload: bytes) -> bytes:
+        return (
+            struct.pack(">I", len(payload))
+            + kind
+            + payload
+            + struct.pack(">I", zlib.crc32(kind + payload) & 0xFFFFFFFF)
+        )
+
+    row = b"\x00" + b"\x15\x2d\x50" * width
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+        + chunk(b"IDAT", zlib.compress(row * height, 9))
+        + chunk(b"IEND", b"")
+    )
+
+
+def test_happyhorse_reference_media_is_bounded_720p_jpeg(tmp_path: Path) -> None:
+    reference = HappyHorseReferenceMedia("ffmpeg", 60).normalize(
+        png_bytes(1440, 2560), "image/png"
+    )
+
+    assert reference.content_type == "image/jpeg"
+    assert reference.content.startswith(b"\xff\xd8\xff")
+    assert len(reference.content) <= HAPPYHORSE_REFERENCE_MAX_BYTES
+    path = tmp_path / "reference.jpg"
+    path.write_bytes(reference.content)
+    probe = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=width,height",
+            "-of",
+            "csv=p=0:s=x",
+            str(path),
+        ],
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=30,
+    )
+    assert probe.returncode == 0
+    assert probe.stdout.strip() == "720x1280"
 
 
 def test_wanx_prompt_replaces_visual_ui_instructions_with_generic_hero_shot() -> None:
@@ -259,7 +320,7 @@ def test_happyhorse_provider_submits_exact_r2v_contract_without_leaking_key() ->
 
 
 def test_happyhorse_preflight_and_enqueue_freeze_exact_reference_images(
-    db_session: Session, tmp_path: Path
+    db_session: Session, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     product = Product(
         name="Fictional Product",
@@ -332,6 +393,16 @@ def test_happyhorse_preflight_and_enqueue_freeze_exact_reference_images(
     assert "Preserve existing product identity marks" in prompt
     checked = service.preflight(product.id, request)
     assert checked.ready is True
+    with monkeypatch.context() as scoped:
+        scoped.setattr(
+            happyhorse_service_module,
+            "HAPPYHORSE_REFERENCE_MEDIA_CONTRACT",
+            f"{HAPPYHORSE_REFERENCE_MEDIA_CONTRACT}-changed",
+        )
+        changed_contract = service.preflight(
+            product.id, request, expires_at=checked.expires_at
+        )
+    assert changed_contract.input_digest != checked.input_digest
     submit = HappyHorseVideoSubmitRequest(
         **request.model_dump(),
         input_digest=checked.input_digest,
@@ -361,7 +432,7 @@ def test_happyhorse_worker_submits_once_and_refresh_persists_artifact(
     )
     db_session.add(product)
     db_session.flush()
-    content = b"reference-image"
+    content = png_bytes()
     digest = hashlib.sha256(content).hexdigest()
     identity = f"product-images/{digest[:2]}/{digest}.png"
     asset = ProductAsset(
@@ -457,15 +528,22 @@ def test_happyhorse_worker_submits_once_and_refresh_persists_artifact(
         session_factory=sessions,
         registry=registry,
         worker_id="happyhorse-worker",
-        heartbeat_interval_seconds=0.1,
+        heartbeat_interval_seconds=5,
     )
-    assert worker.run_once().status == WorkerRunStatus.SUCCEEDED
+    worker_result = worker.run_once()
+    db_session.expire_all()
+    worker_job = db_session.get(ExecutionJob, submitted.job.id)
+    assert worker_job is not None
+    assert worker_result.status == WorkerRunStatus.SUCCEEDED, worker_job.safe_error_code
     db_session.expire_all()
     submit_job = db_session.get(ExecutionJob, submitted.job.id)
     assert submit_job is not None
     task = db_session.get(VideoRenderTask, submit_job.result_entity_id)
     assert task is not None and task.provider_name == "happyhorse"
     assert provider.submit_calls == 1 and provider.reference_count == 1
+    assert provider.references[0].content_type == "image/jpeg"
+    assert provider.references[0].content.startswith(b"\xff\xd8\xff")
+    assert len(provider.references[0].content) <= HAPPYHORSE_REFERENCE_MAX_BYTES
     refresh = service.enqueue_refresh(
         product.id,
         task.id,

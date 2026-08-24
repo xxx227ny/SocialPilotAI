@@ -31,6 +31,9 @@ from app.schemas.product_marketing_video import (
     JobSubmitRead,
 )
 from app.services.execution_queue_service import ExecutionQueueService
+from app.services.happyhorse_reference_media import (
+    HAPPYHORSE_REFERENCE_MEDIA_CONTRACT,
+)
 
 PREFLIGHT_TTL = timedelta(minutes=10)
 
@@ -95,6 +98,7 @@ class HappyHorseProductVideoService:
             missing.append("video_artifact_storage")
         material = {
             "contract": "happyhorse-product-video-r2v-v1",
+            "reference_media_contract": HAPPYHORSE_REFERENCE_MEDIA_CONTRACT,
             "product_id": product_id,
             "video_project_id": project.id,
             "script_version_id": data.script_version_id,

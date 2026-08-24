@@ -25,6 +25,10 @@ from app.schemas.product_marketing_video import (
     HappyHorseReferenceImage,
     HappyHorseVideoPreflightRequest,
 )
+from app.services.happyhorse_reference_media import (
+    HAPPYHORSE_REFERENCE_TOTAL_MAX_BYTES,
+    HappyHorseReferenceMedia,
+)
 from app.services.product_asset_storage import ProductAssetStorage
 from app.services.video_artifact_storage import (
     ProviderOutputFetcher,
@@ -206,6 +210,10 @@ class HappyHorseProductVideoSubmitV1Handler:
             process_timeout=self.settings.video_composition_process_timeout,
         )
         loaded: list[VisualReferenceImage] = []
+        normalizer = HappyHorseReferenceMedia(
+            self.settings.video_composition_ffmpeg_path,
+            self.settings.video_composition_process_timeout,
+        )
         for reference in data.reference_images:
             asset = session.get(ProductAsset, reference.product_asset_id)
             if (
@@ -217,11 +225,12 @@ class HappyHorseProductVideoSubmitV1Handler:
             ):
                 raise AppError("HappyHorse reference image identity is invalid", 409)
             path = storage.resolve(asset.storage_identity, asset.sha256)
-            loaded.append(
-                VisualReferenceImage(
-                    content=path.read_bytes(), content_type=asset.content_type
-                )
-            )
+            loaded.append(normalizer.normalize(path.read_bytes(), asset.content_type))
+        if (
+            sum(len(item.content) for item in loaded)
+            > HAPPYHORSE_REFERENCE_TOTAL_MAX_BYTES
+        ):
+            raise AppError("HappyHorse reference image payload is too large", 422)
         return tuple(loaded)
 
 

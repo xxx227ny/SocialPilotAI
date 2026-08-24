@@ -6,6 +6,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.core.config import Settings, get_settings
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
@@ -31,6 +32,18 @@ from app.models import (  # noqa: F401
     VideoRenderArtifact,
     VideoRenderTask,
 )
+
+
+@pytest.fixture(autouse=True)
+def isolate_settings_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Generator[None, None, None]:
+    """Keep unit tests independent from a developer's live provider settings."""
+    for field_name in Settings.model_fields:
+        monkeypatch.delenv(field_name.upper(), raising=False)
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
