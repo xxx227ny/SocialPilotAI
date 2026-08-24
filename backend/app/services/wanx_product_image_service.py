@@ -18,6 +18,28 @@ from app.services.product import ProductService
 from app.services.product_asset_storage import ProductAssetStorage
 
 WANX_PRODUCT_IMAGE_GENERATE_V1 = "wanx.product_image.generate.v1"
+FORBIDDEN_VISUAL_UI_PHRASES = (
+    "buy button",
+    "button overlay",
+    "link below",
+    "click the link",
+    "tap the link",
+    "call-to-action overlay",
+    "cta overlay",
+    "text overlay",
+    "on-screen text",
+    "screen text",
+    "qr code",
+    "price tag",
+    "discount badge",
+    "website url",
+)
+SAFE_HERO_VISUAL = (
+    "A clean full-product hero shot in a realistic category-appropriate setting."
+)
+SAFE_HERO_ACTION = (
+    "A person makes a natural presentation gesture beside the unchanged product."
+)
 
 
 class WanxProductImageService:
@@ -154,6 +176,12 @@ class WanxProductImageService:
     @staticmethod
     def _prompt(product, version, scene) -> str:
         selling_points = ", ".join(product.selling_points)
+        visual_description = scene.visual_description.strip()
+        action_description = scene.action_description.strip()
+        combined_scene = f"{visual_description} {action_description}".casefold()
+        if any(phrase in combined_scene for phrase in FORBIDDEN_VISUAL_UI_PHRASES):
+            visual_description = SAFE_HERO_VISUAL
+            action_description = SAFE_HERO_ACTION
         return (
             "Create a photorealistic premium ecommerce advertising image in a "
             "vertical 9:16 composition. Treat the supplied reference image as "
@@ -163,7 +191,7 @@ class WanxProductImageService:
             "fictional product "
             f"identity. Product: {product.name}. Category: {product.category}. "
             f"Selling points: {selling_points}. Campaign concept: {version.concept}. "
-            f"Scene: {scene.visual_description}. Action: {scene.action_description}. "
+            f"Scene: {visual_description} Action: {action_description} "
             "If the scene or action mentions any physical component, control, cable, "
             "port, accessory, link, or interface, never render that named object "
             "unless it is visibly present in the reference image. Never add, move, "

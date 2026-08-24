@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 from pathlib import Path
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -65,6 +66,27 @@ class FakeHappyHorse(VisualGenerationProvider):
             status="SUCCEEDED",
             provider_output_url="https://provider.example/video.mp4",
         )
+
+
+def test_wanx_prompt_replaces_visual_ui_instructions_with_generic_hero_shot() -> None:
+    prompt = WanxProductImageService._prompt(
+        SimpleNamespace(
+            name="Reference Product",
+            category="Consumer product",
+            selling_points=["Portable", "Durable"],
+        ),
+        SimpleNamespace(concept="Show the real product benefit"),
+        SimpleNamespace(
+            visual_description="Product beside a buy button overlay graphic",
+            action_description="Presenter gestures to the product and link below",
+        ),
+    )
+
+    assert "buy button" not in prompt.casefold()
+    assert "link below" not in prompt.casefold()
+    assert "clean full-product hero shot" in prompt
+    assert "natural presentation gesture" in prompt
+    assert "Reference Product" in prompt
 
 
 def test_wanx_job_freezes_and_resolves_exact_product_reference(
