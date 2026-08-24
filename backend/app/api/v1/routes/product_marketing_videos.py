@@ -131,6 +131,18 @@ def get_product_video_production_batch(
 
 
 @router.post(
+    "/production-batches/{batch_id}/advance",
+    response_model=ProductVideoProductionCreateRead,
+)
+def advance_product_video_production_batch(
+    product_id: int, batch_id: int, db: Db, settings: SettingsDep
+) -> ProductVideoProductionCreateRead:
+    return ProductVideoProductionBatchService(db, settings).advance(
+        product_id, batch_id
+    )
+
+
+@router.post(
     "/production-batches/{batch_id}/pause",
     response_model=ProductVideoProductionCreateRead,
 )
