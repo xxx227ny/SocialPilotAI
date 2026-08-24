@@ -11,10 +11,13 @@ from app.models import (
     ProductAsset,
     ProductVideoProductionBatch,
     ProductVideoProductionItem,
+    VideoComposition,
+    VideoCompositionArtifact,
     VideoProject,
     VideoRenderArtifact,
     VideoRenderTask,
 )
+from app.services.video_artifact_storage import LocalVideoArtifactStorage
 from tests.test_three_platform_video_preflight import create_three_platform_sources
 
 
@@ -347,6 +350,7 @@ def test_advance_enqueues_wanx_jobs_once_and_recovers_exact_assets(
     assert db_session.query(ExecutionJob).count() == 12
 
     pending_item = refresh_items[0]
+    video_storage = LocalVideoArtifactStorage(tmp_path / "videos", 100_000_000)
     for item in refresh_items:
         job = db_session.get(
             ExecutionJob, item["stage_state_json"]["happyhorse_refresh_job_id"]
@@ -358,10 +362,20 @@ def test_advance_enqueues_wanx_jobs_once_and_recovers_exact_assets(
             job.result_entity_type = "video_render_task"
             job.result_entity_id = task.id
             continue
+        task.status = "SUCCEEDED"
+        stored = video_storage.store(
+            task_id=task.id,
+            content=f"fake-happyhorse-{item['id']}".encode(),
+            content_type="video/mp4",
+        )
         artifact = VideoRenderArtifact(
             video_render_task_id=task.id,
-            storage_path=f"happyhorse/item-{item['id']}.mp4",
-            artifact_metadata={"source": "fake-test"},
+            storage_path=stored.relative_path,
+            artifact_metadata={
+                "content_type": "video/mp4",
+                "size_bytes": stored.size_bytes,
+                "sha256": stored.sha256,
+            },
         )
         db_session.add(artifact)
         db_session.flush()
@@ -391,7 +405,7 @@ def test_advance_enqueues_wanx_jobs_once_and_recovers_exact_assets(
         if item["id"] == pending_item["id"]
     )
     assert pending_after["stage_state_json"]["happyhorse_refresh_count"] == 2
-    assert db_session.query(ExecutionJob).count() == 13
+    assert db_session.query(ExecutionJob).count() == 15
     final_refresh_job = db_session.get(
         ExecutionJob,
         pending_after["stage_state_json"]["happyhorse_refresh_job_id"],
@@ -399,10 +413,20 @@ def test_advance_enqueues_wanx_jobs_once_and_recovers_exact_assets(
     pending_task = db_session.get(
         VideoRenderTask, pending_after["cloud_render_task_id"]
     )
+    pending_task.status = "SUCCEEDED"
+    pending_stored = video_storage.store(
+        task_id=pending_task.id,
+        content=f"fake-happyhorse-{pending_item['id']}".encode(),
+        content_type="video/mp4",
+    )
     pending_artifact = VideoRenderArtifact(
         video_render_task_id=pending_task.id,
-        storage_path=f"happyhorse/item-{pending_item['id']}.mp4",
-        artifact_metadata={"source": "fake-test"},
+        storage_path=pending_stored.relative_path,
+        artifact_metadata={
+            "content_type": "video/mp4",
+            "size_bytes": pending_stored.size_bytes,
+            "sha256": pending_stored.sha256,
+        },
     )
     db_session.add(pending_artifact)
     db_session.flush()
@@ -420,7 +444,71 @@ def test_advance_enqueues_wanx_jobs_once_and_recovers_exact_assets(
         for item in all_downloaded.json()["items"]
     )
     assert db_session.query(VideoRenderArtifact).count() == 3
-    assert db_session.query(ExecutionJob).count() == 13
+    assert db_session.query(ExecutionJob).count() == 15
+
+    composition_submitted = client.post(endpoint)
+    assert composition_submitted.status_code == 200
+    composition_items = composition_submitted.json()["items"]
+    assert {item["stage"] for item in composition_items} == {"COMPOSING"}
+    assert all(item["composition_id"] is not None for item in composition_items)
+    assert db_session.query(VideoComposition).count() == 3
+    assert (
+        db_session.query(ExecutionJob)
+        .filter_by(job_type="video.composition.render.v1")
+        .count()
+        == 3
+    )
+    assert db_session.query(ExecutionJob).count() == 16
+
+    repeated_composition = client.post(endpoint)
+    assert repeated_composition.status_code == 200
+    assert db_session.query(VideoComposition).count() == 3
+    assert db_session.query(ExecutionJob).count() == 16
+
+    for item in composition_items:
+        job = db_session.get(
+            ExecutionJob, item["stage_state_json"]["composition_job_id"]
+        )
+        composition = db_session.get(VideoComposition, item["composition_id"])
+        artifact = VideoCompositionArtifact(
+            composition_id=composition.id,
+            storage_path=f"compositions/item-{item['id']}.mp4",
+            content_type="video/mp4",
+            size_bytes=123,
+            sha256=f"{item['id']:064x}",
+            duration_ms=15000,
+            width=1080,
+            height=1920,
+            fps_numerator=30,
+            fps_denominator=1,
+            video_codec="h264",
+            pixel_format="yuv420p",
+            audio_codec="aac",
+            audio_sample_rate=48000,
+            container="mp4",
+            source_chain_digest=composition.source_chain_digest,
+        )
+        db_session.add(artifact)
+        db_session.flush()
+        composition.status = "SUCCEEDED"
+        composition.completed_at = composition.created_at
+        job.status = "SUCCEEDED"
+        job.result_entity_type = "video_composition_artifact"
+        job.result_entity_id = artifact.id
+        job.completed_at = job.created_at
+    db_session.commit()
+
+    composition_recovered = client.post(endpoint)
+    assert composition_recovered.status_code == 200
+    assert {item["stage"] for item in composition_recovered.json()["items"]} == {
+        "GENERATING_VOICEOVER"
+    }
+    assert all(
+        item["stage_state_json"]["composition_artifact_id"] > 0
+        for item in composition_recovered.json()["items"]
+    )
+    assert db_session.query(VideoCompositionArtifact).count() == 3
+    assert db_session.query(ExecutionJob).count() == 16
 
 
 def test_advance_failure_and_controls_are_provider_job_scoped(

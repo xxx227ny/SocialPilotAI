@@ -11,6 +11,8 @@ from app.models import (
     ProductAsset,
     ProductVideoProductionBatch,
     ProductVideoProductionItem,
+    VideoComposition,
+    VideoCompositionArtifact,
     VideoProject,
     VideoRenderArtifact,
     VideoRenderTask,
@@ -31,12 +33,20 @@ from app.schemas.product_marketing_video import (
     ThreePlatformVideoPreflightRequest,
     WanxProductImageSubmitRequest,
 )
+from app.schemas.video_composition import (
+    CompositionShotInput,
+    VideoCompositionPreflightRequest,
+    VideoCompositionSubmitRequest,
+)
 from app.services.happyhorse_product_video_service import (
     HappyHorseProductVideoService,
 )
 from app.services.three_platform_video_preflight import (
     ThreePlatformVideoPreflightService,
 )
+from app.services.video_artifact_storage import LocalVideoArtifactStorage
+from app.services.video_composition_job_service import VideoCompositionJobService
+from app.services.video_composition_preflight import VideoCompositionPreflightService
 from app.services.video_script_project_bridge import VideoScriptProjectBridge
 from app.services.wanx_product_image_service import WanxProductImageService
 
@@ -158,6 +168,8 @@ class ProductVideoProductionBatchService:
                 self._prepare_and_submit_happyhorse(batch, item)
             elif item.stage == "GENERATING_VIDEO":
                 self._refresh_happyhorse_submit(item)
+            elif item.stage == "COMPOSING":
+                self._advance_composition(batch, item)
         self._sync_batch_status(batch)
         self.session.commit()
         return self._create_read(self._required(product_id, batch_id), reused=True)
@@ -510,6 +522,122 @@ class ProductVideoProductionBatchService:
             "happyhorse_refresh_count": next_count,
             "happyhorse_refresh_job_id": submitted.job.id,
         }
+
+    def _advance_composition(
+        self,
+        batch: ProductVideoProductionBatch,
+        item: ProductVideoProductionItem,
+    ) -> None:
+        raw_job_id = item.stage_state_json.get("composition_job_id")
+        if isinstance(raw_job_id, int):
+            self._recover_composition(item, raw_job_id)
+            return
+
+        project = self.session.get(VideoProject, item.video_project_id)
+        task = self.session.get(VideoRenderTask, item.cloud_render_task_id)
+        artifact = self.session.get(VideoRenderArtifact, item.cloud_render_artifact_id)
+        if (
+            project is None
+            or project.product_id != batch.product_id
+            or project.source_script_version_id != item.script_version_id
+            or task is None
+            or task.video_project_id != project.id
+            or task.status != "SUCCEEDED"
+            or task.duration_seconds < 15
+            or artifact is None
+            or artifact.video_render_task_id != task.id
+        ):
+            self._fail_item(item, "PRODUCTION_COMPOSITION_SOURCE_INVALID")
+            return
+
+        shots = [
+            CompositionShotInput(
+                sequence=1,
+                start_ms=0,
+                end_ms=15000,
+                trim_start_ms=0,
+                trim_end_ms=15000,
+                render_task_id=task.id,
+                artifact_id=artifact.id,
+            )
+        ]
+        preflight_request = VideoCompositionPreflightRequest(
+            video_project_id=project.id,
+            shots=shots,
+        )
+        checked = VideoCompositionPreflightService(
+            self.session, self._video_storage()
+        ).run(batch.product_id, preflight_request)
+        if not checked.ready:
+            self._fail_item(item, "PRODUCTION_COMPOSITION_NOT_READY")
+            return
+        submitted = VideoCompositionJobService(self.session, self.settings).enqueue(
+            batch.product_id,
+            VideoCompositionSubmitRequest(
+                **preflight_request.model_dump(),
+                input_digest=checked.input_digest,
+                source_chain_digest=checked.source_chain_digest,
+                preflight_digest=checked.preflight_digest,
+                preflight_expires_at=checked.expires_at,
+                local_cpu_cost_confirmed=True,
+            ),
+        )
+        item.composition_id = submitted.composition.id
+        item.stage_state_json = {
+            **item.stage_state_json,
+            "composition_job_id": submitted.job.id,
+        }
+
+    def _recover_composition(
+        self,
+        item: ProductVideoProductionItem,
+        job_id: int,
+    ) -> None:
+        job = self.session.get(ExecutionJob, job_id)
+        composition = self.session.get(VideoComposition, item.composition_id)
+        if (
+            job is None
+            or composition is None
+            or job.source_type != "video_composition"
+            or job.source_id != composition.id
+            or composition.video_project_id != item.video_project_id
+        ):
+            self._fail_item(item, "PRODUCTION_COMPOSITION_JOB_INVALID")
+            return
+        if job.status == "SUBMIT_UNKNOWN":
+            self._fail_item(item, "PRODUCTION_COMPOSITION_PERSIST_UNKNOWN")
+            return
+        if job.status in {"FAILED", "CANCELLED"}:
+            self._fail_item(item, "PRODUCTION_COMPOSITION_FAILED")
+            return
+        if job.status != "SUCCEEDED":
+            return
+        artifact = (
+            self.session.get(VideoCompositionArtifact, job.result_entity_id)
+            if job.result_entity_type == "video_composition_artifact"
+            and job.result_entity_id is not None
+            else None
+        )
+        if (
+            artifact is None
+            or artifact.composition_id != composition.id
+            or composition.status != "SUCCEEDED"
+        ):
+            self._fail_item(item, "PRODUCTION_COMPOSITION_RESULT_INVALID")
+            return
+        item.stage_state_json = {
+            **item.stage_state_json,
+            "composition_artifact_id": artifact.id,
+        }
+        item.stage = "GENERATING_VOICEOVER"
+
+    def _video_storage(self) -> LocalVideoArtifactStorage:
+        from pathlib import Path
+
+        return LocalVideoArtifactStorage(
+            Path(self.settings.video_artifact_storage_root or ""),
+            self.settings.video_artifact_max_bytes,
+        )
 
     @staticmethod
     def _fail_item(item: ProductVideoProductionItem, code: str) -> None:
