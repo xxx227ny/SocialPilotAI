@@ -11,6 +11,8 @@ from app.models import (
     ProductAsset,
     ProductVideoProductionBatch,
     ProductVideoProductionItem,
+    VideoProject,
+    VideoRenderTask,
 )
 from tests.test_three_platform_video_preflight import create_three_platform_sources
 
@@ -264,6 +266,62 @@ def test_advance_enqueues_wanx_jobs_once_and_recovers_exact_assets(
         for item in recovered.json()["items"]
     )
     assert db_session.query(ExecutionJob).count() == 6
+
+    submitted = client.post(endpoint)
+    assert submitted.status_code == 200
+    submitted_body = submitted.json()
+    assert {item["stage"] for item in submitted_body["items"]} == {"GENERATING_VIDEO"}
+    assert db_session.query(VideoProject).count() == 3
+    submit_jobs = (
+        db_session.query(ExecutionJob)
+        .filter_by(job_type="happyhorse.product_video.submit.v1")
+        .order_by(ExecutionJob.id)
+        .all()
+    )
+    assert len(submit_jobs) == 3
+    assert db_session.query(ExecutionJob).count() == 9
+    assert all(
+        item["stage_state_json"]["happyhorse_submit_job_id"]
+        in {job.id for job in submit_jobs}
+        for item in submitted_body["items"]
+    )
+
+    repeated_submit = client.post(endpoint)
+    assert repeated_submit.status_code == 200
+    assert db_session.query(VideoProject).count() == 3
+    assert db_session.query(ExecutionJob).count() == 9
+
+    for item in submitted_body["items"]:
+        job = db_session.get(
+            ExecutionJob, item["stage_state_json"]["happyhorse_submit_job_id"]
+        )
+        task = VideoRenderTask(
+            video_project_id=item["video_project_id"],
+            scene_sequence=1,
+            status="PENDING",
+            provider_name="happyhorse",
+            provider_task_id=f"provider-task-{item['id']}",
+            render_prompt="Frozen generic product demonstration",
+            duration_seconds=15,
+            aspect_ratio="9:16",
+            resolution="720P",
+            idempotency_key=f"production-happyhorse-task-{item['id']}",
+        )
+        db_session.add(task)
+        db_session.flush()
+        job.status = "SUCCEEDED"
+        job.result_entity_type = "video_render_task"
+        job.result_entity_id = task.id
+        job.completed_at = job.created_at
+    db_session.commit()
+
+    task_recovery = client.post(endpoint)
+    assert task_recovery.status_code == 200
+    assert all(
+        item["cloud_render_task_id"] is not None
+        for item in task_recovery.json()["items"]
+    )
+    assert db_session.query(ExecutionJob).count() == 9
 
 
 def test_advance_failure_and_controls_are_provider_job_scoped(

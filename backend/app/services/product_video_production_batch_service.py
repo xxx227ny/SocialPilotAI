@@ -11,10 +11,17 @@ from app.models import (
     ProductAsset,
     ProductVideoProductionBatch,
     ProductVideoProductionItem,
+    VideoProject,
+    VideoRenderTask,
     VideoScriptVersion,
 )
 from app.models.product import utc_now
 from app.schemas.product_marketing_video import (
+    HappyHorseReferenceImage,
+    HappyHorseVideoPreflightRequest,
+    HappyHorseVideoSubmitRequest,
+    ProductImageShotRequest,
+    ProductVideoPrepareRequest,
     ProductVideoProductionBatchRead,
     ProductVideoProductionCreateRead,
     ProductVideoProductionCreateRequest,
@@ -22,10 +29,21 @@ from app.schemas.product_marketing_video import (
     ThreePlatformVideoPreflightRequest,
     WanxProductImageSubmitRequest,
 )
+from app.services.happyhorse_product_video_service import (
+    HappyHorseProductVideoService,
+)
 from app.services.three_platform_video_preflight import (
     ThreePlatformVideoPreflightService,
 )
+from app.services.video_script_project_bridge import VideoScriptProjectBridge
 from app.services.wanx_product_image_service import WanxProductImageService
+
+PLATFORM_REQUEST_NAMES = {
+    "tiktok": "TIKTOK",
+    "youtube": "YOUTUBE_SHORTS",
+    "instagram": "INSTAGRAM_REELS",
+}
+SHOT_MOTIONS = ("zoom_in", "pan_right", "zoom_out", "pan_left")
 
 
 class ProductVideoProductionBatchService:
@@ -133,6 +151,10 @@ class ProductVideoProductionBatchService:
                 self._enqueue_wanx_images(batch, item)
             elif item.stage == "GENERATING_IMAGES":
                 self._refresh_wanx_images(batch, item)
+            elif item.stage == "PREPARING_VIDEO":
+                self._prepare_and_submit_happyhorse(batch, item)
+            elif item.stage == "GENERATING_VIDEO":
+                self._refresh_happyhorse_submit(item)
         self._sync_batch_status(batch)
         self.session.commit()
         return self._create_read(self._required(product_id, batch_id), reused=True)
@@ -274,6 +296,137 @@ class ProductVideoProductionBatchService:
             "wanx_product_asset_ids": asset_ids,
         }
         item.stage = "PREPARING_VIDEO"
+
+    def _prepare_and_submit_happyhorse(
+        self,
+        batch: ProductVideoProductionBatch,
+        item: ProductVideoProductionItem,
+    ) -> None:
+        version = self.session.get(VideoScriptVersion, item.script_version_id)
+        raw_asset_ids = item.stage_state_json.get("wanx_product_asset_ids")
+        if (
+            version is None
+            or not isinstance(raw_asset_ids, list)
+            or len(raw_asset_ids) != len(version.scenes)
+            or not all(isinstance(asset_id, int) for asset_id in raw_asset_ids)
+        ):
+            self._fail_item(item, "PRODUCTION_WANX_RESULT_INVALID")
+            return
+        assets = [
+            self.session.get(ProductAsset, asset_id) for asset_id in raw_asset_ids
+        ]
+        if any(
+            asset is None
+            or asset.product_id != batch.product_id
+            or not asset.sha256
+            or not asset.storage_identity
+            for asset in assets
+        ):
+            self._fail_item(item, "PRODUCTION_WANX_RESULT_INVALID")
+            return
+        shots = [
+            ProductImageShotRequest(
+                scene_id=scene.id,
+                product_asset_id=asset.id,
+                product_asset_sha256=asset.sha256,
+                motion=SHOT_MOTIONS[(scene.sequence - 1) % len(SHOT_MOTIONS)],
+            )
+            for scene, asset in zip(version.scenes, assets, strict=True)
+            if asset is not None
+        ]
+        prepared = VideoScriptProjectBridge(self.session).prepare(
+            batch.product_id,
+            ProductVideoPrepareRequest(
+                variant_id=item.batch_video_variant_id,
+                script_version_id=item.script_version_id,
+                platform=PLATFORM_REQUEST_NAMES[item.platform],
+                shots=shots,
+            ),
+        )
+        project = self.session.get(VideoProject, prepared.video_project_id)
+        if (
+            project is None
+            or project.product_id != batch.product_id
+            or project.source_script_version_id != item.script_version_id
+            or [scene.get("source_product_asset_id") for scene in project.scenes]
+            != raw_asset_ids
+        ):
+            self._fail_item(item, "PRODUCTION_VIDEO_PROJECT_IDENTITY_INVALID")
+            return
+
+        references: list[HappyHorseReferenceImage] = []
+        seen_asset_ids: set[int] = set()
+        for asset in assets:
+            if asset is not None and asset.id not in seen_asset_ids:
+                seen_asset_ids.add(asset.id)
+                references.append(
+                    HappyHorseReferenceImage(
+                        product_asset_id=asset.id,
+                        product_asset_sha256=asset.sha256,
+                    )
+                )
+        service = HappyHorseProductVideoService(self.session, self.settings)
+        preflight_request = HappyHorseVideoPreflightRequest(
+            video_project_id=project.id,
+            script_version_id=item.script_version_id,
+            reference_images=references,
+        )
+        checked = service.preflight(batch.product_id, preflight_request)
+        if not checked.ready:
+            self._fail_item(item, "PRODUCTION_HAPPYHORSE_NOT_READY")
+            return
+        submitted = service.enqueue_submit(
+            batch.product_id,
+            HappyHorseVideoSubmitRequest(
+                **preflight_request.model_dump(),
+                input_digest=checked.input_digest,
+                preflight_digest=checked.preflight_digest,
+                preflight_expires_at=checked.expires_at,
+                cost_confirmed=True,
+            ),
+        )
+        item.video_project_id = project.id
+        item.stage_state_json = {
+            **item.stage_state_json,
+            "happyhorse_submit_job_id": submitted.job.id,
+            "happyhorse_reference_asset_ids": [
+                reference.product_asset_id for reference in references
+            ],
+        }
+        item.stage = "GENERATING_VIDEO"
+
+    def _refresh_happyhorse_submit(self, item: ProductVideoProductionItem) -> None:
+        if item.cloud_render_task_id is not None:
+            return
+        job_id = item.stage_state_json.get("happyhorse_submit_job_id")
+        job = (
+            self.session.get(ExecutionJob, job_id) if isinstance(job_id, int) else None
+        )
+        if job is None:
+            self._fail_item(item, "PRODUCTION_HAPPYHORSE_JOB_IDENTITY_INVALID")
+            return
+        if job.status == "SUBMIT_UNKNOWN":
+            self._fail_item(item, "PRODUCTION_HAPPYHORSE_SUBMIT_UNKNOWN")
+            return
+        if job.status in {"FAILED", "CANCELLED"}:
+            self._fail_item(item, "PRODUCTION_HAPPYHORSE_SUBMIT_FAILED")
+            return
+        if job.status != "SUCCEEDED":
+            return
+        task = (
+            self.session.get(VideoRenderTask, job.result_entity_id)
+            if job.result_entity_type == "video_render_task"
+            and job.result_entity_id is not None
+            else None
+        )
+        if (
+            task is None
+            or task.video_project_id != item.video_project_id
+            or task.provider_name != "happyhorse"
+        ):
+            self._fail_item(item, "PRODUCTION_HAPPYHORSE_RESULT_INVALID")
+            return
+        item.cloud_render_task_id = task.id
 
     @staticmethod
     def _fail_item(item: ProductVideoProductionItem, code: str) -> None:
