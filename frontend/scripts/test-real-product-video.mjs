@@ -12,6 +12,9 @@ try {
   await build({
     configFile: false,
     logLevel: "silent",
+    define: {
+      "import.meta.env.VITE_ENABLE_REAL_PRODUCT_VIDEO": JSON.stringify("false"),
+    },
     build: {
       write: true,
       outDir: output,
@@ -71,14 +74,29 @@ try {
   assert.equal(features.realProductVideoEnabled, false);
   behavior++;
   const threePlatforms = state.selectThreePlatformSources([
-    { variant_id: 4, platform: "instagram" },
-    { variant_id: 2, platform: "youtube" },
-    { variant_id: 1, platform: "tiktok" },
-    { variant_id: 3, platform: "tiktok" },
+    { variant_id: 4, script_version_id: 14, platform: "instagram" },
+    { variant_id: 2, script_version_id: 12, platform: "youtube" },
+    { variant_id: 1, script_version_id: 11, platform: "tiktok" },
+    { variant_id: 3, script_version_id: 13, platform: "tiktok" },
   ]);
   assert.deepEqual(
     threePlatforms.map((source) => source.variant_id),
     [1, 2, 4],
+  );
+  behavior++;
+  const batchPayload = state.buildThreePlatformPreflightPayload(threePlatforms, {
+    id: 8,
+    sha256: "a".repeat(64),
+  });
+  assert.deepEqual(batchPayload.selections, [
+    { variant_id: 1, script_version_id: 11 },
+    { variant_id: 2, script_version_id: 12 },
+    { variant_id: 4, script_version_id: 14 },
+  ]);
+  assert.equal(batchPayload.reference_product_asset_id, 8);
+  assert.equal(
+    state.buildThreePlatformPreflightPayload(threePlatforms, null),
+    null,
   );
   behavior++;
 
@@ -111,6 +129,12 @@ try {
     "下载HappyHorse MP4",
     "批量生成三平台完整成片",
     "selectThreePlatformSources",
+    "buildThreePlatformPreflightPayload",
+    "preflightThreePlatformVideo",
+    "检查三平台调用与费用",
+    "我已确认上述调用次数",
+    "千问TTS费用尚未配置",
+    "current.input_digest !== batchPreflight.input_digest",
     "三平台批量将按顺序执行",
     "旁白若超过15秒会安全停止",
     "下载MP4",

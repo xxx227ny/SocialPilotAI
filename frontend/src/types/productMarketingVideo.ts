@@ -61,6 +61,37 @@ export interface HappyHorseVideoPreflight {
   missing_requirements: string[];
 }
 
+export interface ThreePlatformVideoPreflight {
+  reference_product_asset_id: number;
+  reference_product_asset_sha256: string;
+  selections: Array<{ variant_id: number; script_version_id: number }>;
+  input_digest: string;
+  platforms: Array<{
+    platform: "tiktok" | "youtube" | "instagram";
+    variant_id: number;
+    script_version_id: number;
+    scene_count: number;
+    wanx_image_generation_calls: number;
+    happyhorse_generation_calls: number;
+    qwen_tts_generation_calls: number;
+    known_estimated_cost: string;
+    currency: "CNY";
+  }>;
+  wanx_image_generation_calls: number;
+  happyhorse_generation_calls: number;
+  qwen_tts_generation_calls: number;
+  qwen_script_generation_calls: 0;
+  known_estimated_cost: string;
+  currency: "CNY";
+  cost_estimate_complete: false;
+  unpriced_cost_components: string[];
+  requires_cost_confirmation: true;
+  ready: boolean;
+  missing_requirements: string[];
+  provider_call_count: number;
+  database_writes: 0;
+}
+
 export type RealProductVideoPhase =
   | "IDLE"
   | "UPLOADING"

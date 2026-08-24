@@ -18,6 +18,8 @@ from app.schemas.product_marketing_video import (
     ProductVideoPrepareRequest,
     ProductVideoSceneRead,
     ProductVideoSourceRead,
+    ThreePlatformVideoPreflightRead,
+    ThreePlatformVideoPreflightRequest,
     VoiceoverSubmitRequest,
     WanxProductImageSubmitRequest,
 )
@@ -25,6 +27,9 @@ from app.services.happyhorse_product_video_service import (
     HappyHorseProductVideoService,
 )
 from app.services.product_image_render_service import ProductImageRenderService
+from app.services.three_platform_video_preflight import (
+    ThreePlatformVideoPreflightService,
+)
 from app.services.video_script_project_bridge import VideoScriptProjectBridge
 from app.services.voiceover_generation_service import VoiceoverGenerationService
 from app.services.wanx_product_image_service import WanxProductImageService
@@ -82,6 +87,18 @@ def list_product_video_sources(
             )
         )
     return result
+
+
+@router.post(
+    "/three-platform-preflight", response_model=ThreePlatformVideoPreflightRead
+)
+def preflight_three_platform_video(
+    product_id: int,
+    data: ThreePlatformVideoPreflightRequest,
+    db: Db,
+    settings: SettingsDep,
+) -> ThreePlatformVideoPreflightRead:
+    return ThreePlatformVideoPreflightService(db, settings).run(product_id, data)
 
 
 @router.post("/prepare", response_model=ProductVideoPrepareRead)

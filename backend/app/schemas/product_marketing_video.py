@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -151,3 +152,40 @@ class ProductVideoSelection(BaseModel):
         if self.variant_id <= 0 or self.script_version_id <= 0:
             raise ValueError("Exact positive identities are required")
         return self
+
+
+class ThreePlatformVideoPreflightRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reference_product_asset_id: int = Field(gt=0)
+    reference_product_asset_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    selections: list[ProductVideoSelection] = Field(min_length=3, max_length=3)
+
+
+class PlatformVideoProductionEstimate(BaseModel):
+    platform: str = Field(pattern=r"^(tiktok|youtube|instagram)$")
+    variant_id: int
+    script_version_id: int
+    scene_count: int
+    wanx_image_generation_calls: int
+    happyhorse_generation_calls: int = 1
+    qwen_tts_generation_calls: int = 1
+    known_estimated_cost: Decimal
+    currency: str = "CNY"
+
+
+class ThreePlatformVideoPreflightRead(ThreePlatformVideoPreflightRequest):
+    input_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    platforms: list[PlatformVideoProductionEstimate]
+    wanx_image_generation_calls: int
+    happyhorse_generation_calls: int
+    qwen_tts_generation_calls: int
+    qwen_script_generation_calls: int = 0
+    known_estimated_cost: Decimal
+    currency: str = "CNY"
+    cost_estimate_complete: bool = False
+    unpriced_cost_components: list[str] = Field(default_factory=lambda: ["qwen_tts"])
+    requires_cost_confirmation: bool = True
+    ready: bool
+    missing_requirements: list[str]
+    provider_call_count: int = 0
+    database_writes: int = 0

@@ -5,12 +5,26 @@ import type {
   MarketingJobResult,
   ProductVideoPrepare,
   ProductVideoSource,
+  ThreePlatformVideoPreflight,
   UploadedProductImage,
 } from "../types/productMarketingVideo";
 
 export async function listProductVideoSources(productId: number, signal?: AbortSignal) {
   const response = await apiClient.get<ProductVideoSource[]>(
     `/products/${productId}/real-product-video/sources`,
+    { signal },
+  );
+  return response.data;
+}
+
+export async function preflightThreePlatformVideo(
+  productId: number,
+  payload: Record<string, unknown>,
+  signal?: AbortSignal,
+) {
+  const response = await apiClient.post<ThreePlatformVideoPreflight>(
+    `/products/${productId}/real-product-video/three-platform-preflight`,
+    payload,
     { signal },
   );
   return response.data;

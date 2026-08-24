@@ -6,6 +6,7 @@ import {
   getProductImageAsset,
   happyHorseVideoContentUrl,
   listProductVideoSources,
+  preflightThreePlatformVideo,
   preflightHappyHorseVideo,
   prepareProductVideo,
   refreshHappyHorseVideo,
@@ -32,9 +33,11 @@ import type { Product } from "../../types/product";
 import type {
   ProductVideoSource,
   RealProductVideoPhase,
+  ThreePlatformVideoPreflight,
   UploadedProductImage,
 } from "../../types/productMarketingVideo";
 import {
+  buildThreePlatformPreflightPayload,
   pollExactJob,
   RealProductVideoOperation,
   requireSuccessfulResult,
@@ -55,6 +58,9 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
   const [batchResults, setBatchResults] = useState<
     Array<{ platform: string; video: number; subtitle: number }>
   >([]);
+  const [batchPreflight, setBatchPreflight] =
+    useState<ThreePlatformVideoPreflight | null>(null);
+  const [batchCostConfirmed, setBatchCostConfirmed] = useState(false);
   const referenceAssets = useMemo(
     () =>
       product.assets.filter(
@@ -96,6 +102,11 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
       });
     return () => operation.current.stop();
   }, [isPresentation, product.id, referenceAssets]);
+
+  useEffect(() => {
+    setBatchPreflight(null);
+    setBatchCostConfirmed(false);
+  }, [referenceAssetId, sources]);
 
   if (!realProductVideoEnabled || isPresentation) return null;
 
@@ -300,6 +311,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
   async function generateCloudFinal(
     selectedSource: ProductVideoSource,
     active: { id: number; signal: AbortSignal },
+    costConfirmed = true,
   ) {
       if (!referenceAsset?.sha256) throw new Error("请选择商品主参考图");
       setPhase("GENERATING_IMAGES");
@@ -320,7 +332,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
               referenceAsset.id,
               referenceAsset.sha256,
             ].join(":"),
-            cost_confirmed: true,
+            cost_confirmed: costConfirmed,
           },
           active.signal,
         );
@@ -374,7 +386,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
           input_digest: preflight.input_digest,
           preflight_digest: preflight.preflight_digest,
           preflight_expires_at: preflight.expires_at,
-          cost_confirmed: true,
+          cost_confirmed: costConfirmed,
         },
         active.signal,
       );
@@ -558,10 +570,44 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
     }
   }
 
+  async function checkThreePlatformPreflight() {
+    const payload = buildThreePlatformPreflightPayload(sources, referenceAsset);
+    if (!payload) {
+      setMessage("需要三平台各一个激活脚本，并选择商品主参考图。");
+      return;
+    }
+    const active = operation.current.begin();
+    setBatchPreflight(null);
+    setBatchCostConfirmed(false);
+    setMessage("正在检查三平台调用次数、费用和执行条件……");
+    try {
+      const checked = await preflightThreePlatformVideo(
+        product.id,
+        payload,
+        active.signal,
+      );
+      if (!operation.current.current(active.id)) return;
+      setBatchPreflight(checked);
+      setMessage(
+        checked.ready
+          ? "三平台生成条件已满足，请核对调用与费用后确认。"
+          : `三平台生成条件未满足：${checked.missing_requirements.join("、")}`,
+      );
+    } catch (error) {
+      fail(active.id, error, "三平台生成条件检查失败。");
+    }
+  }
+
   async function generateThreePlatformBatch() {
     const selected = selectThreePlatformSources(sources);
-    if (selected.length !== 3) {
-      setMessage("需要TikTok、YouTube Shorts和Instagram Reels各一个可用脚本。");
+    const payload = buildThreePlatformPreflightPayload(sources, referenceAsset);
+    if (
+      selected.length !== 3 ||
+      !payload ||
+      !batchPreflight?.ready ||
+      !batchCostConfirmed
+    ) {
+      setMessage("请先完成三平台Preflight并确认费用。");
       return;
     }
     const active = operation.current.begin();
@@ -569,9 +615,21 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
     setBatchResults([]);
     setMessage("三平台批量将按顺序执行，任一失败即停止。每个平台包含万象图、HappyHorse视频和千问TTS调用。");
     try {
+      const current = await preflightThreePlatformVideo(
+        product.id,
+        payload,
+        active.signal,
+      );
+      if (!current.ready || current.input_digest !== batchPreflight.input_digest) {
+        throw new Error("三平台生成条件或费用已变化，请重新检查并确认。");
+      }
       const completed: Array<{ platform: string; video: number; subtitle: number }> = [];
       for (const selectedSource of selected) {
-        const output = await generateCloudFinal(selectedSource, active);
+        const output = await generateCloudFinal(
+          selectedSource,
+          active,
+          batchCostConfirmed,
+        );
         completed.push({
           platform: selectedSource.platform,
           video: output.video,
@@ -648,6 +706,41 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
         disabled={
           selectThreePlatformSources(sources).length !== 3 ||
           !referenceAsset ||
+          !["IDLE", "FAILED", "SUCCEEDED"].includes(phase)
+        }
+        onClick={() => void checkThreePlatformPreflight()}
+      >
+        检查三平台调用与费用
+      </button>
+      {batchPreflight && (
+        <div className="preflight-summary">
+          <p>
+            万象图片生成 {batchPreflight.wanx_image_generation_calls} 次 ·
+            HappyHorse视频生成 {batchPreflight.happyhorse_generation_calls} 次 ·
+            千问TTS {batchPreflight.qwen_tts_generation_calls} 次
+          </p>
+          <p>
+            已知预计费用：{batchPreflight.known_estimated_cost} {batchPreflight.currency}。
+            千问TTS费用尚未配置，因此该金额不是完整总费用。
+          </p>
+          <label>
+            <input
+              type="checkbox"
+              checked={batchCostConfirmed}
+              disabled={!batchPreflight.ready}
+              onChange={(event) => setBatchCostConfirmed(event.target.checked)}
+            />
+            我已确认上述调用次数、已知费用及未计价的千问TTS调用
+          </label>
+        </div>
+      )}
+      <button
+        type="button"
+        disabled={
+          selectThreePlatformSources(sources).length !== 3 ||
+          !referenceAsset ||
+          !batchPreflight?.ready ||
+          !batchCostConfirmed ||
           !["IDLE", "FAILED", "SUCCEEDED"].includes(phase)
         }
         onClick={() => void generateThreePlatformBatch()}

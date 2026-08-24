@@ -11,6 +11,22 @@ export function selectThreePlatformSources(
   ).filter((source): source is ProductVideoSource => source !== undefined);
 }
 
+export function buildThreePlatformPreflightPayload(
+  sources: ProductVideoSource[],
+  reference: { id: number; sha256?: string | null } | null,
+) {
+  const selected = selectThreePlatformSources(sources);
+  if (selected.length !== 3 || !reference?.sha256) return null;
+  return {
+    reference_product_asset_id: reference.id,
+    reference_product_asset_sha256: reference.sha256,
+    selections: selected.map((source) => ({
+      variant_id: source.variant_id,
+      script_version_id: source.script_version_id,
+    })),
+  };
+}
+
 export class RealProductVideoOperation {
   private sequence = 0;
   private controller: AbortController | null = null;
