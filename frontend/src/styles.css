@@ -756,6 +756,10 @@ textarea { font: inherit; }
 .copy-operation-result__platforms dl > div { padding: 7px 8px; background: #fff; border-radius: 6px; }
 .copy-operation-result__platforms dt { color: #9a8a73; font-size: 7px; font-weight: 750; text-transform: uppercase; }
 .copy-operation-result__platforms dd { margin: 3px 0 0; color: #5f584d; font-size: 8px; line-height: 1.55; white-space: pre-wrap; }
+.copy-result-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.copy-platform-result__header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.copy-platform-result__header h6 { margin: 0; }
+.copy-regeneration-confirmation { margin-top: 12px; }
 .product-detail-card__existing-workflow { padding-top: 16px; border-top: 1px solid #eceef3; }
 .product-detail-card__existing-workflow > .form-message { margin-top: 10px; }
 

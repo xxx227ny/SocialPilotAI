@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
@@ -119,6 +120,7 @@ def enqueue(
     product_id: int,
     strategy_id: int,
     data: dict,
+    regeneration_key: str | None = None,
 ):
     return client.post(
         f"/api/v1/marketing-tasks/{task_id}/strategies/{strategy_id}/copy-jobs",
@@ -129,8 +131,62 @@ def enqueue(
             "preflight_digest": data["preflight_digest"],
             "preflight_expires_at": data["expires_at"],
             "cost_confirmed": True,
+            "regeneration_key": regeneration_key,
         },
     )
+
+
+def test_confirmed_regeneration_creates_distinct_idempotent_jobs(
+    client: TestClient, db_session: Session
+) -> None:
+    app.dependency_overrides[get_settings] = queue_settings
+    product, task, strategy_id = create_source(client, db_session)
+    checked = preflight(client, task["id"], strategy_id)
+
+    initial = enqueue(client, task["id"], product["id"], strategy_id, checked)
+    regeneration_key = "70cbbdb8-fcd1-48b7-b1ca-7bd7a8312f3d"
+    regenerated = enqueue(
+        client,
+        task["id"],
+        product["id"],
+        strategy_id,
+        checked,
+        regeneration_key,
+    )
+    repeated = enqueue(
+        client,
+        task["id"],
+        product["id"],
+        strategy_id,
+        checked,
+        regeneration_key,
+    )
+
+    assert initial.status_code == regenerated.status_code == repeated.status_code == 201
+    assert initial.json()["job"]["id"] != regenerated.json()["job"]["id"]
+    assert regenerated.json()["reused"] is False
+    assert repeated.json()["reused"] is True
+    assert regenerated.json()["job"]["id"] == repeated.json()["job"]["id"]
+    assert regenerated.json()["job"]["input_payload"]["regeneration_key"] == str(
+        UUID(regeneration_key)
+    )
+    assert db_session.scalar(select(func.count(ExecutionJob.id))) == 2
+    assert db_session.scalar(select(func.count(CopyMatrix.id))) == 0
+
+    another = enqueue(
+        client,
+        task["id"],
+        product["id"],
+        strategy_id,
+        checked,
+        "7fcaa3c1-d93f-44dd-83f9-b74002042fc6",
+    )
+    assert another.status_code == 201
+    assert another.json()["job"]["id"] not in {
+        initial.json()["job"]["id"],
+        regenerated.json()["job"]["id"],
+    }
+    assert db_session.scalar(select(func.count(ExecutionJob.id))) == 3
 
 
 def worker(

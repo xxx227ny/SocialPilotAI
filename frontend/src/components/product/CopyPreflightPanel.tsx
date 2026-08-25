@@ -16,9 +16,12 @@ import type { MarketingTask } from "../../types/marketing";
 import type { Product } from "../../types/product";
 import type { MarketingStrategy } from "../../types/strategy";
 import {
+  copyMatrixCsv,
+  copyMatrixText,
   copyJobAllowsExplicitRetry,
   copyJobNeedsPolling,
   exactCopyResultId,
+  platformCopyText,
   selectExactCopyJob,
 } from "./copyQueueState";
 
@@ -69,6 +72,8 @@ export function CopyPreflightPanel({
   const [acknowledged, setAcknowledged] = useState(false);
   const [reused, setReused] = useState(false);
   const [message, setMessage] = useState("");
+  const [regenerationRequested, setRegenerationRequested] = useState(false);
+  const [regenerationAcknowledged, setRegenerationAcknowledged] = useState(false);
   const controllerRef = useRef<AbortController | null>(null);
   const submitLockRef = useRef(false);
   const retryLockRef = useRef(false);
@@ -117,6 +122,8 @@ export function CopyPreflightPanel({
     setMatrix(null);
     setReused(false);
     setAcknowledged(false);
+    setRegenerationRequested(false);
+    setRegenerationAcknowledged(false);
 
     try {
       const currentPreflight = await getCopyPreflight(
@@ -282,6 +289,64 @@ export function CopyPreflightPanel({
     }
   }
 
+  async function regenerate() {
+    if (
+      !matrix ||
+      job?.status !== "SUCCEEDED" ||
+      !regenerationAcknowledged ||
+      submitLockRef.current
+    ) {
+      return;
+    }
+    submitLockRef.current = true;
+    setMessage("");
+    const storageKey = `socialpilot.copyRegeneration.${task.id}.${strategy.id}`;
+    try {
+      const currentPreflight = await getCopyPreflight(task.id, strategy.id);
+      if (
+        !currentPreflight.ready_for_execution ||
+        currentPreflight.product_id !== product.id ||
+        currentPreflight.task_id !== task.id ||
+        currentPreflight.strategy_id !== strategy.id
+      ) {
+        throw new Error("当前商品、营销任务或策略已变化，请重新检查后再生成。");
+      }
+      const regenerationKey =
+        window.sessionStorage.getItem(storageKey) ?? crypto.randomUUID();
+      window.sessionStorage.setItem(storageKey, regenerationKey);
+      const created = await enqueueCopyJob(task.id, strategy.id, {
+        product_id: product.id,
+        strategy_id: strategy.id,
+        input_digest: currentPreflight.input_digest,
+        preflight_digest: currentPreflight.preflight_digest,
+        preflight_expires_at: currentPreflight.expires_at,
+        cost_confirmed: true,
+        regeneration_key: regenerationKey,
+      });
+      window.sessionStorage.removeItem(storageKey);
+      setPreflight(currentPreflight);
+      setJob(created.job);
+      setMatrix(null);
+      setReused(created.reused);
+      setRegenerationRequested(false);
+      setRegenerationAcknowledged(false);
+      setMessage(
+        created.reused
+          ? "已恢复同一次重新生成任务，不会重复调用千问。"
+          : "新的文案生成任务已创建，原文案矩阵仍完整保留。",
+      );
+    } catch (error) {
+      setMessage(
+        getApiErrorMessage(
+          error,
+          "重新生成任务创建失败；已保留请求身份，重试不会重复创建任务。",
+        ),
+      );
+    } finally {
+      submitLockRef.current = false;
+    }
+  }
+
   return (
     <section className="copy-preflight" aria-label="Copy Queue Operation">
       <div className="copy-preflight__heading">
@@ -385,7 +450,58 @@ export function CopyPreflightPanel({
         </article>
       ) : null}
 
-      {matrix ? <CopyMatrixResult matrix={matrix} product={product} taskId={task.id} /> : null}
+      {matrix ? (
+        <CopyMatrixResult
+          matrix={matrix}
+          product={product}
+          taskId={task.id}
+          onRegenerate={() => {
+            setRegenerationRequested(true);
+            setRegenerationAcknowledged(false);
+          }}
+        />
+      ) : null}
+      {matrix && regenerationRequested ? (
+        <div className="strategy-operation-issue copy-regeneration-confirmation">
+          <strong>重新生成会再次调用一次千问</strong>
+          <p>
+            将沿用当前商品、营销任务和营销策略生成一套新文案；文案矩阵 #{matrix.id}
+            会保留，不会被覆盖。
+          </p>
+          <label className="strategy-preflight__acknowledgement">
+            <input
+              type="checkbox"
+              checked={regenerationAcknowledged}
+              onChange={(event) =>
+                setRegenerationAcknowledged(event.target.checked)
+              }
+            />
+            我确认重新生成将调用一次千问，并可能产生
+            {preflight?.estimated_cost ?? "未知"} {preflight?.currency ?? "CNY"}
+            费用。
+          </label>
+          <div className="copy-result-actions">
+            <button
+              type="button"
+              className="button"
+              disabled={!regenerationAcknowledged}
+              onClick={() => void regenerate()}
+            >
+              确认重新生成
+            </button>
+            <button
+              type="button"
+              className="button button--secondary"
+              onClick={() => {
+                setRegenerationRequested(false);
+                setRegenerationAcknowledged(false);
+              }}
+            >
+              取消
+            </button>
+          </div>
+        </div>
+      ) : null}
       <p className="strategy-preflight__note">
         文案生成不代表自动发布；结果由执行任务的精确结果编号恢复，不使用模糊记录。
       </p>
@@ -397,11 +513,33 @@ function CopyMatrixResult({
   matrix,
   product,
   taskId,
+  onRegenerate,
 }: {
   matrix: PersistedCopyMatrix;
   product: Product;
   taskId: number;
+  onRegenerate: () => void;
 }) {
+  const [copyFeedback, setCopyFeedback] = useState("");
+
+  async function copyText(content: string, label: string) {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopyFeedback(`${label}已复制。`);
+    } catch {
+      setCopyFeedback("浏览器未允许复制，请检查剪贴板权限。");
+    }
+  }
+
+  function download(filename: string, content: string, contentType: string) {
+    const url = URL.createObjectURL(new Blob([content], { type: contentType }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <article className="copy-operation-result" aria-live="polite">
       <header>
@@ -414,10 +552,60 @@ function CopyMatrixResult({
         <div><dt>营销策略</dt><dd>#{matrix.marketing_strategy_id}</dd></div>
         <div><dt>生成平台</dt><dd>{matrix.copies.map((copy) => copy.platform).join("、")}</dd></div>
       </dl>
+      <div className="copy-result-actions" aria-label="文案复制与导出">
+        <button
+          type="button"
+          className="button button--secondary"
+          onClick={() => void copyText(copyMatrixText(matrix), "整套文案")}
+        >
+          复制整套文案
+        </button>
+        <button
+          type="button"
+          className="button button--secondary"
+          onClick={() =>
+            download(
+              `copy-matrix-${matrix.id}.json`,
+              JSON.stringify(matrix, null, 2),
+              "application/json;charset=utf-8",
+            )
+          }
+        >
+          导出 JSON
+        </button>
+        <button
+          type="button"
+          className="button button--secondary"
+          onClick={() =>
+            download(
+              `copy-matrix-${matrix.id}.csv`,
+              copyMatrixCsv(matrix),
+              "text/csv;charset=utf-8",
+            )
+          }
+        >
+          导出 CSV
+        </button>
+        <button type="button" className="button" onClick={onRegenerate}>
+          重新生成文案
+        </button>
+      </div>
+      {copyFeedback ? <p role="status">{copyFeedback}</p> : null}
       <div className="copy-operation-result__platforms">
         {matrix.copies.map((copy) => (
           <section key={copy.platform}>
-            <h6>{copy.platform}</h6>
+            <header className="copy-platform-result__header">
+              <h6>{copy.platform}</h6>
+              <button
+                type="button"
+                className="button button--secondary"
+                onClick={() =>
+                  void copyText(platformCopyText(copy), `${copy.platform} 文案`)
+                }
+              >
+                复制此平台
+              </button>
+            </header>
             <dl>
               <div><dt>开场钩子</dt><dd>{copy.hook}</dd></div>
               <div><dt>正文</dt><dd>{copy.caption}</dd></div>

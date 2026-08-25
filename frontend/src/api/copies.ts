@@ -40,6 +40,7 @@ export async function enqueueCopyJob(
     preflight_digest: string;
     preflight_expires_at: string;
     cost_confirmed: true;
+    regeneration_key?: string;
   },
   signal?: AbortSignal,
 ): Promise<ExecutionJobCreateResult> {

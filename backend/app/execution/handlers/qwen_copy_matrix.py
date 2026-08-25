@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Protocol
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
@@ -30,6 +31,7 @@ class QwenCopyMatrixGenerateV1Input(BaseModel):
     preflight_marketing_brief_id: int = Field(gt=0)
     preflight_marketing_strategy_id: int = Field(gt=0)
     frozen_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    regeneration_key: UUID | None = None
 
 
 class _ContextTextProvider(TextGenerationProvider):
@@ -59,30 +61,22 @@ class QwenCopyMatrixGenerateV1Handler:
         self.provider = provider
         self.settings = settings
 
-    def execute(
-        self, context: ExecutionContext, payload: BaseModel
-    ) -> HandlerResult:
+    def execute(self, context: ExecutionContext, payload: BaseModel) -> HandlerResult:
         data = QwenCopyMatrixGenerateV1Input.model_validate(payload)
         if (
             data.product_id != data.preflight_product_id
             or data.marketing_brief_id != data.preflight_marketing_brief_id
-            or data.marketing_strategy_id
-            != data.preflight_marketing_strategy_id
+            or data.marketing_strategy_id != data.preflight_marketing_strategy_id
         ):
             return HandlerResult.failed("COPY_PREFLIGHT_IDENTITY_MISMATCH")
 
         with self.session_factory() as session:
             product = session.get(Product, data.product_id)
             brief = session.get(MarketingBrief, data.marketing_brief_id)
-            strategy = session.get(
-                MarketingStrategy, data.marketing_strategy_id
-            )
+            strategy = session.get(MarketingStrategy, data.marketing_strategy_id)
             if product is None or brief is None or strategy is None:
                 return HandlerResult.failed("COPY_SOURCE_NOT_FOUND")
-            if (
-                brief.product_id != product.id
-                or strategy.product_id != product.id
-            ):
+            if brief.product_id != product.id or strategy.product_id != product.id:
                 return HandlerResult.failed("COPY_SOURCE_RELATIONSHIP_INVALID")
             try:
                 preflight = CopyPreflightService(session, self.settings).run(

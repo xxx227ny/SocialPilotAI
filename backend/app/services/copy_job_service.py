@@ -70,6 +70,7 @@ class CopyJobService:
             preflight_marketing_brief_id=current.task_id,
             preflight_marketing_strategy_id=current.strategy_id,
             frozen_digest=current.input_digest,
+            regeneration_key=data.regeneration_key,
         )
         return ExecutionQueueService(self.session).create(
             ExecutionJobCreate(
@@ -77,7 +78,9 @@ class CopyJobService:
                 source_type="marketing_strategy",
                 source_id=current.strategy_id,
                 input_digest=current.input_digest,
-                idempotency_key=self._idempotency_key(current.input_digest),
+                idempotency_key=self._idempotency_key(
+                    current.input_digest, data.regeneration_key
+                ),
                 input_payload=payload.model_dump(mode="json"),
                 concurrency_key=f"qwen-copy-product-{current.product_id}",
                 estimated_cost=self.settings.qwen_copy_estimated_cost,
@@ -88,6 +91,11 @@ class CopyJobService:
         )
 
     @staticmethod
-    def _idempotency_key(input_digest: str) -> str:
-        material = f"{QWEN_COPY_MATRIX_GENERATE_V1}:{input_digest}".encode()
+    def _idempotency_key(input_digest: str, regeneration_key: object | None) -> str:
+        generation = (
+            str(regeneration_key) if regeneration_key is not None else "initial"
+        )
+        material = (
+            f"{QWEN_COPY_MATRIX_GENERATE_V1}:{input_digest}:{generation}"
+        ).encode()
         return f"{QWEN_COPY_MATRIX_GENERATE_V1}:{hashlib.sha256(material).hexdigest()}"

@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Literal
+from uuid import UUID
 
 from pydantic import (
     BaseModel,
@@ -174,6 +175,7 @@ class CopyJobEnqueueRequest(BaseModel):
     preflight_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     preflight_expires_at: datetime
     cost_confirmed: Literal[True]
+    regeneration_key: UUID | None = None
 
     @field_validator("preflight_expires_at")
     @classmethod

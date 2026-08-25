@@ -43,6 +43,16 @@ try {
   };
 
   assert.equal(state.selectExactCopyJob([base], 3, 1, 4, digest)?.id, 8);
+  assert.equal(
+    state.selectExactCopyJob(
+      [base, { ...base, id: 12, status: "SUCCEEDED" }],
+      3,
+      1,
+      4,
+      digest,
+    )?.id,
+    12,
+  );
   assert.equal(state.selectExactCopyJob([base], 2, 1, 4, digest), null);
   assert.equal(state.selectExactCopyJob([base], 3, 2, 4, digest), null);
   assert.equal(state.selectExactCopyJob([base], 3, 1, 5, digest), null);
@@ -66,6 +76,32 @@ try {
     }),
     9,
   );
+  const matrix = {
+    id: 17,
+    product_id: 1,
+    marketing_strategy_id: 4,
+    created_at: "2026-08-25T00:00:00Z",
+    copies: [
+      {
+        platform: "TikTok",
+        hook: "Fresh anywhere",
+        caption: "Blend and go",
+        hashtags: ["#Portable", "#Fresh"],
+        cta: "Try it today",
+      },
+      {
+        platform: "Instagram",
+        hook: "Color your routine",
+        caption: "A fresh habit",
+        hashtags: ["#Lifestyle"],
+        cta: "Save this idea",
+      },
+    ],
+  };
+  assert.match(state.platformCopyText(matrix.copies[0]), /Fresh anywhere/);
+  assert.match(state.copyMatrixText(matrix), /Instagram/);
+  assert.match(state.copyMatrixCsv(matrix), /^\uFEFF"平台"/);
+  assert.match(state.copyMatrixCsv(matrix), /"#Portable #Fresh"/);
 
   const component = read("src", "components", "product", "CopyPreflightPanel.tsx");
   const taskConfig = read("src", "components", "product", "MarketingTaskConfig.tsx");
@@ -80,6 +116,14 @@ try {
   assert.match(component, /SUBMIT_UNKNOWN/);
   assert.match(component, /preflight\.estimated_cost/);
   assert.match(component, /禁止（只允许一次模型提交）/);
+  assert.match(component, /复制整套文案/);
+  assert.match(component, /复制此平台/);
+  assert.match(component, /导出 JSON/);
+  assert.match(component, /导出 CSV/);
+  assert.match(component, /重新生成文案/);
+  assert.match(component, /regeneration_key/);
+  assert.match(component, /crypto\.randomUUID/);
+  assert.match(component, /原文案矩阵仍完整保留/);
   assert.doesNotMatch(component, /generateTaskBoundCopyMatrix/);
   assert.doesNotMatch(component, /getLatestCopyForStrategy/);
   assert.match(taskConfig, /Pinterest/);
@@ -93,8 +137,9 @@ try {
   assert.match(api, /\/copy-jobs/);
   assert.match(api, /\/execution-jobs\/\$\{jobId\}/);
   assert.match(api, /\/copies\/\$\{copyMatrixId\}/);
+  assert.match(api, /regeneration_key\?: string/);
 
-  console.log("Copy queue frontend checks passed: 26 scenarios");
+  console.log("Copy queue frontend checks passed: 39 scenarios");
 } finally {
   await server.close();
 }
