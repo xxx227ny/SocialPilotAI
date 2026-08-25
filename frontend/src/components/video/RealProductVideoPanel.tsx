@@ -923,6 +923,19 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
 
   async function continueProductionBatch() {
     if (!production) return;
+    if (
+      production.batch.status === "PARTIAL_FAILED" &&
+      production.items.some(
+        (item) =>
+          item.status === "FAILED" &&
+          item.safe_error_code === "PRODUCTION_VOICEOVER_FAILED",
+      ) &&
+      !window.confirm(
+        "确认只重试失败平台的千问配音？已成功平台不会重新生成；本次可能再次调用千问 TTS 并产生费用。",
+      )
+    ) {
+      return;
+    }
     const active = operation.current.begin();
     try {
         const resumed =

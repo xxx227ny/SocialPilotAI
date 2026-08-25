@@ -144,6 +144,19 @@ try {
     true,
   );
   assert.equal(
+    state.productionBatchRecoverable(
+      { status: "PARTIAL_FAILED" },
+      [
+        { status: "SUCCEEDED" },
+        {
+          status: "FAILED",
+          safe_error_code: "PRODUCTION_VOICEOVER_FAILED",
+        },
+      ],
+    ),
+    true,
+  );
+  assert.equal(
     state.productionPollDelayMs([
       { status: "RUNNING", stage: "GENERATING_VIDEO" },
     ]),
@@ -218,6 +231,7 @@ try {
     "批量生成三平台完整成片",
     "selectThreePlatformSources",
     "buildThreePlatformPreflightPayload",
+    "确认只重试失败平台的千问配音",
     "preflightThreePlatformVideo",
     "检查三平台调用与费用",
     "我已确认上述调用次数",

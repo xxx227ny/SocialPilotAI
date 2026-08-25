@@ -90,6 +90,7 @@ SHOT_MOTIONS = ("zoom_in", "pan_right", "zoom_out", "pan_left")
 MAX_HAPPYHORSE_REFRESHES = 90
 MAX_VOICEOVER_EXPLICIT_RETRIES = 1
 MAX_VOICEOVER_CONFIG_RETRIES = 1
+MAX_VOICEOVER_MANUAL_RATE_LIMIT_RETRIES = 3
 
 
 class ProductVideoProductionBatchService:
@@ -248,7 +249,10 @@ class ProductVideoProductionBatchService:
                     and voiceover_job is not None
                     and voiceover_job.status == "FAILED"
                     and voiceover_job.safe_error_code == "QWEN_TTS_FAILED"
-                    and self._prepare_voice_config_recovery(item, voiceover_job)
+                    and (
+                        self._prepare_voice_config_recovery(item, voiceover_job)
+                        or self._prepare_voice_rate_limit_recovery(item, voiceover_job)
+                    )
                 ):
                     item.status = "RUNNING"
                     item.safe_error_code = None
@@ -893,15 +897,26 @@ class ProductVideoProductionBatchService:
         config_retry_count = item.stage_state_json.get(
             "voiceover_config_retry_count", 0
         )
+        manual_rate_limit_retry_count = item.stage_state_json.get(
+            "voiceover_manual_rate_limit_retry_count", 0
+        )
         if not isinstance(retry_count, int) or retry_count < 0:
             self._fail_item(item, "PRODUCTION_VOICEOVER_RETRY_STATE_INVALID")
             return
         if not isinstance(config_retry_count, int) or config_retry_count < 0:
             self._fail_item(item, "PRODUCTION_VOICEOVER_RETRY_STATE_INVALID")
             return
+        if (
+            not isinstance(manual_rate_limit_retry_count, int)
+            or manual_rate_limit_retry_count < 0
+        ):
+            self._fail_item(item, "PRODUCTION_VOICEOVER_RETRY_STATE_INVALID")
+            return
         retry_suffix = f":retry:{retry_count}" if retry_count else ""
         if config_retry_count:
             retry_suffix += f":voice-config:{config_retry_count}"
+        if manual_rate_limit_retry_count:
+            retry_suffix += f":manual-rate-limit:{manual_rate_limit_retry_count}"
         submitted = VoiceoverGenerationService(self.session, self.settings).enqueue(
             batch.product_id,
             VoiceoverSubmitRequest(
@@ -996,6 +1011,29 @@ class ProductVideoProductionBatchService:
         state.pop("voiceover_job_id", None)
         state["voiceover_config_retry_count"] = config_retry_count + 1
         state["voiceover_config_recovery_from"] = failed_voice
+        item.stage_state_json = state
+        return True
+
+    @staticmethod
+    def _prepare_voice_rate_limit_recovery(
+        item: ProductVideoProductionItem,
+        job: ExecutionJob,
+    ) -> bool:
+        retry_count = item.stage_state_json.get(
+            "voiceover_manual_rate_limit_retry_count", 0
+        )
+        details = job.safe_error_details
+        if not (
+            isinstance(retry_count, int)
+            and 0 <= retry_count < MAX_VOICEOVER_MANUAL_RATE_LIMIT_RETRIES
+            and not job.uncertain
+            and isinstance(details, dict)
+            and details.get("category") == "rate_limited"
+        ):
+            return False
+        state = dict(item.stage_state_json)
+        state.pop("voiceover_job_id", None)
+        state["voiceover_manual_rate_limit_retry_count"] = retry_count + 1
         item.stage_state_json = state
         return True
 

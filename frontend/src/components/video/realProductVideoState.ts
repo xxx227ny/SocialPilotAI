@@ -45,7 +45,8 @@ const ERROR_MESSAGES: Record<string, string> = {
     "云端暂时限制结果查询；原视频任务已保留，请稍后点击“重试失败平台”。",
   PRODUCTION_HAPPYHORSE_REFRESH_LIMIT: "商品动态视频等待超时。",
   PRODUCTION_COMPOSITION_FAILED: "视频标准化合成失败。",
-  PRODUCTION_VOICEOVER_FAILED: "千问配音生成失败。",
+  PRODUCTION_VOICEOVER_FAILED:
+    "千问配音生成失败；若为明确限流，可稍后点击“重试失败平台”，只重试当前平台配音。",
   PRODUCTION_VOICEOVER_SUBMIT_UNKNOWN:
     "千问配音提交状态不确定，系统已停止自动重试以避免重复扣费。",
   PRODUCTION_ENHANCEMENT_FAILED: "最终字幕与音频合成失败。",
@@ -89,6 +90,7 @@ export function productionBatchRecoverable(
         [
           "PRODUCTION_HAPPYHORSE_REFRESH_FAILED",
           "PRODUCTION_HAPPYHORSE_REFRESH_RETRYABLE",
+          "PRODUCTION_VOICEOVER_FAILED",
         ].includes(item.safe_error_code ?? ""),
     )
   );
