@@ -491,6 +491,7 @@ textarea { font: inherit; }
 .system-readiness > header span { color: #8992a4; font-size: 9px; }
 .system-readiness > header button { padding: 7px 10px; border: 1px solid #dedff0; border-radius: 8px; color: #5f54c5; background: #f7f6ff; cursor: pointer; font-size: 9px; font-weight: 750; }
 .system-readiness > header button:disabled { color: #a2a7b2; cursor: wait; }
+.system-readiness__actions { display: flex; gap: 8px; }
 .system-readiness__grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; margin-top: 11px; }
 .system-readiness__item { display: flex; gap: 8px; min-width: 0; padding: 10px; border: 1px solid #e9ebf1; border-radius: 10px; background: #fafbfc; }
 .system-readiness__item > span { flex: 0 0 auto; width: 8px; height: 8px; margin-top: 2px; border-radius: 50%; }
@@ -3394,4 +3395,93 @@ textarea { font: inherit; }
 .production-platform-card progress,
 .production-platform-card video {
   width: 100%;
+}
+.operational-product-workspace {
+  display: grid;
+  gap: 1.25rem;
+  padding: 1.5rem;
+  border: 1px solid rgba(123, 107, 255, 0.28);
+  border-radius: 1.25rem;
+  background: rgba(9, 20, 43, 0.78);
+}
+
+.operational-product-workspace > header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1.5rem;
+}
+
+.operational-product-workspace > header > div > span {
+  color: #9a8cff;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.operational-product-workspace > header h2,
+.operational-product-workspace > header p {
+  margin: 0.35rem 0 0;
+}
+
+.operational-product-workspace > header label {
+  display: grid;
+  min-width: min(28rem, 45vw);
+  gap: 0.45rem;
+  font-weight: 700;
+}
+
+.operational-product-workspace > header select {
+  min-height: 2.8rem;
+}
+
+.workspace-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 1rem 0 1.25rem;
+  padding: 0.5rem;
+  border: 1px solid rgba(123, 107, 255, 0.2);
+  border-radius: 1rem;
+  background: rgba(9, 20, 43, 0.72);
+}
+
+.workspace-tabs button {
+  min-height: 2.75rem;
+  padding: 0 1.25rem;
+  border: 0;
+  border-radius: 0.75rem;
+  background: transparent;
+  color: inherit;
+  font-weight: 800;
+}
+
+.workspace-tabs button:hover,
+.workspace-tabs .workspace-tabs__active {
+  background: #6f5cff;
+  color: #fff;
+}
+
+.advanced-video-workspace {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.product-detail-card__workflow-note {
+  margin: 1rem 0 0;
+  padding: 0.9rem 1rem;
+  border-radius: 0.8rem;
+  background: rgba(111, 92, 255, 0.1);
+  color: var(--muted, #aeb9d1);
+}
+
+@media (max-width: 860px) {
+  .operational-product-workspace > header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .operational-product-workspace > header label {
+    min-width: 0;
+  }
 }

@@ -112,7 +112,7 @@ try {
   assert.equal(state.mergeBrandKitVersion(withVersionTwo, kit.id, versionTwo)[0].versions.length, 2);
   assert.match(
     state.versionCreationMessage({ version: versionOne, reused: true }),
-    /已复用 Version 1/,
+    /已复用版本 1/,
   );
   assert.match(state.SAFE_QWEN_CONFIGURATION_GUIDANCE, /QWEN_API_KEY/);
   assert.doesNotMatch(
@@ -164,7 +164,7 @@ try {
   assert.match(panel, /runWithSynchronousRequestLock\(createVersionLock/);
   assert.match(panel, /runWithSynchronousRequestLock\(bindingLock/);
   assert.match(panel, /versionCreationMessage\(result\)/);
-  assert.match(panel, /不会自动选择 latest/);
+  assert.match(panel, /不会自动选择最新记录/);
   assert.match(panel, /selectedVersionId === null/);
   assert.match(panel, /解除绑定/);
   assert.match(panel, /preferred_terms/);

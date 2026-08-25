@@ -19,23 +19,24 @@ type ComponentKey =
   | "execution_worker";
 
 const COMPONENTS: Array<{ key: ComponentKey; label: string }> = [
-  { key: "backend", label: "Backend" },
-  { key: "qwen", label: "Qwen" },
-  { key: "wanx", label: "Wanx" },
-  { key: "google_youtube", label: "Google / YouTube" },
+  { key: "backend", label: "后端服务" },
+  { key: "qwen", label: "千问" },
+  { key: "wanx", label: "万象" },
+  { key: "google_youtube", label: "谷歌 / YouTube" },
   { key: "meta_instagram", label: "Meta / Instagram" },
-  { key: "tiktok", label: "TikTok Login Kit" },
-  { key: "pinterest", label: "Pinterest OAuth" },
-  { key: "tiktok_publishing", label: "TikTok Direct Post" },
-  { key: "instagram_publishing", label: "Instagram Reel Publishing" },
-  { key: "database", label: "Database" },
-  { key: "artifact_storage", label: "Artifact Storage" },
-  { key: "execution_worker", label: "Execution Worker" },
+  { key: "tiktok", label: "TikTok 账号连接" },
+  { key: "pinterest", label: "Pinterest 账号连接" },
+  { key: "tiktok_publishing", label: "TikTok 视频发布" },
+  { key: "instagram_publishing", label: "Instagram 短视频发布" },
+  { key: "database", label: "数据库" },
+  { key: "artifact_storage", label: "文件存储" },
+  { key: "execution_worker", label: "后台执行器" },
 ];
 
 export function SystemReadinessPanel() {
   const [state, setState] = useState<LoadState>("loading");
   const [readiness, setReadiness] = useState<SystemReadinessResponse | null>(null);
+  const [expanded, setExpanded] = useState(false);
 
   const load = useCallback((signal?: AbortSignal) => {
     setState("loading");
@@ -63,17 +64,24 @@ export function SystemReadinessPanel() {
       <header>
         <div>
           <strong>系统就绪状态</strong>
-          <span>仅检查本机配置，不调用Provider</span>
+          <span>{coreReadinessLabel(readiness, state)}</span>
         </div>
-        <button type="button" onClick={() => load()} disabled={state === "loading"}>
-          {state === "loading" ? "检查中…" : "重新检查"}
-        </button>
+        <div className="system-readiness__actions">
+          <button type="button" onClick={() => setExpanded((value) => !value)}>
+            {expanded ? "收起详情" : "展开详情"}
+          </button>
+          {expanded ? (
+            <button type="button" onClick={() => load()} disabled={state === "loading"}>
+              {state === "loading" ? "检查中……" : "重新检查"}
+            </button>
+          ) : null}
+        </div>
       </header>
-      {state === "failed" ? (
+      {expanded && state === "failed" ? (
         <p className="system-readiness__offline">
-          Backend未连接。请运行start-socialpilotai.cmd；若仍失败，请查看本机Runtime日志。
+          后端未连接。请运行“启动 SocialPilotAI”；若仍失败，请查看本机运行日志。
         </p>
-      ) : (
+      ) : expanded ? (
         <div className="system-readiness__grid">
           {COMPONENTS.map((component) => {
             const item = readiness?.[component.key];
@@ -89,19 +97,38 @@ export function SystemReadinessPanel() {
                   <small>{item ? (ready ? "已就绪" : "需要配置") : "检查中"}</small>
                   {component.key === "database" && readiness?.database && (
                     <small>
-                      Revision: {readiness.database.revision_status}
+                      版本状态：{readiness.database.revision_status}
                       {readiness.database.revision
                         ? ` · ${readiness.database.revision}`
                         : ""}
                     </small>
                   )}
-                  {item && <p>{item.message}</p>}
+                  {item && (
+                    <p>{ready ? "配置检查已通过。" : "尚未配置；对应的可选功能不会启用。"}</p>
+                  )}
                 </div>
               </article>
             );
           })}
         </div>
-      )}
+      ) : null}
     </section>
   );
+}
+
+function coreReadinessLabel(
+  readiness: SystemReadinessResponse | null,
+  state: LoadState,
+) {
+  if (state === "loading") return "正在检查本机配置，不调用模型";
+  if (state === "failed" || !readiness) return "本地服务未连接";
+  const coreReady = [
+    readiness.backend,
+    readiness.qwen,
+    readiness.wanx,
+    readiness.database,
+    readiness.artifact_storage,
+    readiness.execution_worker,
+  ].every((item) => item.ready);
+  return coreReady ? "核心生成服务已就绪" : "部分核心服务需要配置";
 }

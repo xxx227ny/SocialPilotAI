@@ -12,20 +12,20 @@ const api = readFileSync(join(root, "src", "api", "health.ts"), "utf8");
 const types = readFileSync(join(root, "src", "types", "health.ts"), "utf8");
 
 for (const label of [
-  "Backend",
-  "Qwen",
-  "Wanx",
-  "Google / YouTube",
+  "后端服务",
+  "千问",
+  "万象",
+  "谷歌 / YouTube",
   "Meta / Instagram",
-  "Pinterest OAuth",
-  "Database",
-  "Artifact Storage",
-  "Execution Worker",
+  "Pinterest 账号连接",
+  "数据库",
+  "文件存储",
+  "后台执行器",
 ]) {
   assert.match(component, new RegExp(label.replace("/", "\\/")));
 }
-assert.match(component, /仅检查本机配置，不调用Provider/);
-assert.match(component, /start-socialpilotai\.cmd/);
+assert.match(component, /正在检查本机配置，不调用模型/);
+assert.match(component, /启动 SocialPilotAI/);
 assert.match(component, /getSystemReadiness/);
 assert.match(api, /\/system\/readiness/);
 assert.match(layout, /!isPresentation && <SystemReadinessPanel/);
@@ -35,12 +35,14 @@ assert.match(types, /meta_instagram: SystemReadinessItem/);
 assert.match(types, /tiktok: SystemReadinessItem/);
 assert.match(types, /pinterest: SystemReadinessItem/);
 assert.match(types, /instagram_publishing: SystemReadinessItem/);
-assert.match(component, /TikTok Login Kit/);
+assert.match(component, /TikTok 账号连接/);
 assert.match(types, /database_writes: 0/);
 assert.match(types, /automatic_actions: false/);
 assert.match(types, /revision_status: "head" \| "upgrade_required" \| "unavailable"/);
 assert.match(types, /revision: string \| null/);
-assert.match(component, /Revision:/);
+assert.match(component, /版本状态：/);
+assert.match(component, /expanded/);
+assert.match(component, /展开详情/);
 assert.match(types, /status: "healthy" \| "not_running" \| "stale"/);
 assert.doesNotMatch(types, /worker_pid|worker_path|lease_owner_digest/i);
 

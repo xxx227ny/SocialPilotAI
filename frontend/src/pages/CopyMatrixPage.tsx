@@ -1,4 +1,9 @@
+import { useState } from "react";
+
+import { MarketingTaskConfig } from "../components/product/MarketingTaskConfig";
+import { OperationalProductSelector } from "../components/product/OperationalProductSelector";
 import { DemoContextBar } from "../components/showcase/DemoContextBar";
+import { usePresentationMode } from "../context/PresentationModeContext";
 import { useDemoSnapshot } from "../hooks/useDemoSnapshot";
 import type { PlatformCopy } from "../types/copy";
 
@@ -11,6 +16,9 @@ const platformDetails: Record<PlatformCopy["platform"], { number: string; traits
 
 export function CopyMatrixPage() {
   const { snapshot, loading, error } = useDemoSnapshot();
+  const { isPresentation } = usePresentationMode();
+
+  if (!isPresentation) return <CopyMatrixWorkspace />;
 
   return (
     <div className="competition-page copy-showcase-page">
@@ -70,6 +78,46 @@ export function CopyMatrixPage() {
       ) : (
         <PageState title="演示快照未就绪" detail={error} error />
       )}
+    </div>
+  );
+}
+
+function CopyMatrixWorkspace() {
+  const [platformDrafts, setPlatformDrafts] = useState<
+    Record<number, PlatformCopy["platform"][]>
+  >({});
+
+  return (
+    <div className="competition-page copy-workspace-page">
+      <header className="competition-hero">
+        <div>
+          <span>文案生产工作台</span>
+          <h1>AI 社媒文案矩阵</h1>
+          <p>选择商品，完成营销任务、千问策略和四平台文案生成。</p>
+        </div>
+        <div className="readonly-badge">
+          <strong>目标 2</strong>
+          <span>商品资料与文案生产分离</span>
+        </div>
+      </header>
+      <OperationalProductSelector
+        title="选择商品并生成平台文案"
+        description="这里只处理营销策略和社媒文案，不混入视频、投流或发布功能。"
+      >
+        {(product, updateProduct) => (
+          <MarketingTaskConfig
+            product={product}
+            selectedPlatforms={platformDrafts[product.id] ?? []}
+            onPlatformsChange={(platforms) =>
+              setPlatformDrafts((current) => ({
+                ...current,
+                [product.id]: platforms,
+              }))
+            }
+            onProductUpdated={updateProduct}
+          />
+        )}
+      </OperationalProductSelector>
     </div>
   );
 }

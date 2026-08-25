@@ -2,23 +2,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { getApiErrorMessage } from "../api/client";
 import { getProduct, listProducts } from "../api/products";
-import { GrowthCopilotPanel } from "../components/GrowthCopilotPanel";
-import { MarketingTaskConfig } from "../components/product/MarketingTaskConfig";
 import { BrandKitOnboardingPanel } from "../components/product/BrandKitOnboardingPanel";
-import { PresentationSnapshotPanel } from "../components/product/PresentationSnapshotPanel";
 import { ProductCreateForm } from "../components/product/ProductCreateForm";
-import { SocialPublishingPanel } from "../components/product/SocialPublishingPanel";
-import { InitialVideoProjectPanel } from "../components/video/InitialVideoProjectPanel";
-import { VideoRenderPreflightPanel } from "../components/video/VideoRenderPreflightPanel";
-import { VideoCompositionPanel } from "../components/video/VideoCompositionPanel";
-import { RealProductVideoPanel } from "../components/video/RealProductVideoPanel";
 import { usePresentationMode } from "../context/PresentationModeContext";
-import type { PlatformCopy } from "../types/copy";
 import type { Product } from "../types/product";
 
 type ListState = "loading" | "refreshing" | "ready" | "error";
 type DetailState = "idle" | "loading" | "ready" | "error";
-type PlatformName = PlatformCopy["platform"];
 
 export function ProductCenterPage() {
   const { isPresentation } = usePresentationMode();
@@ -31,10 +21,6 @@ export function ProductCenterPage() {
   const [detailError, setDetailError] = useState("");
   const [detailRetryKey, setDetailRetryKey] = useState(0);
   const [newlyCreatedId, setNewlyCreatedId] = useState<number | null>(null);
-  const [briefRevision, setBriefRevision] = useState(0);
-  const [platformDrafts, setPlatformDrafts] = useState<
-    Record<number, PlatformName[]>
-  >({});
   const listRequestId = useRef(0);
 
   const loadProducts = useCallback(async (preferredProductId?: number) => {
@@ -128,21 +114,13 @@ export function ProductCenterPage() {
     );
   }
 
-  function updatePlatformDraft(productId: number, platforms: PlatformName[]) {
-    setPlatformDrafts((current) => ({ ...current, [productId]: platforms }));
-  }
-
-  const handleBriefChanged = useCallback(() => {
-    setBriefRevision((current) => current + 1);
-  }, []);
-
   return (
     <div className="product-center">
       <header className="page-heading">
         <div>
-          <span>PRODUCT CENTER</span>
+          <span>商品资料中心</span>
           <h1>商品资料中心</h1>
-          <p>创建真实商品资料，并从现有 Product API 查看列表与完整详情。</p>
+          <p>创建真实商品资料，并从后端商品接口查看列表与完整详情。</p>
         </div>
         <div className="product-count">
           <strong>{products.length}</strong>
@@ -154,7 +132,7 @@ export function ProductCenterPage() {
         <BrandKitOnboardingPanel
           products={products}
           selectedProduct={selectedProduct}
-          briefRevision={briefRevision}
+          briefRevision={0}
           onProductUpdated={handleProductUpdated}
         />
       )}
@@ -169,7 +147,7 @@ export function ProductCenterPage() {
                 <span className="panel-heading__icon panel-heading__icon--dark">▦</span>
                 <div>
                   <h2>商品列表</h2>
-                  <p>来自 Backend Product API 的真实商品记录</p>
+                  <p>来自后端商品接口的真实商品记录</p>
                 </div>
               </div>
               <button
@@ -252,7 +230,7 @@ export function ProductCenterPage() {
                   detail="点击上方列表项，查看描述、卖点、目标市场、素材和时间信息。"
                 />
               ) : detailState === "loading" ? (
-                <ProductState title="正在加载详情" detail="正在读取单商品 API…" />
+                <ProductState title="正在加载详情" detail="正在读取单个商品资料……" />
               ) : detailState === "error" ? (
                 <ProductState
                   title="商品详情加载失败"
@@ -265,13 +243,6 @@ export function ProductCenterPage() {
                 <ProductDetail
                   key={selectedProduct.id}
                   product={selectedProduct}
-                  selectedPlatforms={platformDrafts[selectedProduct.id] ?? []}
-                  onPlatformsChange={(platforms) =>
-                    updatePlatformDraft(selectedProduct.id, platforms)
-                  }
-                  onProductUpdated={handleProductUpdated}
-                  onBriefChanged={handleBriefChanged}
-                  isPresentation={isPresentation}
                 />
               ) : null}
             </div>
@@ -311,28 +282,14 @@ function ProductState({
 
 function ProductDetail({
   product,
-  selectedPlatforms,
-  onPlatformsChange,
-  onProductUpdated,
-  onBriefChanged,
-  isPresentation,
 }: {
   product: Product;
-  selectedPlatforms: PlatformName[];
-  onPlatformsChange: (platforms: PlatformName[]) => void;
-  onProductUpdated: (product: Product) => void;
-  onBriefChanged: () => void;
-  isPresentation: boolean;
 }) {
-  const [liveVideoProjectId, setLiveVideoProjectId] = useState<
-    number | undefined
-  >();
-
   return (
     <article className="product-detail-card">
       <header>
         <div>
-          <span>PRODUCT #{String(product.id).padStart(3, "0")}</span>
+          <span>商品 #{String(product.id).padStart(3, "0")}</span>
           <h3>{product.name}</h3>
           <p>{product.category || "未分类"}</p>
         </div>
@@ -384,40 +341,9 @@ function ProductDetail({
         )}
       </section>
 
-      {!isPresentation ? (
-        <MarketingTaskConfig
-          product={product}
-          selectedPlatforms={selectedPlatforms}
-          onPlatformsChange={onPlatformsChange}
-          onProductUpdated={onProductUpdated}
-          onTaskChanged={onBriefChanged}
-        />
-      ) : null}
-
-      <section className="product-detail-card__existing-workflow">
-        <p className="strategy-preflight__note">
-          Strategy与Copy Matrix操作已迁移到上方的受控流程；普通工作区不再调用旧Product-only Copy入口。
-        </p>
-        <InitialVideoProjectPanel
-          product={product}
-          onGenerated={setLiveVideoProjectId}
-        />
-        <GrowthCopilotPanel
-          productId={product.id}
-          onVideoProjectGenerated={setLiveVideoProjectId}
-        />
-      </section>
-
-      <VideoRenderPreflightPanel
-        product={product}
-        videoProjectId={liveVideoProjectId}
-      />
-      <VideoCompositionPanel product={product} videoProjectId={liveVideoProjectId} />
-      <RealProductVideoPanel product={product} />
-
-      <SocialPublishingPanel productId={product.id} />
-
-      {!isPresentation ? <PresentationSnapshotPanel productId={product.id} /> : null}
+      <p className="product-detail-card__workflow-note">
+        文案生成请前往“文案矩阵”，商品视频生产请前往“视频工厂”。
+      </p>
     </article>
   );
 }

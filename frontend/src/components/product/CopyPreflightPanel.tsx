@@ -25,16 +25,28 @@ import {
 type LoadState = "loading" | "ready" | "blocked" | "error";
 type StrategySource = "direct" | "latest";
 
+function executionStatusLabel(status: ExecutionJob["status"]) {
+  return {
+    QUEUED: "排队中",
+    RUNNING: "执行中",
+    PAUSED: "已暂停",
+    SUCCEEDED: "已完成",
+    FAILED: "已失败",
+    CANCELLED: "已取消",
+    SUBMIT_UNKNOWN: "提交状态不确定",
+  }[status];
+}
+
 const REQUIREMENT_LABELS: Record<string, string> = {
   product_name: "商品名称",
   product_category: "商品分类",
   product_description: "商品描述",
   product_selling_points: "商品卖点",
-  target_market_snapshot: "MarketingBrief目标市场快照",
-  supported_platforms: "MarketingBrief支持平台",
-  strategy_schema: "Strategy内容完整性",
-  provider_configuration: "Qwen Provider配置",
-  copy_execution: "Backend Copy执行授权",
+  target_market_snapshot: "营销任务目标市场快照",
+  supported_platforms: "营销任务支持平台",
+  strategy_schema: "营销策略内容完整性",
+  provider_configuration: "千问模型服务配置",
+  copy_execution: "后端文案执行授权",
 };
 
 interface CopyPreflightPanelProps {
@@ -274,8 +286,8 @@ export function CopyPreflightPanel({
     <section className="copy-preflight" aria-label="Copy Queue Operation">
       <div className="copy-preflight__heading">
         <div>
-          <p className="eyebrow">Copy Queue · Provider-safe HTTP</p>
-          <h5>Qwen Copy Matrix生成任务</h5>
+          <p className="eyebrow">文案矩阵任务 · 安全入队</p>
+          <h5>千问社媒文案矩阵生成任务</h5>
         </div>
         <span className={`strategy-preflight__status strategy-preflight__status--${loadState}`}>
           {loadState === "loading" ? "读取中" : loadState === "ready" ? "可入队" : loadState === "blocked" ? "未就绪" : "读取失败"}
@@ -283,25 +295,25 @@ export function CopyPreflightPanel({
       </div>
 
       <p className="copy-preflight__intro">
-        HTTP只验证精确Product、MarketingBrief、Strategy与冻结输入；只有Worker Claim后才调用Qwen。
+        网页只验证精确商品、营销任务、营销策略与冻结输入；只有后台任务领取后才调用千问。
       </p>
       <dl className="product-detail__facts copy-preflight__context">
-        <div><dt>Product</dt><dd>#{product.id} · {product.name}</dd></div>
-        <div><dt>MarketingBrief</dt><dd>#{task.id}</dd></div>
-        <div><dt>Strategy</dt><dd>#{strategy.id}</dd></div>
-        <div><dt>Strategy来源</dt><dd>{strategySource === "direct" ? "队列精确结果" : "兼容来源"}</dd></div>
-        <div><dt>Brief平台</dt><dd>{task.platforms.join("、")}</dd></div>
+        <div><dt>商品</dt><dd>#{product.id} · {product.name}</dd></div>
+        <div><dt>营销任务</dt><dd>#{task.id}</dd></div>
+        <div><dt>营销策略</dt><dd>#{strategy.id}</dd></div>
+        <div><dt>策略来源</dt><dd>{strategySource === "direct" ? "任务精确结果" : "兼容来源"}</dd></div>
+        <div><dt>任务平台</dt><dd>{task.platforms.join("、")}</dd></div>
       </dl>
 
       {preflight ? (
         <div className="copy-preflight__result">
           <dl className="product-detail__facts">
-            <div><dt>冻结Digest</dt><dd>{preflight.input_digest.slice(0, 12)}…</dd></div>
-            <div><dt>Preflight有效期</dt><dd>{new Date(preflight.expires_at).toLocaleString()}</dd></div>
-            <div><dt>Provider配置</dt><dd>{preflight.provider_configured ? "已配置" : "未配置"}</dd></div>
+            <div><dt>冻结内容指纹</dt><dd>{preflight.input_digest.slice(0, 12)}…</dd></div>
+            <div><dt>前置检查有效期</dt><dd>{new Date(preflight.expires_at).toLocaleString()}</dd></div>
+            <div><dt>模型服务配置</dt><dd>{preflight.provider_configured ? "已配置" : "未配置"}</dd></div>
             <div><dt>执行契约</dt><dd>{preflight.contract_ready ? "已实现" : "尚未实现"}</dd></div>
             <div><dt>预算估算</dt><dd>{preflight.estimated_cost} {preflight.currency}</dd></div>
-            <div><dt>自动重试</dt><dd>禁止（单次Provider提交）</dd></div>
+            <div><dt>自动重试</dt><dd>禁止（只允许一次模型提交）</dd></div>
           </dl>
           {preflight.missing_requirements.length > 0 ? (
             <div className="strategy-preflight__missing">
@@ -309,7 +321,9 @@ export function CopyPreflightPanel({
               <ul>{preflight.missing_requirements.map((item) => <li key={item}>{REQUIREMENT_LABELS[item] ?? item}</li>)}</ul>
             </div>
           ) : null}
-          <p className="copy-preflight__boundary">{preflight.association_notice}</p>
+          <p className="copy-preflight__boundary">
+            生成结果将与当前营销策略精确关联；当前营销任务关系会作为结果证据返回。
+          </p>
           <p className="strategy-execution-gate">{preflight.cost_notice}</p>
           {!job ? (
             <>
@@ -320,11 +334,11 @@ export function CopyPreflightPanel({
                   onChange={(event) => setAcknowledged(event.target.checked)}
                   disabled={!preflight.ready_for_execution}
                 />
-                我确认任务被Worker Claim后将调用一次Qwen，预算估算为
+                我确认任务被后台领取后将调用一次千问，预算估算为
                 {preflight.estimated_cost} {preflight.currency}，并可能产生费用。
               </label>
               <button type="button" className="button" onClick={() => void enqueue()} disabled={!canEnqueue}>
-                创建Copy生成任务
+                创建文案生成任务
               </button>
             </>
           ) : null}
@@ -341,16 +355,16 @@ export function CopyPreflightPanel({
       {job ? (
         <article className="strategy-operation-result" aria-live="polite">
           <div className="strategy-operation-result__header">
-            <div><p className="eyebrow">{reused ? "已恢复/复用" : "本次新建"}</p><h5>ExecutionJob #{job.id}</h5></div>
-            <span>{job.status}</span>
+            <div><p className="eyebrow">{reused ? "已恢复/复用" : "本次新建"}</p><h5>执行任务 #{job.id}</h5></div>
+            <span>{executionStatusLabel(job.status)}</span>
           </div>
           <dl className="product-detail__facts">
             <div><dt>尝试次数</dt><dd>{job.attempt_count} / {job.max_attempts}</dd></div>
-            <div><dt>冻结Digest</dt><dd>{job.input_digest.slice(0, 12)}…</dd></div>
+            <div><dt>冻结内容指纹</dt><dd>{job.input_digest.slice(0, 12)}…</dd></div>
             <div><dt>安全错误码</dt><dd>{job.safe_error_code ?? "无"}</dd></div>
           </dl>
-          {job.status === "QUEUED" ? <p role="status">任务已排队，等待Worker Claim。</p> : null}
-          {job.status === "RUNNING" ? <p role="status">Worker正在执行；页面只轮询本地任务状态。</p> : null}
+          {job.status === "QUEUED" ? <p role="status">任务已排队，等待后台任务领取。</p> : null}
+          {job.status === "RUNNING" ? <p role="status">后台任务正在执行；页面只查询本地任务状态。</p> : null}
           {job.status === "FAILED" ? (
             <div className="strategy-operation-issue" role="alert">
               <strong>任务确定失败</strong>
@@ -373,7 +387,7 @@ export function CopyPreflightPanel({
 
       {matrix ? <CopyMatrixResult matrix={matrix} product={product} taskId={task.id} /> : null}
       <p className="strategy-preflight__note">
-        Copy生成不代表自动发布；精确结果由ExecutionJob result_entity_id恢复，未使用latest。
+        文案生成不代表自动发布；结果由执行任务的精确结果编号恢复，不使用模糊记录。
       </p>
     </section>
   );
@@ -392,12 +406,12 @@ function CopyMatrixResult({
     <article className="copy-operation-result" aria-live="polite">
       <header>
         <div><p className="eyebrow">队列精确结果</p><h6>平台文案结果</h6></div>
-        <span>CopyMatrix #{matrix.id}</span>
+        <span>文案矩阵 #{matrix.id}</span>
       </header>
       <dl className="product-detail__facts">
-        <div><dt>Product</dt><dd>#{matrix.product_id} · {product.name}</dd></div>
-        <div><dt>MarketingBrief</dt><dd>#{taskId}</dd></div>
-        <div><dt>Strategy</dt><dd>#{matrix.marketing_strategy_id}</dd></div>
+        <div><dt>商品</dt><dd>#{matrix.product_id} · {product.name}</dd></div>
+        <div><dt>营销任务</dt><dd>#{taskId}</dd></div>
+        <div><dt>营销策略</dt><dd>#{matrix.marketing_strategy_id}</dd></div>
         <div><dt>生成平台</dt><dd>{matrix.copies.map((copy) => copy.platform).join("、")}</dd></div>
       </dl>
       <div className="copy-operation-result__platforms">
@@ -405,10 +419,10 @@ function CopyMatrixResult({
           <section key={copy.platform}>
             <h6>{copy.platform}</h6>
             <dl>
-              <div><dt>Hook</dt><dd>{copy.hook}</dd></div>
-              <div><dt>Caption</dt><dd>{copy.caption}</dd></div>
-              <div><dt>Hashtags</dt><dd>{copy.hashtags.join(" ")}</dd></div>
-              <div><dt>CTA</dt><dd>{copy.cta}</dd></div>
+              <div><dt>开场钩子</dt><dd>{copy.hook}</dd></div>
+              <div><dt>正文</dt><dd>{copy.caption}</dd></div>
+              <div><dt>话题标签</dt><dd>{copy.hashtags.join(" ")}</dd></div>
+              <div><dt>行动号召</dt><dd>{copy.cta}</dd></div>
             </dl>
           </section>
         ))}

@@ -224,7 +224,7 @@ export function VideoRenderPreflightPanel({
         ) {
           return;
         }
-        setMessage(getApiErrorMessage(error, "Video Render Preflight failed"));
+        setMessage(getApiErrorMessage(error, "视频渲染前置检查失败。"));
         setLoadState("error");
       }
     }
@@ -475,8 +475,8 @@ export function VideoRenderPreflightPanel({
     <section className="video-render-preflight" aria-busy={loadState === "loading"}>
       <header className="video-render-preflight__header">
         <div>
-          <p className="product-detail-card__eyebrow">Wanx Execution Queue</p>
-          <h3>Single-scene Render Artifact</h3>
+          <p className="product-detail-card__eyebrow">万象渲染任务</p>
+          <h3>单场景视频渲染</h3>
         </div>
         <span className={`video-render-preflight__status is-${loadState}`}>
           {job?.status ?? loadState}
@@ -485,27 +485,25 @@ export function VideoRenderPreflightPanel({
 
       {project ? (
         <p className="video-render-preflight__association">
-          Exact VideoProject #{project.id}; first scene only. This is not a complete
-          15-second composed video.
+          精确视频蓝图 #{project.id}；这里只渲染第一个场景，不是完整的15秒合成视频。
         </p>
       ) : null}
       {preflight ? (
         <div className="video-render-preflight__checks">
-          <span>Input digest: {preflight.input_digest.slice(0, 12)}…</span>
-          <span>Model: {preflight.provider_model}</span>
-          <span>Resolution: {preflight.resolution}</span>
+          <span>输入摘要：{preflight.input_digest.slice(0, 12)}…</span>
+          <span>模型：{preflight.provider_model}</span>
+          <span>分辨率：{preflight.resolution}</span>
         </div>
       ) : null}
       {message ? <p className="video-render-preflight__safe-error">{message}</p> : null}
       {submitUnknown ? (
         <p className="video-render-preflight__safe-error">
-          Provider submission is uncertain. Automatic and explicit resubmission are
-          disabled.
+          模型提交状态不确定。为避免重复扣费，自动和人工重新提交均已禁用。
         </p>
       ) : null}
       {job ? (
         <p className="video-render-preflight__association">
-          Local Job #{job.id} · {job.status} {jobReused ? "· reused" : ""}
+          本地任务 #{job.id} · {job.status} {jobReused ? "· 已复用" : ""}
         </p>
       ) : null}
 
@@ -515,7 +513,7 @@ export function VideoRenderPreflightPanel({
           onClick={() => void readExactLocalResult(job)}
           disabled={resultReadLockRef.current !== null}
         >
-          Re-read local result
+          重新读取本地结果
         </button>
       ) : null}
 
@@ -528,7 +526,7 @@ export function VideoRenderPreflightPanel({
               onChange={(event) => setCostConfirmed(event.target.checked)}
               disabled={videoRenderJobNeedsPolling(job)}
             />
-            I explicitly confirm possible Wanx usage charges.
+            我明确确认本次万象调用可能产生费用。
           </label>
           <button
             type="button"
@@ -540,7 +538,7 @@ export function VideoRenderPreflightPanel({
               videoRenderJobNeedsPolling(job)
             }
           >
-            Enqueue single-scene render
+            创建单场景渲染任务
           </button>
         </div>
       ) : null}
@@ -548,11 +546,11 @@ export function VideoRenderPreflightPanel({
       {operation ? (
         <div className="video-render-preflight__execution">
           <p>
-            RenderTask #{operation.task.id} · {operation.task.status}
+            渲染任务 #{operation.task.id} · {operation.task.status}
           </p>
           {refreshAllowed ? (
             <button type="button" onClick={() => void refresh()}>
-              Enqueue one explicit refresh
+              明确刷新一次任务结果
             </button>
           ) : null}
           {operation.artifact ? (

@@ -23,7 +23,7 @@ export function AppLayout() {
           <span className="brand__mark">S</span>
           <div>
             <strong>SocialPilot</strong>
-            <small>AI Growth OS</small>
+            <small>智能营销增长系统</small>
           </div>
         </div>
 
@@ -45,9 +45,9 @@ export function AppLayout() {
         </nav>
 
         <div className="sidebar__footer">
-          <div className="sidebar__badge">Hackathon</div>
+          <div className="sidebar__badge">黑客松</div>
           <p>跨境营销增长引擎</p>
-          <small>Stage 09 · Presentation Ready</small>
+          <small>阶段 09 · 演示就绪</small>
         </div>
       </aside>}
 
@@ -58,7 +58,7 @@ export function AppLayout() {
             <span>跨境电商社媒营销增长平台</span>
           </div>
           <div className="topbar__right">
-            <span className="phase-pill">Hackathon Demo</span>
+            <span className="phase-pill">黑客松演示</span>
             <PresentationToolbar />
             <span className="avatar">SP</span>
           </div>

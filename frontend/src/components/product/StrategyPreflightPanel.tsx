@@ -27,6 +27,18 @@ import {
 
 type LoadState = "loading" | "ready" | "blocked" | "error";
 
+function executionStatusLabel(status: ExecutionJob["status"]) {
+  return {
+    QUEUED: "排队中",
+    RUNNING: "执行中",
+    PAUSED: "已暂停",
+    SUCCEEDED: "已完成",
+    FAILED: "已失败",
+    CANCELLED: "已取消",
+    SUBMIT_UNKNOWN: "提交状态不确定",
+  }[status];
+}
+
 const REQUIREMENT_LABELS: Record<string, string> = {
   product_name: "商品名称",
   product_category: "商品分类",
@@ -38,8 +50,8 @@ const REQUIREMENT_LABELS: Record<string, string> = {
   language: "语言",
   tone: "语气",
   objective: "目标",
-  qwen_provider_type: "Qwen Provider",
-  provider_configuration: "Provider 配置",
+  qwen_provider_type: "千问模型服务",
+  provider_configuration: "模型服务配置",
   strategy_execution: "服务端执行授权",
 };
 
@@ -247,11 +259,11 @@ export function StrategyPreflightPanel({
   }
 
   return (
-    <section className="strategy-preflight" aria-label="Strategy Queue Operation">
+    <section className="strategy-preflight" aria-label="营销策略生成任务">
       <div className="strategy-preflight__heading">
         <div>
-          <p className="eyebrow">Strategy Queue · Provider-safe HTTP</p>
-          <h4>Qwen 策略生成任务</h4>
+          <p className="eyebrow">营销策略任务 · 安全入队</p>
+          <h4>千问营销策略生成任务</h4>
         </div>
         <span className={`strategy-preflight__status strategy-preflight__status--${loadState}`}>
           {loadState === "loading"
@@ -265,17 +277,17 @@ export function StrategyPreflightPanel({
       </div>
 
       <p className="strategy-preflight__intro">
-        HTTP 请求只验证冻结输入并创建任务；只有独立 Worker Claim 已确认任务后才会调用 Qwen。
+        网页请求只验证冻结输入并创建任务；只有后台任务确认领取后才会调用千问。
       </p>
 
       {preflight ? (
         <div className="strategy-preflight__result">
           <dl className="product-detail__facts">
-            <div><dt>Product</dt><dd>#{preflight.product_id}</dd></div>
-            <div><dt>MarketingBrief</dt><dd>#{preflight.task_id}</dd></div>
-            <div><dt>冻结 Digest</dt><dd>{preflight.input_digest.slice(0, 12)}…</dd></div>
-            <div><dt>Preflight 有效期</dt><dd>{new Date(preflight.expires_at).toLocaleString()}</dd></div>
-            <div><dt>Provider 配置</dt><dd>{preflight.provider_configured ? "就绪" : "缺失"}</dd></div>
+            <div><dt>商品</dt><dd>#{preflight.product_id}</dd></div>
+            <div><dt>营销任务</dt><dd>#{preflight.task_id}</dd></div>
+            <div><dt>冻结内容指纹</dt><dd>{preflight.input_digest.slice(0, 12)}…</dd></div>
+            <div><dt>前置检查有效期</dt><dd>{new Date(preflight.expires_at).toLocaleString()}</dd></div>
+            <div><dt>模型服务配置</dt><dd>{preflight.provider_configured ? "就绪" : "缺失"}</dd></div>
           </dl>
           {preflight.missing_requirements.length > 0 ? (
             <div className="strategy-preflight__missing">
@@ -297,7 +309,7 @@ export function StrategyPreflightPanel({
                   onChange={(event) => setAcknowledged(event.target.checked)}
                   disabled={!preflight.ready_for_execution}
                 />
-                我确认本任务被 Worker Claim 后可能调用 Qwen 并产生费用。
+                我确认本任务被后台领取后可能调用千问并产生费用。
               </label>
               <button type="button" className="button" onClick={() => void enqueue()} disabled={!canEnqueue}>
                 创建策略生成任务
@@ -317,16 +329,16 @@ export function StrategyPreflightPanel({
       {job ? (
         <article className="strategy-operation-result" aria-live="polite">
           <div className="strategy-operation-result__header">
-            <div><p className="eyebrow">{reused ? "已恢复/复用" : "本次新建"}</p><h5>ExecutionJob #{job.id}</h5></div>
-            <span>{job.status}</span>
+            <div><p className="eyebrow">{reused ? "已恢复/复用" : "本次新建"}</p><h5>执行任务 #{job.id}</h5></div>
+            <span>{executionStatusLabel(job.status)}</span>
           </div>
           <dl className="product-detail__facts">
             <div><dt>尝试次数</dt><dd>{job.attempt_count} / {job.max_attempts}</dd></div>
-            <div><dt>冻结 Digest</dt><dd>{job.input_digest.slice(0, 12)}…</dd></div>
+            <div><dt>冻结内容指纹</dt><dd>{job.input_digest.slice(0, 12)}…</dd></div>
             <div><dt>安全错误码</dt><dd>{job.safe_error_code ?? "无"}</dd></div>
           </dl>
-          {job.status === "QUEUED" ? <p role="status">任务已排队，等待 Worker Claim。</p> : null}
-          {job.status === "RUNNING" ? <p role="status">Worker 正在执行；页面只轮询本地任务状态。</p> : null}
+          {job.status === "QUEUED" ? <p role="status">任务已排队，等待后台任务领取。</p> : null}
+          {job.status === "RUNNING" ? <p role="status">后台任务正在执行；页面只查询本地任务状态。</p> : null}
           {job.status === "FAILED" ? (
             <div className="strategy-operation-issue" role="alert">
               <strong>任务确定失败</strong>
@@ -375,11 +387,11 @@ function StrategyResult({
     <article className="strategy-operation-result">
       <div className="strategy-operation-result__header">
         <div><p className="eyebrow">队列精确结果</p><h5>营销策略</h5></div>
-        <span>Strategy #{strategy.id}</span>
+        <span>营销策略 #{strategy.id}</span>
       </div>
       <dl className="product-detail__facts">
-        <div><dt>Product</dt><dd>#{strategy.product_id} · {product.name}</dd></div>
-        <div><dt>MarketingBrief</dt><dd>#{taskId}</dd></div>
+        <div><dt>商品</dt><dd>#{strategy.product_id} · {product.name}</dd></div>
+        <div><dt>营销任务</dt><dd>#{taskId}</dd></div>
       </dl>
       <section><h6>定位</h6><p>{strategy.positioning}</p></section>
       <StrategyList title="受众洞察" items={strategy.audience_insights} />
@@ -387,7 +399,7 @@ function StrategyResult({
       <StrategyList title="证据" items={strategy.evidence} />
       <StrategyList title="风险" items={strategy.risks} />
       <p className="strategy-operation-result__boundary">
-        结果通过 ExecutionJob 的 result_entity_id 精确读取，未使用 latest 回退。
+        结果通过执行任务的精确结果编号读取，不使用模糊记录回退。
       </p>
     </article>
   );

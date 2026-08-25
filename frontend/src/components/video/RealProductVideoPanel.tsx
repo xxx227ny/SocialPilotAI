@@ -694,7 +694,14 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
           : "千问脚本费用或批次配额尚未就绪。",
       );
     } catch (error) {
-      fail(active.id, error, "一键完整生产Preflight失败。");
+      if (!operation.current.current(active.id)) return;
+      setPhase("FAILED");
+      const detail = getApiErrorMessage(error, "一键完整生产前置检查失败。");
+      setMessage(
+        detail === "Target-platform copy is unavailable"
+          ? "所选文案矩阵缺少 YouTube 文案。请清空“可选文案矩阵编号”后重新检查，系统将使用商品与营销策略生成三平台脚本。"
+          : detail,
+      );
     }
   }
 
@@ -967,12 +974,12 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
       <p>千问脚本 · 万象商品视觉 · HappyHorse参考图生视频 · 千问云配音</p>
       <p>旁白若超过15秒会安全停止；请缩短文案后重新生成，不会裁断语音。</p>
       <label>
-        Variant与激活脚本
+        视频变体与已激活脚本
         <select value={sourceId} onChange={(event) => setSourceId(Number(event.target.value))}>
-          <option value={0}>选择精确Variant</option>
+          <option value={0}>选择精确视频变体</option>
           {sources.map((item) => (
             <option key={item.variant_id} value={item.variant_id}>
-              Variant #{item.variant_id} · Script #{item.script_version_id} · {item.platform}
+              变体 #{item.variant_id} · 脚本 #{item.script_version_id} · {item.platform}
             </option>
           ))}
         </select>
@@ -986,7 +993,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
           <option value={0}>选择商品主参考图</option>
           {referenceAssets.map((asset) => (
             <option key={asset.id} value={asset.id}>
-              Asset #{asset.id} · {asset.file_name}
+              素材 #{asset.id} · {asset.file_name}
             </option>
           ))}
         </select>
@@ -994,11 +1001,11 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
       <fieldset>
         <legend>一键生成：三平台脚本 → 画面 → 配音 → 成片</legend>
         <p>
-          使用批量编排中同一商品的TikTok、YouTube Shorts和Instagram
-          Reels第一个READY Variant；所有身份均按ID冻结，不读取模糊的最近记录。
+          使用批量任务中同一商品的 TikTok、YouTube Shorts 和 Instagram
+          Reels 第一个“脚本就绪”变体；所有记录均按精确编号固定。
         </p>
         <label>
-          精确Batch ID
+          精确批次编号
           <input
             type="number"
             min="1"
@@ -1011,7 +1018,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
           />
         </label>
         <label>
-          精确Strategy ID
+          精确营销策略编号
           <input
             type="number"
             min="1"
@@ -1024,7 +1031,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
           />
         </label>
         <label>
-          可选精确CopyMatrix ID
+          可选文案矩阵编号
           <input
             type="number"
             min="1"
@@ -1036,6 +1043,9 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
             }}
           />
         </label>
+        <p>
+          文案矩阵必须同时包含三个视频平台的文案；如果没有 YouTube 文案，请将此项留空。
+        </p>
         <button
           type="button"
           disabled={
@@ -1061,10 +1071,9 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
               千问TTS尚未计价，最终总费用可能更高。
             </p>
             <p>
-              Variant：{oneClickPreflight.variant_ids.join(" / ")}；成功脚本将保持
-              UNREVIEWED，
+              视频变体：{oneClickPreflight.variant_ids.join(" / ")}；成功脚本将保持“未审核”状态，
               {oneClickPreflight.will_auto_activate_exact_results
-                ? "为完成一键链路会自动激活精确Version。"
+                ? "为完成一键链路会自动激活精确版本。"
                 : "需要人工激活后才能继续。"}
             </p>
             <label>
@@ -1093,7 +1102,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
           </div>
         )}
       </fieldset>
-      <p>万象将按每个分镜自动生成一致的商品广告视觉；阶段：{phase}</p>
+      <p>万象将按每个分镜自动生成一致的商品广告视觉；阶段：{phaseLabel(phase)}</p>
       <button
         type="button"
         disabled={!source || !referenceAsset || !["IDLE", "FAILED"].includes(phase)}
@@ -1160,13 +1169,13 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
         批量生成三平台完整成片
       </button>
       <p>
-        三个平台独立推进：一个平台失败不会阻塞其他平台；刷新页面后可按精确Batch继续。
+        三个平台独立推进：一个平台失败不会阻塞其他平台；刷新页面后可按精确批次继续。
       </p>
       {production && (
         <section className="production-batch-status" aria-label="三平台生产进度">
           <header>
             <strong>生产批次 #{production.batch.id}</strong>
-            <span>状态：{production.batch.status}</span>
+            <span>状态：{productionBatchStatusLabel(production.batch.status)}</span>
           </header>
           <div className="production-batch-actions">
             <button
@@ -1262,4 +1271,32 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
       {message && <p role="status">{message}</p>}
     </section>
   );
+}
+
+function phaseLabel(phase: RealProductVideoPhase) {
+  return {
+    IDLE: "等待开始",
+    UPLOADING: "正在上传素材",
+    GENERATING_SCRIPTS: "正在生成脚本",
+    GENERATING_IMAGES: "正在生成商品画面",
+    PREPARING_SHOTS: "正在准备动态分镜",
+    CLOUD_VIDEO: "正在生成云端视频",
+    COMPOSING: "正在合成画面",
+    VOICEOVER: "正在生成配音",
+    ENHANCING: "正在混音和添加字幕",
+    SUCCEEDED: "已完成",
+    FAILED: "已失败",
+  }[phase];
+}
+
+function productionBatchStatusLabel(status: string) {
+  return {
+    WAITING: "等待执行",
+    RUNNING: "执行中",
+    PAUSED: "已暂停",
+    SUCCEEDED: "已完成",
+    PARTIAL_FAILED: "部分失败",
+    FAILED: "已失败",
+    CANCELLED: "已取消",
+  }[status] ?? "状态未知";
 }

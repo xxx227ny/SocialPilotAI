@@ -156,7 +156,11 @@ try {
     path.join(root, "src/components/video/RealProductVideoPanel.tsx"),
     "utf8",
   );
-  const page = await fs.readFile(path.join(root, "src/pages/ProductCenterPage.tsx"), "utf8");
+  const page = await fs.readFile(path.join(root, "src/pages/ContentStudioPage.tsx"), "utf8");
+  const productCenter = await fs.readFile(
+    path.join(root, "src/pages/ProductCenterPage.tsx"),
+    "utf8",
+  );
   const feature = await fs.readFile(path.join(root, "src/config/features.ts"), "utf8");
   const enhancementApi = await fs.readFile(
     path.join(root, "src/api/videoCompositionEnhancements.ts"),
@@ -228,6 +232,8 @@ try {
     safety++;
   }
   assert.ok(page.includes("<RealProductVideoPanel product={product}"));
+  assert.ok(page.includes("一键商品视频"));
+  assert.ok(!productCenter.includes("RealProductVideoPanel"));
   assert.ok(feature.includes("VITE_ENABLE_REAL_PRODUCT_VIDEO"));
   assert.ok(!panel.toLowerCase().includes("latest"));
   assert.ok(!panel.includes("uploadProductImage"));

@@ -79,7 +79,7 @@ try {
   assert.match(component, /submitLockRef\.current/);
   assert.match(component, /SUBMIT_UNKNOWN/);
   assert.match(component, /preflight\.estimated_cost/);
-  assert.match(component, /禁止（单次Provider提交）/);
+  assert.match(component, /禁止（只允许一次模型提交）/);
   assert.doesNotMatch(component, /generateTaskBoundCopyMatrix/);
   assert.doesNotMatch(component, /getLatestCopyForStrategy/);
   assert.match(taskConfig, /Pinterest/);

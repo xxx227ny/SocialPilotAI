@@ -189,7 +189,7 @@ export function BrandKitOnboardingPanel({
     if (createKitLock.current) return;
     await runWithSynchronousRequestLock(createKitLock, async () => {
       setActionError("");
-      setActionState("正在创建 BrandKit 与 Version 1…");
+      setActionState("正在创建品牌规范与版本 1……");
       try {
         const kit = await createBrandKit({
           name: kitName.trim(),
@@ -199,11 +199,11 @@ export function BrandKitOnboardingPanel({
         setSelectedKitId(kit.id);
         setSelectedVersionId(kit.versions[0]?.id ?? null);
         setKitName("");
-        setActionState(`已创建 BrandKit #${kit.id} · Version 1`);
+        setActionState(`已创建品牌规范 #${kit.id} · 版本 1`);
       } catch (error) {
         setActionState("");
         setActionError(
-          getApiErrorMessage(error, "BrandKit 创建失败，可修正后重试。"),
+          getApiErrorMessage(error, "品牌规范创建失败，可修正后重试。"),
         );
       }
     });
@@ -252,8 +252,8 @@ export function BrandKitOnboardingPanel({
         onProductUpdated(updated);
         setActionState(
           unbind
-            ? "已解除 BrandKitVersion 绑定"
-            : `已绑定 BrandKitVersion #${updated.brand_kit_version_id}`,
+            ? "已解除品牌规范版本绑定"
+            : `已绑定品牌规范版本 #${updated.brand_kit_version_id}`,
         );
       } catch (error) {
         setActionState("");
@@ -268,9 +268,9 @@ export function BrandKitOnboardingPanel({
     <section className="brand-onboarding" aria-label="首次使用引导与品牌规范">
       <header className="brand-onboarding__header">
         <div>
-          <span>GETTING STARTED · LOCAL DATA</span>
+          <span>首次使用 · 本地数据</span>
           <h2>首次使用引导</h2>
-          <p>状态来自本地数据库与 System Readiness；刷新或重启后会重新计算。</p>
+          <p>状态来自本地数据库与系统就绪检查；刷新或重启后会重新计算。</p>
         </div>
         <button type="button" onClick={() => setCollapsed((value) => !value)}>
           {collapsed ? "展开" : "收起"}
@@ -308,20 +308,20 @@ export function BrandKitOnboardingPanel({
             <section className="brand-kit-list">
               <header>
                 <div>
-                  <h3>BrandKit 与不可变版本</h3>
-                  <p>多版本不会自动选择 latest，必须明确选择。</p>
+                  <h3>品牌规范与不可变版本</h3>
+                  <p>存在多个版本时不会自动选择最新记录，必须明确选择。</p>
                 </div>
                 <button type="button" onClick={() => setReloadKey((value) => value + 1)}>
                   重新读取本地记录
                 </button>
               </header>
               {brandKits.length === 0 ? (
-                <p className="brand-kit-empty">尚无 BrandKit；系统不会自动创建。</p>
+                <p className="brand-kit-empty">尚无品牌规范；系统不会自动创建。</p>
               ) : (
                 brandKits.map((kit) => (
                   <article className={selectedKitId === kit.id ? "is-selected" : ""} key={kit.id}>
                     <button type="button" onClick={() => chooseKit(kit)}>
-                      <strong>BrandKit #{kit.id} · {kit.name}</strong>
+                      <strong>品牌规范 #{kit.id} · {kit.name}</strong>
                       <span>{kit.versions.length} 个不可变版本</span>
                     </button>
                     {selectedKitId === kit.id && (
@@ -338,7 +338,7 @@ export function BrandKitOnboardingPanel({
                               onChange={() => chooseVersion(version)}
                             />
                             <span>
-                              Version {version.version_number} · #{version.id} · {version.digest.slice(0, 12)}…
+                              版本 {version.version_number} · #{version.id} · {version.digest.slice(0, 12)}…
                             </span>
                           </label>
                         ))}
@@ -351,12 +351,12 @@ export function BrandKitOnboardingPanel({
 
             <section className="brand-kit-editor">
               <header>
-                <h3>{selectedKit ? `为 BrandKit #${selectedKit.id} 创建新版本` : "创建 BrandKit 与 Version 1"}</h3>
+                <h3>{selectedKit ? `为品牌规范 #${selectedKit.id} 创建新版本` : "创建品牌规范与版本 1"}</h3>
                 <p>编辑会创建新版本，不会覆盖或删除历史版本。</p>
               </header>
               {!selectedKit && (
                 <label>
-                  BrandKit 名称
+                  品牌规范名称
                   <input value={kitName} onChange={(event) => setKitName(event.target.value)} />
                 </label>
               )}
@@ -368,7 +368,7 @@ export function BrandKitOnboardingPanel({
                   </button>
                 ) : (
                   <button type="button" onClick={() => void handleCreateKit()}>
-                    创建 BrandKit 与 Version 1
+                    创建品牌规范与版本 1
                   </button>
                 )}
                 {selectedKit && (
@@ -381,7 +381,7 @@ export function BrandKitOnboardingPanel({
                       setDraft(EMPTY_VERSION);
                     }}
                   >
-                    返回新建 BrandKit
+                    返回新建品牌规范
                   </button>
                 )}
               </div>
@@ -392,11 +392,11 @@ export function BrandKitOnboardingPanel({
 
           <section className="brand-kit-binding">
             <div>
-              <h3>Product 精确版本绑定</h3>
+              <h3>商品与品牌规范版本绑定</h3>
               <p>
                 {selectedProduct
-                  ? `当前 Product #${selectedProduct.id} · 已绑定版本 ${selectedProduct.brand_kit_version_id ?? "无"}`
-                  : "请先在商品列表明确选择 Product。"}
+                  ? `当前商品 #${selectedProduct.id} · 已绑定版本 ${selectedProduct.brand_kit_version_id ?? "无"}`
+                  : "请先在商品列表明确选择商品。"}
               </p>
             </div>
             <div>
@@ -469,8 +469,8 @@ function VersionEditor({
 
 function VersionEvidence({ version }: { version: BrandKitVersion }) {
   const groups = [
-    ["Preferred", version.preferred_terms],
-    ["Forbidden", version.forbidden_terms],
+    ["推荐用语", version.preferred_terms],
+    ["禁用词", version.forbidden_terms],
     ["地区", version.target_regions],
     ["受众", version.audience_guidelines],
     ["视觉", version.visual_guidelines],
@@ -480,7 +480,7 @@ function VersionEvidence({ version }: { version: BrandKitVersion }) {
   return (
     <article className="brand-version-evidence">
       <header>
-        <div><span>IMMUTABLE</span><h3>BrandKitVersion #{version.id} · Version {version.version_number}</h3></div>
+        <div><span>不可变版本</span><h3>品牌规范版本 #{version.id} · 版本 {version.version_number}</h3></div>
         <code>{version.digest.slice(0, 16)}…</code>
       </header>
       <dl>

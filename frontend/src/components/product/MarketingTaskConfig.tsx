@@ -396,9 +396,9 @@ export function MarketingTaskConfig({
     <section className="marketing-task-config" aria-label="营销任务配置">
       <header>
         <div>
-          <span>MARKETING BRIEF INPUT</span>
+          <span>营销任务输入</span>
           <h4>营销任务配置</h4>
-          <p>保存真实 MarketingBrief 输入；本操作不会调用 AI 或生成内容。</p>
+          <p>保存真实营销任务输入；本操作不会调用模型或生成内容。</p>
         </div>
         <strong className={taskReady ? "task-ready" : "task-not-ready"}>
           {taskReady ? "配置已就绪" : "配置未就绪"}
@@ -409,7 +409,7 @@ export function MarketingTaskConfig({
         <div className="marketing-config-heading">
           <div>
             <h5>目标市场</h5>
-            <p>保存到当前 Product 的 target_markets</p>
+            <p>保存到当前商品的目标市场资料</p>
           </div>
           <strong>{selectedMarketCount} / 5</strong>
         </div>
@@ -435,7 +435,7 @@ export function MarketingTaskConfig({
         {legacyMarkets.length > 0 && (
           <div className="legacy-markets">
             <strong>兼容保留的历史市场值</strong>
-            <p>这些值来自 Backend，除非你明确移除并保存，否则不会被删除。</p>
+            <p>这些值来自后端，除非你明确移除并保存，否则不会被删除。</p>
             <div>
               {legacyMarkets.map((market) => (
                 <button
@@ -458,10 +458,10 @@ export function MarketingTaskConfig({
         )}
         <div className="market-save-row">
           <div aria-live="polite">
-            {saveState === "synced" && <span>已与 Backend 同步</span>}
+            {saveState === "synced" && <span>已与后端同步</span>}
             {saveState === "dirty" && <span>有未保存修改</span>}
             {saveState === "saving" && <span>正在保存目标市场…</span>}
-            {saveState === "success" && <span>目标市场已保存到 Backend</span>}
+            {saveState === "success" && <span>目标市场已保存到后端</span>}
             {saveState === "error" && <span className="save-error">{saveError}</span>}
           </div>
           <button
@@ -511,7 +511,7 @@ export function MarketingTaskConfig({
         )}
         <p className="platform-draft-boundary">
           创建前平台是按商品隔离的会话草稿；点击“创建营销任务输入”后将写入
-          MarketingBrief。此操作不代表发布或已获得社媒账号授权。
+          营销任务。此操作不代表发布或已获得社媒账号授权。
         </p>
       </div>
 
@@ -536,7 +536,7 @@ export function MarketingTaskConfig({
           </p>
         )}
         <p className="task-ai-boundary">
-          本操作只保存任务输入，不会调用 Qwen、Wanx 或任何 AI Provider。
+          本操作只保存任务输入，不会调用千问、万象或任何外部模型。
         </p>
         <button
           type="button"
@@ -552,12 +552,12 @@ export function MarketingTaskConfig({
           {taskState === "creating"
             ? "正在保存任务输入…"
             : taskState === "checking"
-              ? "正在核对 Backend 记录…"
+              ? "正在核对后端记录…"
               : "创建营销任务输入"}
         </button>
 
         <div className="task-record-state" aria-live="polite">
-          {taskState === "loading" && <p>正在从 Backend 恢复最近任务输入…</p>}
+          {taskState === "loading" && <p>正在从后端恢复最近任务输入…</p>}
           {taskState === "empty" && <p>当前商品尚无已保存的任务输入。</p>}
           {taskState === "load-error" && (
             <div className="task-record-error">
@@ -580,8 +580,8 @@ export function MarketingTaskConfig({
               <article className="task-record-card">
               <header>
                 <div>
-                  <span>BACKEND SAVED</span>
-                  <strong>MarketingBrief #{savedTask.id}</strong>
+                  <span>后端已保存</span>
+                  <strong>营销任务 #{savedTask.id}</strong>
                 </div>
                 <time>{formatTaskTime(savedTask.created_at)}</time>
               </header>
@@ -589,7 +589,7 @@ export function MarketingTaskConfig({
                 <div><dt>关联商品</dt><dd>#{savedTask.product_id} · {product.name}</dd></div>
                 <div><dt>目标市场</dt><dd>{savedTask.target_markets.join("、")}</dd></div>
                 <div><dt>已保存平台</dt><dd>{savedTask.platforms.join("、")}</dd></div>
-                <div><dt>保存状态</dt><dd>Backend 真实记录已保存</dd></div>
+                <div><dt>保存状态</dt><dd>后端真实记录已保存</dd></div>
               </dl>
               <p>任务输入已保存，等待 V2-C2 AI 策略生成。</p>
               </article>

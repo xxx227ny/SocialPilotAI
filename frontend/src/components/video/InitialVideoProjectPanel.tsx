@@ -36,14 +36,14 @@ type OperationState = "idle" | "loading" | "ready" | "blocked" | "error";
 type InitialPlatform = InitialVideoProjectSourceRequest["platform"];
 
 const MISSING_LABELS: Record<string, string> = {
-  product_input: "Product input is incomplete",
-  strategy_schema: "Strategy schema is incomplete",
-  copy_matrix_schema: "CopyMatrix schema is incomplete",
-  source_association: "Product, Strategy, and CopyMatrix do not match",
-  platform_copy: "The selected platform copy is missing",
-  provider_configuration: "Qwen configuration is unavailable",
-  qwen_credentials_configuration: "Qwen credentials are unavailable",
-  video_project_execution: "Backend VideoProject execution is disabled",
+  product_input: "商品资料不完整",
+  strategy_schema: "营销策略结构不完整",
+  copy_matrix_schema: "文案矩阵结构不完整",
+  source_association: "商品、策略与文案矩阵不匹配",
+  platform_copy: "缺少所选平台的文案",
+  provider_configuration: "千问服务配置不可用",
+  qwen_credentials_configuration: "千问凭据配置不可用",
+  video_project_execution: "后端视频蓝图执行功能未开启",
 };
 
 export function InitialVideoProjectPanel({
@@ -439,65 +439,65 @@ export function InitialVideoProjectPanel({
   if (isPresentation) return null;
 
   return (
-    <section className="initial-video-project" aria-label="Initial VideoProject Queue">
+    <section className="initial-video-project" aria-label="初始视频蓝图任务">
       <header>
         <div>
-          <span>INITIAL VIDEO BLUEPRINT</span>
-          <h4>Initial VideoProject Queue</h4>
-          <p>Preflight and HTTP enqueue are Provider-free; only a claimed Worker calls Qwen.</p>
+          <span>初始视频蓝图</span>
+          <h4>千问初始视频蓝图任务</h4>
+          <p>前置检查和任务入队不会调用模型；只有后台任务确认领取后才会调用千问。</p>
         </div>
-        <strong>{videoProjectExecutionEnabled ? "Frontend Gate ON" : "Frontend Gate OFF"}</strong>
+        <strong>{videoProjectExecutionEnabled ? "前端功能已开启" : "前端功能未开启"}</strong>
       </header>
 
-      {sourceState === "loading" ? <p>Discovering the latest valid CopyMatrix source…</p> : null}
+      {sourceState === "loading" ? <p>正在查找可用的文案矩阵来源……</p> : null}
       {sourceState !== "loading" && (!source || !exactSource) ? (
         <div className="initial-video-project__state">
-          <p>{sourceError || "Strategy or CopyMatrix is not ready."}</p>
-          <button type="button" onClick={() => void loadSources()}>Reload exact source</button>
+          <p>{sourceError || "营销策略或文案矩阵尚未就绪。"}</p>
+          <button type="button" onClick={() => void loadSources()}>重新读取精确来源</button>
         </div>
       ) : null}
 
       {source && exactSource ? (
         <>
           <dl className="initial-video-project__identity">
-            <div><dt>Product</dt><dd>#{source.product_id}</dd></div>
-            <div><dt>Strategy</dt><dd>#{source.strategy_id}</dd></div>
-            <div><dt>CopyMatrix</dt><dd>#{source.copy_matrix_id}</dd></div>
-            <div><dt>Source</dt><dd>latest valid CopyMatrix discovery</dd></div>
+            <div><dt>商品</dt><dd>#{source.product_id}</dd></div>
+            <div><dt>营销策略</dt><dd>#{source.strategy_id}</dd></div>
+            <div><dt>文案矩阵</dt><dd>#{source.copy_matrix_id}</dd></div>
+            <div><dt>来源</dt><dd>当前商品可用的精确文案矩阵</dd></div>
           </dl>
           <button className="text-button" type="button" onClick={() => void loadSources()}>
-            Reload source and exact queue history
+            重新读取来源和精确任务历史
           </button>
 
           <div className="initial-video-project__controls">
-            <label>Platform
+            <label>目标平台
               <select value={platform} onChange={(event) => changePlatform(event.target.value as InitialPlatform)}>
                 <option value="TikTok">TikTok</option>
                 <option value="Instagram">Instagram</option>
                 <option value="Facebook">Facebook</option>
               </select>
             </label>
-            <label>Duration
+            <label>视频时长
               <select value={duration} onChange={(event) => changeDuration(Number(event.target.value) as 15 | 30)}>
-                <option value={15}>15 seconds</option>
-                <option value={30}>30 seconds</option>
+                <option value={15}>15 秒</option>
+                <option value={30}>30 秒</option>
               </select>
             </label>
-            <label>Aspect ratio<input value="9:16" readOnly /></label>
+            <label>画面比例<input value="9:16" readOnly /></label>
           </div>
 
           <button type="button" onClick={() => void runPreflight()} disabled={operationState === "loading"}>
-            {operationState === "loading" ? "Checking…" : "Run Provider-free Preflight"}
+            {operationState === "loading" ? "检查中……" : "运行零模型调用前置检查"}
           </button>
 
           {preflight ? (
             <div className="initial-video-project__preflight">
-              <strong>{preflight.ready_for_execution ? "READY" : "BLOCKED"}</strong>
+              <strong>{preflight.ready_for_execution ? "可以执行" : "暂不可执行"}</strong>
               <dl>
-                <div><dt>Stable input</dt><dd>{preflight.input_digest.slice(0, 12)}…</dd></div>
-                <div><dt>Expires</dt><dd>{formatTime(preflight.expires_at)}</dd></div>
-                <div><dt>Provider calls</dt><dd>{preflight.provider_calls}</dd></div>
-                <div><dt>Database writes</dt><dd>{preflight.database_writes}</dd></div>
+                <div><dt>冻结输入</dt><dd>{preflight.input_digest.slice(0, 12)}…</dd></div>
+                <div><dt>有效期</dt><dd>{formatTime(preflight.expires_at)}</dd></div>
+                <div><dt>模型调用</dt><dd>{preflight.provider_calls}</dd></div>
+                <div><dt>数据库写入</dt><dd>{preflight.database_writes}</dd></div>
               </dl>
               {preflight.missing_requirements.length > 0 ? (
                 <ul>{preflight.missing_requirements.map((item) => <li key={item}>{MISSING_LABELS[item] ?? item}</li>)}</ul>
@@ -514,10 +514,10 @@ export function InitialVideoProjectPanel({
                   checked={costConfirmed}
                   onChange={(event) => setCostConfirmed(event.target.checked)}
                 />
-                I explicitly confirm that the claimed Worker may call Qwen once and incur cost.
+                我明确确认：后台任务可能调用千问一次并产生费用。
               </label>
               <button type="button" onClick={() => void enqueue()} disabled={!canEnqueue}>
-                Confirm cost and enqueue VideoProject
+                确认费用并创建视频蓝图任务
               </button>
             </>
           ) : null}
@@ -527,29 +527,29 @@ export function InitialVideoProjectPanel({
           {job ? (
             <article className="strategy-operation-result" aria-live="polite">
               <header>
-                <div><span>{jobReused ? "RESTORED / REUSED" : "CREATED"}</span><h5>ExecutionJob #{job.id}</h5></div>
-                <strong>{job.status}</strong>
+                <div><span>{jobReused ? "已恢复/复用" : "已创建"}</span><h5>执行任务 #{job.id}</h5></div>
+                <strong>{executionStatusLabel(job.status)}</strong>
               </header>
               <dl>
-                <div><dt>Attempts</dt><dd>{job.attempt_count} / {job.max_attempts}</dd></div>
-                <div><dt>Stable input</dt><dd>{job.input_digest.slice(0, 12)}…</dd></div>
-                <div><dt>Safe error</dt><dd>{job.safe_error_code ?? "None"}</dd></div>
+                <div><dt>尝试次数</dt><dd>{job.attempt_count} / {job.max_attempts}</dd></div>
+                <div><dt>冻结输入</dt><dd>{job.input_digest.slice(0, 12)}…</dd></div>
+                <div><dt>安全错误码</dt><dd>{job.safe_error_code ?? "无"}</dd></div>
               </dl>
-              {job.status === "QUEUED" ? <p role="status">Queued for Worker claim.</p> : null}
-              {job.status === "RUNNING" ? <p role="status">Worker is running; this page only polls the local job.</p> : null}
+              {job.status === "QUEUED" ? <p role="status">任务已排队，等待后台执行。</p> : null}
+              {job.status === "RUNNING" ? <p role="status">后台正在执行；本页面只读取本地任务状态。</p> : null}
               {job.status === "FAILED" ? (
                 <div role="alert">
-                  <strong>Deterministic failure</strong>
-                  <p>No automatic retry occurs.</p>
+                  <strong>任务明确失败</strong>
+                  <p>系统不会自动重试。</p>
                   {initialVideoProjectJobAllowsExplicitRetry(job) ? (
-                    <button type="button" onClick={() => void retryFailedJob()}>Explicit retry</button>
+                    <button type="button" onClick={() => void retryFailedJob()}>明确重试一次</button>
                   ) : null}
                 </div>
               ) : null}
               {job.status === "SUBMIT_UNKNOWN" ? (
                 <div role="alert">
-                  <strong>External submission may have occurred</strong>
-                  <p>Automatic and explicit retry are forbidden.</p>
+                  <strong>模型提交状态不确定</strong>
+                  <p>为避免重复扣费，禁止自动或人工重试。</p>
                 </div>
               ) : null}
             </article>
@@ -557,16 +557,16 @@ export function InitialVideoProjectPanel({
 
           {result ? (
             <article className="initial-video-project__result">
-              <span>EXACT QUEUE RESULT</span>
-              <h5>VideoProject #{result.id}</h5>
+              <span>精确任务结果</span>
+              <h5>视频蓝图 #{result.id}</h5>
               <p>{result.title}</p>
               <dl>
-                <div><dt>Strategy</dt><dd>#{result.marketing_strategy_id}</dd></div>
-                <div><dt>CopyMatrix</dt><dd>#{result.copy_matrix_id}</dd></div>
-                <div><dt>Platform</dt><dd>{result.platform}</dd></div>
-                <div><dt>Duration</dt><dd>{result.duration_seconds} seconds</dd></div>
+                <div><dt>营销策略</dt><dd>#{result.marketing_strategy_id}</dd></div>
+                <div><dt>文案矩阵</dt><dd>#{result.copy_matrix_id}</dd></div>
+                <div><dt>目标平台</dt><dd>{result.platform}</dd></div>
+                <div><dt>视频时长</dt><dd>{result.duration_seconds} 秒</dd></div>
               </dl>
-              <p>The exact result_entity_id is passed to the downstream render panel.</p>
+              <p>系统会把这个精确结果编号传给后续渲染流程。</p>
             </article>
           ) : null}
         </>
@@ -578,6 +578,16 @@ export function InitialVideoProjectPanel({
 function formatTime(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
-    ? "Invalid time"
+    ? "时间无效"
     : date.toLocaleString("zh-CN");
+}
+
+function executionStatusLabel(status: string) {
+  return ({
+    QUEUED: "排队中",
+    RUNNING: "执行中",
+    SUCCEEDED: "已成功",
+    FAILED: "已失败",
+    SUBMIT_UNKNOWN: "提交状态不确定",
+  } as Record<string, string>)[status] ?? status;
 }

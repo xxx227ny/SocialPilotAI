@@ -121,8 +121,11 @@ try {
   assert.match(api, /\/execution-jobs\/\$\{jobId\}/);
   assert.match(api, /\/strategies\/\$\{strategyId\}/);
 
+  const copyWorkspace = read("src", "pages", "CopyMatrixPage.tsx");
   const productCenter = read("src", "pages", "ProductCenterPage.tsx");
-  assert.match(productCenter, /!isPresentation[\s\S]*MarketingTaskConfig/);
+  assert.match(copyWorkspace, /!isPresentation[\s\S]*CopyMatrixWorkspace/);
+  assert.match(copyWorkspace, /<MarketingTaskConfig/);
+  assert.doesNotMatch(productCenter, /MarketingTaskConfig/);
 
   console.log("Strategy queue frontend checks passed: 23 scenarios");
 } finally {

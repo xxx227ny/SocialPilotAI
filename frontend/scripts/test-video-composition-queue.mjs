@@ -48,7 +48,7 @@ try {
   controller.abort();
   assert.equal(state.isCurrentCompositionOperation(identity,identity),false);
   const panel=await fs.readFile(path.join(root,"src/components/video/VideoCompositionPanel.tsx"),"utf8");
-  assert.ok(panel.includes("明确选择来源Artifact"));
+  assert.ok(panel.includes("明确选择来源视频"));
   assert.ok(panel.includes("确定性静音 AAC 占位音轨"));
   assert.ok(!panel.includes("latest"));
   assert.ok(panel.includes("isPresentation"));

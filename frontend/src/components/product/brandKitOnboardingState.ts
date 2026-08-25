@@ -53,8 +53,8 @@ export function versionCreationMessage(
   result: BrandKitVersionCreateResult,
 ): string {
   return result.reused
-    ? `内容相同，已复用 Version ${result.version.version_number}`
-    : `已创建 Version ${result.version.version_number}`;
+    ? `内容相同，已复用版本 ${result.version.version_number}`
+    : `已创建版本 ${result.version.version_number}`;
 }
 
 export function deriveOnboardingSteps(
@@ -87,15 +87,15 @@ export function deriveOnboardingSteps(
   );
 
   return [
-    { id: 1, label: "Runtime 与数据库就绪", complete: runtimeReady },
-    { id: 2, label: "创建 BrandKit Version 1", complete: brandReady },
-    { id: 3, label: "创建 Product", complete: productReady },
+    { id: 1, label: "运行环境与数据库就绪", complete: runtimeReady },
+    { id: 2, label: "创建品牌规范版本 1", complete: brandReady },
+    { id: 3, label: "创建商品", complete: productReady },
     {
       id: 4,
-      label: "Product 绑定精确 BrandKitVersion",
+      label: "商品绑定明确的品牌规范版本",
       complete: bindingReady,
     },
-    { id: 5, label: "创建 MarketingBrief", complete: briefReady },
+    { id: 5, label: "创建营销任务", complete: briefReady },
     { id: 6, label: "内容生成准备完成", complete: contentReady },
   ];
 }

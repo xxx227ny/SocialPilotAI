@@ -79,31 +79,31 @@ export function VideoCompositionPanel({ product, videoProjectId }: { product: Pr
   async function runPreflight() {
     if (!project || selectedShots.length < 3) return;
     try { setPreflight(await preflightVideoComposition(product.id, project.id, selectedShots)); setMessage(""); }
-    catch (error) { setMessage(getApiErrorMessage(error, "成片Preflight失败。")); }
+    catch (error) { setMessage(getApiErrorMessage(error, "成片前置检查失败。")); }
   }
   async function submit() {
     if (!preflight || submitLock.current) return;
     submitLock.current = true;
-    try { const response = await submitVideoComposition(product.id, preflight); setJob(response.job); setMessage(response.reused ? "已复用精确Composition任务。" : "已创建本地Composition任务。"); }
+    try { const response = await submitVideoComposition(product.id, preflight); setJob(response.job); setMessage(response.reused ? "已复用精确合成任务。" : "已创建本地合成任务。"); }
     catch (error) { setMessage(getApiErrorMessage(error, "成片任务创建失败。")); }
     finally { submitLock.current = false; }
   }
 
   return <section className="video-composition-panel">
     <h4>15秒多镜头本地成片</h4>
-    <p>Stage 3A 使用确定性静音 AAC 占位音轨；这不是配音或背景音乐。</p>
+    <p>本地合成使用确定性静音 AAC 占位音轨；这不是配音或背景音乐。</p>
     <p>输出合同：15秒 · MP4 · H.264 High · AAC-LC · 1080×1920 · CFR 30fps</p>
     {scenes.map((scene) => <label key={scene.sequence}>镜头 #{scene.sequence} · {scene.duration_seconds}s
       <select value={selections[scene.sequence] ?? ""} onChange={(event) => setSelections((current) => ({ ...current, [scene.sequence]: Number(event.target.value) }))}>
-        <option value="">明确选择来源Artifact</option>
-        {artifacts.filter((artifact) => artifact.video_render_task_id > 0).map((artifact) => <option key={artifact.id} value={artifact.id}>Artifact #{artifact.id} · RenderTask #{artifact.video_render_task_id}</option>)}
+        <option value="">明确选择来源视频</option>
+        {artifacts.filter((artifact) => artifact.video_render_task_id > 0).map((artifact) => <option key={artifact.id} value={artifact.id}>视频 #{artifact.id} · 渲染任务 #{artifact.video_render_task_id}</option>)}
       </select>
     </label>)}
-    <div className="composition-timeline">{selectedShots.map((shot) => <span key={shot.sequence}>#{shot.sequence} {shot.start_ms/1000}–{shot.end_ms/1000}s · Artifact #{shot.artifact_id}</span>)}</div>
-    <button type="button" onClick={() => void runPreflight()} disabled={selectedShots.length < 3 || submitLock.current}>Provider-free Preflight</button>
+    <div className="composition-timeline">{selectedShots.map((shot) => <span key={shot.sequence}>#{shot.sequence} {shot.start_ms/1000}–{shot.end_ms/1000}秒 · 视频 #{shot.artifact_id}</span>)}</div>
+    <button type="button" onClick={() => void runPreflight()} disabled={selectedShots.length < 3 || submitLock.current}>运行零模型调用前置检查</button>
     {preflight && <><label><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />确认本地CPU与磁盘写入</label><button type="button" disabled={!confirmed || submitLock.current} onClick={() => void submit()}>创建15秒成片</button></>}
-    {job && <p>Job #{job.id} · {job.status}</p>}
-    {result && <><p>Composition Artifact #{result.id} · {result.duration_ms}ms · {result.video_codec}/{result.audio_codec}</p><video controls src={compositionArtifactContentUrl(result.id)} /><VideoCompositionEnhancementPanel product={product} artifact={result} /></>}
+    {job && <p>任务 #{job.id} · {job.status}</p>}
+    {result && <><p>合成视频 #{result.id} · {result.duration_ms}毫秒 · {result.video_codec}/{result.audio_codec}</p><video controls src={compositionArtifactContentUrl(result.id)} /><VideoCompositionEnhancementPanel product={product} artifact={result} /></>}
     {job?.status === "SUCCEEDED" && !result && <button type="button" onClick={() => setJob({ ...job })} disabled={resultLock.current}>重新读取精确成片记录</button>}
     {message && <p role="status">{message}</p>}
   </section>;
