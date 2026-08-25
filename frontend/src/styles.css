@@ -3332,6 +3332,43 @@ textarea { font: inherit; }
 }
 .video-composition-panel { display: grid; gap: 12px; padding: 18px; border: 1px solid #dfe4ec; border-radius: 16px; margin-top: 18px; }
 .video-composition-panel label { display: grid; gap: 6px; }
+.video-composition-panel .model-cost-confirmation-block {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0 4px;
+  padding: 12px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.42);
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.36);
+}
+.video-composition-panel .model-cost-confirmation {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 10px;
+  width: 100%;
+  cursor: pointer;
+}
+.video-composition-panel .model-cost-confirmation input {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+  accent-color: #7c6df2;
+}
+.video-composition-panel .model-cost-confirmation input:disabled {
+  cursor: not-allowed;
+}
+.video-composition-panel .model-cost-confirmation span {
+  min-width: 0;
+  line-height: 1.55;
+}
+.model-cost-confirmation__blocked {
+  margin: 0;
+  color: #f3b8be;
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
 .composition-timeline { display: flex; flex-wrap: wrap; gap: 8px; }
 .composition-timeline span { padding: 6px 10px; border-radius: 999px; background: #eef3f8; }
 .video-composition-panel video { width: min(360px, 100%); aspect-ratio: 9 / 16; background: #000; }

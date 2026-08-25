@@ -48,13 +48,21 @@ class BatchQwenScriptService:
         variants = self._variants(batch_id, data)
         expiry = expires_at
         items = []
+        recoverable_items: list[bool] = []
         for variant in variants:
             request = self._request(batch_id, variant.id, data)
             checked = QwenVideoScriptPreflightService(self.session, self.settings).run(
                 variant.id, request, expires_at=expiry
             )
+            recoverable = (
+                not checked.ready_for_execution
+                and self._can_recover_exact_job(variant.id, request, checked)
+            )
+            if recoverable:
+                checked = checked.model_copy(update={"ready_for_execution": True})
             expiry = checked.expires_at
             items.append(checked)
+            recoverable_items.append(recoverable)
         currencies = {item.currency for item in items}
         bases = {item.cost_estimate_basis for item in items}
         if len(currencies) != 1 or len(bases) != 1 or None in bases:
@@ -82,12 +90,20 @@ class BatchQwenScriptService:
             json.dumps(material, ensure_ascii=False, sort_keys=True).encode()
         ).hexdigest()
         qwen_cost_min = sum(
-            (item.estimated_cost_min or Decimal("0") for item in items),
-            Decimal("0"),
+            (
+                item.estimated_cost_min or Decimal("0")
+                for item, recoverable in zip(items, recoverable_items, strict=True)
+                if not recoverable
+            ),
+            Decimal("0.00"),
         )
         qwen_cost_max = sum(
-            (item.estimated_cost_max or Decimal("0") for item in items),
-            Decimal("0"),
+            (
+                item.estimated_cost_max or Decimal("0")
+                for item, recoverable in zip(items, recoverable_items, strict=True)
+                if not recoverable
+            ),
+            Decimal("0.00"),
         )
         wanx_calls = len(items) * TIMED_FOUR_ACT_SCENE_COUNT
         downstream_cost = (
@@ -101,7 +117,7 @@ class BatchQwenScriptService:
             preflight_digest=digest,
             expires_at=expiry,
             ready_for_execution=all(item.ready_for_execution for item in items),
-            estimated_provider_calls=len(items),
+            estimated_provider_calls=sum(not item for item in recoverable_items),
             estimated_cost_min=qwen_cost_min,
             estimated_cost_max=qwen_cost_max,
             wanx_image_generation_calls=wanx_calls,
@@ -181,6 +197,33 @@ class BatchQwenScriptService:
         if {item.platform for item in exact} != set(PLATFORMS):
             raise AppError("Batch Qwen script requires the three target platforms", 422)
         return sorted(exact, key=lambda item: PLATFORMS.index(item.platform))
+
+    def _can_recover_exact_job(
+        self,
+        variant_id: int,
+        request: QwenScriptPreflightRequest,
+        checked: QwenScriptPreflightRead,
+    ) -> bool:
+        if any(
+            value is None
+            for value in (
+                checked.estimated_cost_min,
+                checked.estimated_cost_max,
+                checked.cost_estimate_basis,
+            )
+        ):
+            return False
+        existing = QwenVideoScriptJobService(
+            self.session, self.settings
+        ).recover_exact_job(
+            variant_id,
+            request.idempotency_key,
+            checked.frozen_input_digest,
+        )
+        return bool(
+            existing
+            and existing.job.status in {"QUEUED", "PAUSED", "RUNNING", "SUCCEEDED"}
+        )
 
     @staticmethod
     def _request(

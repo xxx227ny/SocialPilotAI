@@ -222,6 +222,8 @@ try {
     "buildBatchQwenScriptRequest",
     "preflightBatchQwenScripts",
     "createOrRecoverBatchQwenScripts",
+    "model-cost-confirmation",
+    "oneClickBlockedMessage",
     "will_auto_activate_exact_results",
     "total_known_cost_max",
     "known_downstream_cost",

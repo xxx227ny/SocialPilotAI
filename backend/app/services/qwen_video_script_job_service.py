@@ -144,6 +144,19 @@ class QwenVideoScriptJobService:
             self.session.rollback()
             raise
 
+    def recover_exact_job(
+        self,
+        variant_id: int,
+        client_key: str,
+        input_digest: str,
+    ) -> ExecutionJobCreateRead | None:
+        """Read an existing exact job without reserving quota or creating work."""
+        return self._recover_existing(
+            self._job_key(variant_id, client_key),
+            variant_id,
+            input_digest,
+        )
+
     @staticmethod
     def _job_key(variant_id: int, client_key: str) -> str:
         material = f"{variant_id}:{client_key}".encode()

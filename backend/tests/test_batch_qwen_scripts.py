@@ -122,8 +122,29 @@ def test_batch_qwen_preflight_enqueue_recover_and_activate_exact_versions(
     assert execution_worker.run_once().status == WorkerRunStatus.NO_JOB
     assert fake.calls == 3
 
+    recovery_checked_response = client.post(
+        f"/api/v1/batch-video-jobs/{batch.id}/qwen-scripts/preflight",
+        json=request,
+    )
+    assert recovery_checked_response.status_code == 200
+    recovery_checked = recovery_checked_response.json()
+    assert recovery_checked["ready_for_execution"] is True
+    assert all(item["ready_for_execution"] for item in recovery_checked["items"])
+    assert all(item["quota_remaining"] == 0 for item in recovery_checked["items"])
+    assert recovery_checked["estimated_provider_calls"] == 0
+    assert recovery_checked["estimated_cost_min"] == "0.00"
+    assert recovery_checked["estimated_cost_max"] == "0.00"
+    assert db_session.query(ExecutionJob).count() == 3
+
+    recovery_create = {
+        **request,
+        "preflight_digest": recovery_checked["preflight_digest"],
+        "preflight_expires_at": recovery_checked["expires_at"],
+        "cost_confirmed": True,
+    }
+
     recovered_response = client.post(
-        f"/api/v1/batch-video-jobs/{batch.id}/qwen-scripts", json=create
+        f"/api/v1/batch-video-jobs/{batch.id}/qwen-scripts", json=recovery_create
     )
     assert recovered_response.status_code == 201
     recovered = recovered_response.json()

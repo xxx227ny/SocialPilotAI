@@ -691,7 +691,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
       setMessage(
         checked.ready_for_execution
           ? "完整链路Preflight通过，请确认模型调用次数和费用。"
-          : "千问脚本费用或批次配额尚未就绪。",
+          : oneClickBlockedMessage(checked),
       );
     } catch (error) {
       if (!operation.current.current(active.id)) return;
@@ -1076,17 +1076,24 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
                 ? "为完成一键链路会自动激活精确版本。"
                 : "需要人工激活后才能继续。"}
             </p>
-            <label>
-              <input
-                type="checkbox"
-                checked={oneClickCostConfirmed}
-                disabled={!oneClickPreflight.ready_for_execution}
-                onChange={(event) =>
-                  setOneClickCostConfirmed(event.target.checked)
-                }
-              />
-              我已确认全部模型调用、已知费用区间及未计价的千问TTS
-            </label>
+            <div className="model-cost-confirmation-block">
+              <label className="model-cost-confirmation">
+                <input
+                  type="checkbox"
+                  checked={oneClickCostConfirmed}
+                  disabled={!oneClickPreflight.ready_for_execution}
+                  onChange={(event) =>
+                    setOneClickCostConfirmed(event.target.checked)
+                  }
+                />
+                <span>我已确认全部模型调用、已知费用区间及未计价的千问TTS</span>
+              </label>
+              {!oneClickPreflight.ready_for_execution && (
+                <p className="model-cost-confirmation__blocked" role="alert">
+                  当前检查尚未通过，因此费用确认暂时不可勾选。{oneClickBlockedMessage(oneClickPreflight)}
+                </p>
+              )}
+            </div>
             <button
               type="button"
               disabled={
@@ -1287,6 +1294,20 @@ function phaseLabel(phase: RealProductVideoPhase) {
     SUCCEEDED: "已完成",
     FAILED: "已失败",
   }[phase];
+}
+
+function oneClickBlockedMessage(checked: BatchQwenScriptPreflight) {
+  const costMissing = checked.items.some(
+    (item) =>
+      item.estimated_cost_min === null ||
+      item.estimated_cost_max === null ||
+      item.cost_estimate_basis === null,
+  );
+  if (costMissing) return "千问脚本费用配置尚未就绪，请管理员先完成费用配置。";
+  if (checked.items.some((item) => item.quota_remaining <= 0)) {
+    return "当前批次的千问脚本额度已用完，并且没有可恢复的同一任务；请新建批次后重试。";
+  }
+  return "千问脚本生成条件尚未满足，请重新检查批次与脚本状态。";
 }
 
 function productionBatchStatusLabel(status: string) {
