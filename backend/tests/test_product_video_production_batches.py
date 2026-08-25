@@ -1,4 +1,7 @@
 import hashlib
+import io
+import json
+import zipfile
 from decimal import Decimal
 
 import pytest
@@ -781,24 +784,33 @@ def test_advance_enqueues_wanx_jobs_once_and_recovers_exact_assets(
         enhancement = db_session.get(
             VideoCompositionEnhancement, item["enhancement_id"]
         )
+        subtitle_name = f"subtitle-item-{item['id']}.vtt"
+        subtitle_content = (
+            "WEBVTT\n\n00:00:00.000 --> 00:00:15.000\n"
+            f"{item['platform']} product demonstration\n"
+        ).encode()
+        (tmp_path / "videos" / subtitle_name).write_bytes(subtitle_content)
         subtitle = VideoCompositionSubtitleArtifact(
             enhancement_id=enhancement.id,
-            storage_path=f"subtitle-item-{item['id']}.vtt",
+            storage_path=subtitle_name,
             content_type="text/vtt; charset=utf-8",
-            size_bytes=64,
-            sha256=f"{item['id'] + 200:064x}",
+            size_bytes=len(subtitle_content),
+            sha256=hashlib.sha256(subtitle_content).hexdigest(),
             format="webvtt",
             cue_count=2,
         )
         db_session.add(subtitle)
         db_session.flush()
+        final_name = f"final-item-{item['id']}.mp4"
+        final_content = f"final-video-{item['platform']}".encode()
+        (tmp_path / "videos" / final_name).write_bytes(final_content)
         final = VideoCompositionEnhancementArtifact(
             enhancement_id=enhancement.id,
             subtitle_artifact_id=subtitle.id,
-            storage_path=f"final-item-{item['id']}.mp4",
+            storage_path=final_name,
             content_type="video/mp4",
-            size_bytes=1024,
-            sha256=f"{item['id'] + 300:064x}",
+            size_bytes=len(final_content),
+            sha256=hashlib.sha256(final_content).hexdigest(),
             duration_ms=15000,
             width=1080,
             height=1920,
@@ -840,6 +852,35 @@ def test_advance_enqueues_wanx_jobs_once_and_recovers_exact_assets(
     assert all(item["final_video_artifact_id"] for item in completed_body["items"])
     assert all(item["subtitle_artifact_id"] for item in completed_body["items"])
     assert db_session.query(ExecutionJob).count() == 24
+
+    downloaded = client.get(
+        f"/api/v1/products/{product.id}/real-product-video/"
+        f"production-batches/{batch_id}/download"
+    )
+    assert downloaded.status_code == 200
+    assert downloaded.headers["content-type"] == "application/zip"
+    assert downloaded.headers["content-disposition"] == (
+        f'attachment; filename="product-{product.id}-batch-{batch_id}-videos.zip"'
+    )
+    assert int(downloaded.headers["content-length"]) == len(downloaded.content)
+    with zipfile.ZipFile(io.BytesIO(downloaded.content)) as archive:
+        assert archive.namelist() == [
+            "tiktok/tiktok.mp4",
+            "tiktok/tiktok.vtt",
+            "youtube/youtube.mp4",
+            "youtube/youtube.vtt",
+            "instagram/instagram.mp4",
+            "instagram/instagram.vtt",
+            "manifest.json",
+        ]
+        manifest = json.loads(archive.read("manifest.json"))
+        assert manifest["complete"] is True
+        assert manifest["included_platforms"] == [
+            "tiktok",
+            "youtube",
+            "instagram",
+        ]
+        assert manifest["missing_platforms"] == []
 
 
 def test_advance_failure_and_controls_are_provider_job_scoped(

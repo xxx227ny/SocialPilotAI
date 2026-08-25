@@ -1,6 +1,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
@@ -29,6 +30,9 @@ from app.services.happyhorse_product_video_service import (
     HappyHorseProductVideoService,
 )
 from app.services.product_image_render_service import ProductImageRenderService
+from app.services.product_video_batch_download_service import (
+    ProductVideoBatchDownloadService,
+)
 from app.services.product_video_production_batch_service import (
     ProductVideoProductionBatchService,
 )
@@ -128,6 +132,31 @@ def get_product_video_production_batch(
     product_id: int, batch_id: int, db: Db, settings: SettingsDep
 ) -> ProductVideoProductionCreateRead:
     return ProductVideoProductionBatchService(db, settings).get(product_id, batch_id)
+
+
+@router.get("/production-batches/{batch_id}/download")
+def download_product_video_production_batch(
+    product_id: int, batch_id: int, db: Db, settings: SettingsDep
+) -> StreamingResponse:
+    package = ProductVideoBatchDownloadService(db, settings).build(product_id, batch_id)
+
+    def stream_package():
+        try:
+            while chunk := package.stream.read(64 * 1024):
+                yield chunk
+        finally:
+            package.stream.close()
+
+    return StreamingResponse(
+        stream_package(),
+        media_type="application/zip",
+        headers={
+            "Content-Length": str(package.content_length),
+            "Content-Disposition": f'attachment; filename="{package.filename}"',
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @router.post(

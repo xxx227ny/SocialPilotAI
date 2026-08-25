@@ -16,6 +16,7 @@ import {
   happyHorseVideoContentUrl,
   listProductVideoSources,
   pauseProductVideoProductionBatch,
+  productVideoProductionBatchDownloadUrl,
   preflightThreePlatformVideo,
   preflightHappyHorseVideo,
   prepareProductVideo,
@@ -1316,6 +1317,37 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
               </article>
             ))}
           </div>
+          {production.items.some(
+            (item) =>
+              item.status === "SUCCEEDED" &&
+              item.final_video_artifact_id !== null &&
+              item.subtitle_artifact_id !== null,
+          ) && (
+            <a
+              className="button-link"
+              href={productVideoProductionBatchDownloadUrl(
+                product.id,
+                production.batch.id,
+              )}
+              download
+            >
+              {production.items.filter(
+                (item) =>
+                  item.status === "SUCCEEDED" &&
+                  item.final_video_artifact_id !== null &&
+                  item.subtitle_artifact_id !== null,
+              ).length === 3
+                ? "批量下载三平台成片与字幕"
+                : `批量下载已完成成片（${
+                    production.items.filter(
+                      (item) =>
+                        item.status === "SUCCEEDED" &&
+                        item.final_video_artifact_id !== null &&
+                        item.subtitle_artifact_id !== null,
+                    ).length
+                  }/3）`}
+            </a>
+          )}
         </section>
       )}
       {cloudVideoArtifactId && (

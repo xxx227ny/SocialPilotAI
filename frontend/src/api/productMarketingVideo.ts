@@ -56,6 +56,14 @@ export async function getProductVideoProductionBatch(
   return response.data;
 }
 
+export const productVideoProductionBatchDownloadUrl = (
+  productId: number,
+  batchId: number,
+) =>
+  apiContentUrl(
+    `/products/${productId}/real-product-video/production-batches/${batchId}/download`,
+  );
+
 async function controlProductVideoProductionBatch(
   productId: number,
   batchId: number,

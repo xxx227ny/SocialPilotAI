@@ -241,6 +241,9 @@ try {
     "旁白若超过15秒会安全停止",
     "下载MP4",
     "下载WebVTT",
+    "productVideoProductionBatchDownloadUrl",
+    "批量下载三平台成片与字幕",
+    "批量下载已完成成片",
     "检查脚本到成片的完整调用与费用",
     "确认并一键生成三平台完整成片",
     "buildBatchQwenScriptRequest",
@@ -270,6 +273,7 @@ try {
   assert.ok(apiClient.includes("export function apiContentUrl"));
   assert.ok(enhancementApi.includes("apiContentUrl("));
   assert.ok(productVideoApi.includes("apiContentUrl("));
+  assert.ok(productVideoApi.includes("/download"));
   assert.ok(!enhancementApi.includes("`/api/v1/video-composition"));
   assert.ok(!productVideoApi.includes("`/api/v1/video-render-artifacts"));
   safety += 5;
