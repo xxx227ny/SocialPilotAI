@@ -197,8 +197,17 @@ npm run dev -- --host 127.0.0.1 --port 5173
 访问地址：
 
 - Product Center：<http://127.0.0.1:5173/products>
+- Copy Matrix：<http://127.0.0.1:5173/copy-matrix>
+- Video Factory：<http://127.0.0.1:5173/content-studio>
+- ROAS Growth Sandbox：<http://127.0.0.1:5173/growth-copilot>
 - Presentation Mode：<http://127.0.0.1:5173/?mode=presentation>
 - Backend API：<http://127.0.0.1:8000/api/v1>
+
+复赛材料：
+
+- 最终提交说明：[`docs/submission/final-submission-guide.md`](docs/submission/final-submission-guide.md)
+- 产品使用说明：[`docs/submission/user-guide.md`](docs/submission/user-guide.md)
+- 五分钟演示脚本：[`docs/submission/final-demo-script.md`](docs/submission/final-demo-script.md)
 
 ## 本机配置
 

@@ -1,5 +1,8 @@
 # SocialPilot AI 初赛提交检查清单
 
+> 本文件保留初赛检查记录。复赛最终状态与待办请查看
+> `docs/submission/final-submission-guide.md` 第 7 节。
+
 ## 1. 核心文档
 
 - [x] README存在

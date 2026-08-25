@@ -1,5 +1,10 @@
 # SocialPilot AI 阿里云AI黑客松初赛说明
 
+> 本文件保留初赛阶段记录。复赛当前材料请以
+> `docs/submission/final-submission-guide.md`、
+> `docs/submission/user-guide.md` 和
+> `docs/submission/final-demo-script.md` 为准。
+
 ## 一、项目基本信息
 
 - **项目名称**：SocialPilot AI
