@@ -89,6 +89,7 @@ PLATFORM_REQUEST_NAMES = {
 SHOT_MOTIONS = ("zoom_in", "pan_right", "zoom_out", "pan_left")
 MAX_HAPPYHORSE_REFRESHES = 90
 MAX_VOICEOVER_EXPLICIT_RETRIES = 1
+MAX_VOICEOVER_CONFIG_RETRIES = 1
 
 
 class ProductVideoProductionBatchService:
@@ -234,6 +235,26 @@ class ProductVideoProductionBatchService:
         elif batch.status == "PARTIAL_FAILED":
             recovered = False
             for item in batch.items:
+                voiceover_job_id = item.stage_state_json.get("voiceover_job_id")
+                voiceover_job = (
+                    self.session.get(ExecutionJob, voiceover_job_id)
+                    if isinstance(voiceover_job_id, int)
+                    else None
+                )
+                if (
+                    item.status == "FAILED"
+                    and item.safe_error_code == "PRODUCTION_VOICEOVER_FAILED"
+                    and item.stage == "GENERATING_VOICEOVER"
+                    and voiceover_job is not None
+                    and voiceover_job.status == "FAILED"
+                    and voiceover_job.safe_error_code == "QWEN_TTS_FAILED"
+                    and self._prepare_voice_config_recovery(item, voiceover_job)
+                ):
+                    item.status = "RUNNING"
+                    item.safe_error_code = None
+                    item.completed_at = None
+                    recovered = True
+                    continue
                 task = (
                     self.session.get(VideoRenderTask, item.cloud_render_task_id)
                     if item.cloud_render_task_id is not None
@@ -869,10 +890,18 @@ class ProductVideoProductionBatchService:
             version.full_narration.encode("utf-8")
         ).hexdigest()
         retry_count = item.stage_state_json.get("voiceover_retry_count", 0)
+        config_retry_count = item.stage_state_json.get(
+            "voiceover_config_retry_count", 0
+        )
         if not isinstance(retry_count, int) or retry_count < 0:
             self._fail_item(item, "PRODUCTION_VOICEOVER_RETRY_STATE_INVALID")
             return
+        if not isinstance(config_retry_count, int) or config_retry_count < 0:
+            self._fail_item(item, "PRODUCTION_VOICEOVER_RETRY_STATE_INVALID")
+            return
         retry_suffix = f":retry:{retry_count}" if retry_count else ""
+        if config_retry_count:
+            retry_suffix += f":voice-config:{config_retry_count}"
         submitted = VoiceoverGenerationService(self.session, self.settings).enqueue(
             batch.product_id,
             VoiceoverSubmitRequest(
@@ -912,6 +941,8 @@ class ProductVideoProductionBatchService:
             return
         if job.status == "FAILED" and job.safe_error_code == "QWEN_TTS_FAILED":
             retry_count = item.stage_state_json.get("voiceover_retry_count", 0)
+            if self._prepare_voice_config_recovery(item, job):
+                return
             if (
                 isinstance(retry_count, int)
                 and retry_count < MAX_VOICEOVER_EXPLICIT_RETRIES
@@ -944,6 +975,29 @@ class ProductVideoProductionBatchService:
             return
         item.voiceover_artifact_id = artifact.id
         item.stage = "ENHANCING"
+
+    def _prepare_voice_config_recovery(
+        self,
+        item: ProductVideoProductionItem,
+        job: ExecutionJob,
+    ) -> bool:
+        config_retry_count = item.stage_state_json.get(
+            "voiceover_config_retry_count", 0
+        )
+        failed_voice = job.input_payload.get("voice")
+        if not (
+            isinstance(config_retry_count, int)
+            and config_retry_count < MAX_VOICEOVER_CONFIG_RETRIES
+            and isinstance(failed_voice, str)
+            and failed_voice != self.settings.qwen_tts_voice
+        ):
+            return False
+        state = dict(item.stage_state_json)
+        state.pop("voiceover_job_id", None)
+        state["voiceover_config_retry_count"] = config_retry_count + 1
+        state["voiceover_config_recovery_from"] = failed_voice
+        item.stage_state_json = state
+        return True
 
     def _advance_enhancement(
         self,

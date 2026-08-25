@@ -128,7 +128,7 @@ class Settings(BaseSettings):
         "services/audio/tts/SpeechSynthesizer"
     )
     qwen_tts_model: str = "qwen-audio-3.0-tts-plus"
-    qwen_tts_voice: str = "longanhuan_v3.6"
+    qwen_tts_voice: str = "longanlingxin"
     qwen_tts_timeout: float = Field(default=120, gt=0, le=300)
     cors_origins: list[str] = [
         "http://localhost:5173",

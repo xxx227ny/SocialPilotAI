@@ -209,7 +209,7 @@ try {
     "preflightVideoComposition",
     "submitVoiceoverJob",
     "preflightCompositionEnhancement",
-    "longanhuan_v3.6",
+    "longanlingxin",
     "千问云配音",
     "万象商品视觉",
     "HappyHorse参考图生视频",

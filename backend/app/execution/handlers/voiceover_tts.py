@@ -42,6 +42,21 @@ class VoiceoverGenerateV1Handler:
 
     def execute(self, context: ExecutionContext, payload: BaseModel) -> HandlerResult:
         data = VoiceoverGenerateInput.model_validate(payload)
+        validator = getattr(self.provider, "validate_request", None)
+        if callable(validator):
+            try:
+                validator(
+                    text="validation-only",
+                    language=data.language,
+                    voice=data.voice,
+                    rate=data.speaking_rate,
+                )
+            except TtsExplicitFailure as exc:
+                return HandlerResult.failed(
+                    "QWEN_TTS_FAILED",
+                    safe_error_details={"category": exc.category},
+                    provider_submission_state="NOT_SUBMITTED",
+                )
         context.before_provider_call(may_submit_external=True)
         try:
             with self.session_factory() as session:
@@ -68,9 +83,11 @@ class VoiceoverGenerateV1Handler:
             return HandlerResult.submit_unknown(
                 "QWEN_TTS_RESULT_UNKNOWN", provider_name=self.provider.provider_name
             )
-        except TtsExplicitFailure:
+        except TtsExplicitFailure as exc:
             return HandlerResult.failed(
-                "QWEN_TTS_FAILED", provider_submission_state="EXPLICIT_FAILURE"
+                "QWEN_TTS_FAILED",
+                safe_error_details={"category": exc.category},
+                provider_submission_state="EXPLICIT_FAILURE",
             )
         except AppError:
             return HandlerResult.failed(

@@ -655,6 +655,52 @@ def test_advance_enqueues_wanx_jobs_once_and_recovers_exact_assets(
     )
     assert db_session.query(ExecutionJob).count() == 20
 
+    incompatible_voice_job = db_session.get(
+        ExecutionJob, retried_item["stage_state_json"]["voiceover_job_id"]
+    )
+    incompatible_voice_job.input_payload = {
+        **incompatible_voice_job.input_payload,
+        "voice": "longanhuan_v3.6",
+    }
+    incompatible_voice_job.status = "FAILED"
+    incompatible_voice_job.safe_error_code = "QWEN_TTS_FAILED"
+    incompatible_voice_job.completed_at = incompatible_voice_job.created_at
+    terminal_item = db_session.get(ProductVideoProductionItem, retry_item["id"])
+    terminal_batch = db_session.get(ProductVideoProductionBatch, batch_id)
+    terminal_item.status = "FAILED"
+    terminal_item.safe_error_code = "PRODUCTION_VOICEOVER_FAILED"
+    terminal_item.completed_at = incompatible_voice_job.completed_at
+    terminal_batch.status = "PARTIAL_FAILED"
+    terminal_batch.completed_at = incompatible_voice_job.completed_at
+    db_session.commit()
+
+    config_retry_prepared = client.post(
+        f"/api/v1/products/{product.id}/real-product-video/"
+        f"production-batches/{batch_id}/resume"
+    )
+    assert config_retry_prepared.status_code == 200
+    assert config_retry_prepared.json()["batch"]["status"] == "RUNNING"
+    config_retry_item = next(
+        item
+        for item in config_retry_prepared.json()["items"]
+        if item["id"] == retry_item["id"]
+    )
+    assert "voiceover_job_id" not in config_retry_item["stage_state_json"]
+    assert config_retry_item["stage_state_json"]["voiceover_config_retry_count"] == 1
+
+    config_retry_submitted = client.post(endpoint)
+    assert config_retry_submitted.status_code == 200
+    voiceover_items = config_retry_submitted.json()["items"]
+    corrected_item = next(
+        item for item in voiceover_items if item["id"] == retry_item["id"]
+    )
+    corrected_job = db_session.get(
+        ExecutionJob, corrected_item["stage_state_json"]["voiceover_job_id"]
+    )
+    assert corrected_job.id != incompatible_voice_job.id
+    assert corrected_job.input_payload["voice"] == "longanlingxin"
+    assert db_session.query(ExecutionJob).count() == 21
+
     for item in voiceover_items:
         job = db_session.get(ExecutionJob, item["stage_state_json"]["voiceover_job_id"])
         voice_content = f"voiceover-{item['id']}".encode()
@@ -690,7 +736,7 @@ def test_advance_enqueues_wanx_jobs_once_and_recovers_exact_assets(
         for item in voiceover_recovered.json()["items"]
     )
     assert db_session.query(VideoCompositionAudioArtifact).count() == 3
-    assert db_session.query(ExecutionJob).count() == 20
+    assert db_session.query(ExecutionJob).count() == 21
 
     enhancement_submitted = client.post(endpoint)
     assert enhancement_submitted.status_code == 200
@@ -721,12 +767,12 @@ def test_advance_enqueues_wanx_jobs_once_and_recovers_exact_assets(
         == [expected_subtitle, expected_subtitle]
         for enhancement in db_session.query(VideoCompositionEnhancement).all()
     )
-    assert db_session.query(ExecutionJob).count() == 23
+    assert db_session.query(ExecutionJob).count() == 24
 
     repeated_enhancement = client.post(endpoint)
     assert repeated_enhancement.status_code == 200
     assert db_session.query(VideoCompositionEnhancement).count() == 3
-    assert db_session.query(ExecutionJob).count() == 23
+    assert db_session.query(ExecutionJob).count() == 24
 
     for item in enhancement_items:
         job = db_session.get(
@@ -793,7 +839,7 @@ def test_advance_enqueues_wanx_jobs_once_and_recovers_exact_assets(
     assert {item["stage"] for item in completed_body["items"]} == {"COMPLETE"}
     assert all(item["final_video_artifact_id"] for item in completed_body["items"])
     assert all(item["subtitle_artifact_id"] for item in completed_body["items"])
-    assert db_session.query(ExecutionJob).count() == 23
+    assert db_session.query(ExecutionJob).count() == 24
 
 
 def test_advance_failure_and_controls_are_provider_job_scoped(

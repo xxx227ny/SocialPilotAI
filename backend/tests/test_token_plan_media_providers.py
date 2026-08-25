@@ -6,7 +6,7 @@ import httpx
 
 from app.core.config import Settings
 from app.providers.wanx_image_provider import WanxImageProvider
-from app.services.tts_provider import QwenAudioTtsProvider
+from app.services.tts_provider import QwenAudioTtsProvider, TtsExplicitFailure
 
 
 def _mono_wav() -> bytes:
@@ -27,6 +27,7 @@ def test_qwen_tts_uses_token_plan_once_and_canonicalizes_audio() -> None:
         calls["generation"] += 1
         assert request.url.path.endswith("/services/audio/tts/SpeechSynthesizer")
         assert request.headers["authorization"] == "Bearer fake-token-plan-key"
+        assert json.loads(request.content)["input"]["voice"] == "longanlingxin"
         return httpx.Response(
             200,
             json={
@@ -52,7 +53,7 @@ def test_qwen_tts_uses_token_plan_once_and_canonicalizes_audio() -> None:
         download_transport=httpx.MockTransport(download),
     )
     result = provider.generate(
-        text="Hello", language="en-US", voice="longanhuan_v3.6", rate=1
+        text="Hello", language="en-US", voice="longanlingxin", rate=1
     )
     with wave.open(io.BytesIO(result), "rb") as audio:
         assert audio.getnchannels() == 2
@@ -63,6 +64,32 @@ def test_qwen_tts_uses_token_plan_once_and_canonicalizes_audio() -> None:
     assert (
         QwenAudioTtsProvider._approved_audio_url("http://evil.invalid/a.wav") is False
     )
+
+
+def test_qwen_tts_rejects_plus_flash_voice_before_network() -> None:
+    calls = 0
+
+    def unexpected(_: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(500)
+
+    provider = QwenAudioTtsProvider(
+        Settings(qwen_api_key="fake-token-plan-key"),
+        transport=httpx.MockTransport(unexpected),
+    )
+    try:
+        provider.generate(
+            text="你好",
+            language="zh-CN",
+            voice="longanhuan_v3.6",
+            rate=1,
+        )
+    except TtsExplicitFailure as exc:
+        assert exc.category == "voice_model_mismatch"
+    else:
+        raise AssertionError("Expected incompatible voice to be rejected")
+    assert calls == 0
 
 
 def test_wanx_image_uses_token_plan_once_without_leaking_bearer() -> None:

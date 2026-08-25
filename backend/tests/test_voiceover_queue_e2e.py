@@ -53,6 +53,12 @@ class FakeTts:
         return self.content
 
 
+class ExplicitFailureTts(FakeTts):
+    def generate(self, **_: object) -> bytes:
+        self.calls += 1
+        raise TtsExplicitFailure("Provider rejected request", category="rate_limited")
+
+
 def _source(
     session: Session, root: Path, suffix: str
 ) -> tuple[Product, VideoComposition, VideoScriptVersion]:
@@ -314,3 +320,31 @@ def test_fake_tts_contract_is_stereo_48khz_and_called_once() -> None:
 
 def test_tts_failure_categories_remain_distinct() -> None:
     assert not issubclass(TtsExplicitFailure, TtsSubmissionUnknown)
+
+
+def test_tts_explicit_failure_persists_only_safe_category(
+    db_session: Session, tmp_path: Path
+) -> None:
+    settings = Settings(
+        enable_real_product_video=True,
+        video_artifact_storage_root=str(tmp_path),
+    )
+    product, composition, version = _source(db_session, tmp_path, "explicit")
+    provider = ExplicitFailureTts()
+    submitted = VoiceoverGenerationService(db_session, settings).enqueue(
+        product.id, _request(composition, version, "explicit")
+    )
+    worker = _worker(db_session, settings, provider)
+    assert worker.run_once().status == WorkerRunStatus.FAILED
+    db_session.expire_all()
+    job = db_session.get(ExecutionJob, submitted.job.id)
+    attempt = (
+        db_session.query(ExecutionAttempt).filter_by(execution_job_id=job.id).one()
+    )
+    assert job.safe_error_code == attempt.safe_error_code == "QWEN_TTS_FAILED"
+    assert (
+        job.safe_error_details
+        == attempt.safe_error_details
+        == {"category": "rate_limited"}
+    )
+    assert attempt.provider_call_count == provider.calls == 1

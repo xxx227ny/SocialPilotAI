@@ -12,7 +12,9 @@ from app.providers.live_configuration import effective_qwen_api_key
 
 
 class TtsExplicitFailure(RuntimeError):
-    pass
+    def __init__(self, message: str, *, category: str) -> None:
+        super().__init__(message)
+        self.category = category
 
 
 class TtsSubmissionUnknown(RuntimeError):
@@ -29,6 +31,7 @@ class TtsProvider(Protocol):
 
 class QwenAudioTtsProvider:
     provider_name = "qwen_audio"
+    _PLUS_SYSTEM_VOICES = frozenset({"longanlingxin", "longanlufeng"})
 
     def __init__(
         self,
@@ -43,16 +46,14 @@ class QwenAudioTtsProvider:
         self.download_transport = download_transport
 
     def generate(self, *, text: str, language: str, voice: str, rate: float) -> bytes:
-        if not text.strip():
-            raise TtsExplicitFailure("Narration is empty")
-        if not self.api_key:
-            raise TtsExplicitFailure("Qwen TTS credentials are unavailable")
+        self.validate_request(text=text, language=language, voice=voice, rate=rate)
+        selected_voice = voice or self.settings.qwen_tts_voice
         language_hint = language.split("-", 1)[0].lower()
         payload = {
             "model": self.settings.qwen_tts_model,
             "input": {
                 "text": text.strip(),
-                "voice": voice or self.settings.qwen_tts_voice,
+                "voice": selected_voice,
                 "format": "wav",
                 "sample_rate": 48000,
                 "rate": rate,
@@ -71,20 +72,31 @@ class QwenAudioTtsProvider:
                     json=payload,
                 )
         except httpx.ConnectError as exc:
-            raise TtsExplicitFailure("Qwen TTS connection failed") from exc
+            raise TtsExplicitFailure(
+                "Qwen TTS connection failed", category="connection_failed"
+            ) from exc
         except httpx.TimeoutException as exc:
             raise TtsSubmissionUnknown("Qwen TTS completion is unknown") from exc
         if response.status_code == 408 or response.status_code >= 500:
             raise TtsSubmissionUnknown("Qwen TTS completion is unknown")
         if response.is_error:
-            raise TtsExplicitFailure("Qwen TTS request failed")
+            category = {
+                401: "credentials_rejected",
+                403: "access_denied",
+                429: "rate_limited",
+            }.get(response.status_code, "request_rejected")
+            raise TtsExplicitFailure("Qwen TTS request failed", category=category)
         try:
             body = response.json()
             audio_url = body["output"]["audio"]["url"]
         except (KeyError, TypeError, ValueError) as exc:
-            raise TtsExplicitFailure("Qwen TTS response is invalid") from exc
+            raise TtsExplicitFailure(
+                "Qwen TTS response is invalid", category="invalid_response"
+            ) from exc
         if not self._approved_audio_url(audio_url):
-            raise TtsExplicitFailure("Qwen TTS response is invalid")
+            raise TtsExplicitFailure(
+                "Qwen TTS response is invalid", category="invalid_response"
+            )
         try:
             with httpx.Client(
                 timeout=self.settings.qwen_tts_timeout,
@@ -96,6 +108,27 @@ class QwenAudioTtsProvider:
         if audio_response.is_error:
             raise TtsSubmissionUnknown("Qwen TTS audio delivery failed")
         return self._canonical_stereo_wav(audio_response.content)
+
+    def validate_request(
+        self, *, text: str, language: str, voice: str, rate: float
+    ) -> None:
+        if not text.strip():
+            raise TtsExplicitFailure("Narration is empty", category="invalid_input")
+        if not self.api_key:
+            raise TtsExplicitFailure(
+                "Qwen TTS credentials are unavailable",
+                category="credentials_unavailable",
+            )
+        selected_voice = voice or self.settings.qwen_tts_voice
+        if (
+            self.settings.qwen_tts_model == "qwen-audio-3.0-tts-plus"
+            and selected_voice not in self._PLUS_SYSTEM_VOICES
+            and not selected_voice.startswith("qwen-audio-3.0-tts-plus-")
+        ):
+            raise TtsExplicitFailure(
+                "Qwen TTS voice is incompatible with the configured model",
+                category="voice_model_mismatch",
+            )
 
     @staticmethod
     def _approved_audio_url(value: object) -> bool:
@@ -123,11 +156,15 @@ class QwenAudioTtsProvider:
                 sample_rate = source.getframerate()
                 frames = source.readframes(source.getnframes())
         except (EOFError, wave.Error) as exc:
-            raise TtsExplicitFailure("Qwen TTS audio is invalid") from exc
+            raise TtsExplicitFailure(
+                "Qwen TTS audio is invalid", category="invalid_audio"
+            ) from exc
         if channels not in {1, 2} or sample_width != 2 or sample_rate != 48000:
-            raise TtsExplicitFailure("Qwen TTS audio contract is invalid")
+            raise TtsExplicitFailure(
+                "Qwen TTS audio contract is invalid", category="invalid_audio_contract"
+            )
         if not frames:
-            raise TtsExplicitFailure("Qwen TTS audio is empty")
+            raise TtsExplicitFailure("Qwen TTS audio is empty", category="empty_audio")
         if channels == 1:
             samples = memoryview(frames).cast("h")
             stereo = bytearray(len(frames) * 2)
