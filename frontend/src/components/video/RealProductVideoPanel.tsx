@@ -92,6 +92,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
   const [oneClickCostConfirmed, setOneClickCostConfirmed] = useState(false);
   const [production, setProduction] =
     useState<ProductVideoProductionResult | null>(null);
+  const [productionBatchId, setProductionBatchId] = useState("");
   const referenceAssets = useMemo(
     () =>
       product.assets.filter(
@@ -124,6 +125,10 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
     setOneClickCostConfirmed(false);
     setScriptBatchId(
       window.localStorage.getItem(`socialpilot.scriptBatch.${product.id}`) ?? "",
+    );
+    setProductionBatchId(
+      window.localStorage.getItem(`socialpilot.productionBatch.${product.id}`) ??
+        "",
     );
     setReferenceAssetId(referenceAssets[0]?.id ?? 0);
     if (!realProductVideoEnabled || isPresentation) return;
@@ -935,6 +940,35 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
     }
   }
 
+  async function recoverProductionBatch() {
+    const batchId = Number(productionBatchId);
+    if (!Number.isInteger(batchId) || batchId <= 0) {
+      setMessage("请输入有效的生产批次编号。");
+      return;
+    }
+    const active = operation.current.begin();
+    try {
+      const recovered = await getProductVideoProductionBatch(
+        product.id,
+        batchId,
+        active.signal,
+      );
+      if (!operation.current.current(active.id)) return;
+      window.localStorage.setItem(
+        `socialpilot.productionBatch.${product.id}`,
+        String(recovered.batch.id),
+      );
+      applyProduction(recovered);
+      setMessage(
+        recovered.items.some((item) => item.final_video_artifact_id !== null)
+          ? "已有成片已恢复，可直接预览和下载，不会重新调用模型。"
+          : "生产批次已恢复，可继续查看进度或重试失败平台。",
+      );
+    } catch (error) {
+      fail(active.id, error, "生产批次恢复失败，请检查商品和批次编号。");
+    }
+  }
+
   async function pauseProductionBatch() {
     if (!production) return;
     const active = operation.current.begin();
@@ -1184,6 +1218,26 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
       <p>
         三个平台独立推进：一个平台失败不会阻塞其他平台；刷新页面后可按精确批次继续。
       </p>
+      <div className="production-batch-recovery">
+        <label>
+          恢复已有生产批次
+          <input
+            type="number"
+            min={1}
+            aria-label="已有生产批次编号"
+            value={productionBatchId}
+            onChange={(event) => setProductionBatchId(event.target.value)}
+          />
+        </label>
+        <button
+          type="button"
+          disabled={!productionBatchId.trim()}
+          onClick={() => void recoverProductionBatch()}
+        >
+          按批次编号加载已有成片
+        </button>
+        <small>恢复只读取已有结果，不会重新生成，也不会产生模型费用。</small>
+      </div>
       {production && (
         <section className="production-batch-status" aria-label="三平台生产进度">
           <header>
