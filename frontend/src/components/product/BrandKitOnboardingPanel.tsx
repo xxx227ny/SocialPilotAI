@@ -439,9 +439,9 @@ function VersionEditor({
     onChange({ ...draft, [key]: value });
   }
   const listFields: Array<{ key: keyof VersionDraft; label: string }> = [
-    { key: "preferredTerms", label: "Preferred terms" },
-    { key: "forbiddenTerms", label: "Forbidden terms" },
-    { key: "targetRegions", label: "Target regions" },
+    { key: "preferredTerms", label: "推荐用语" },
+    { key: "forbiddenTerms", label: "禁用词" },
+    { key: "targetRegions", label: "目标地区" },
     { key: "audienceGuidelines", label: "受众规范" },
     { key: "visualGuidelines", label: "视觉规范" },
     { key: "requiredDisclosures", label: "必须披露" },
