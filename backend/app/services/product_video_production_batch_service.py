@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -25,6 +26,10 @@ from app.models import (
     VideoScriptVersion,
 )
 from app.models.product import utc_now
+from app.repositories.video_render import VideoRenderTaskRepository
+from app.repositories.video_render_artifact_repository import (
+    VideoRenderArtifactRepository,
+)
 from app.schemas.product_marketing_video import (
     HappyHorseReferenceImage,
     HappyHorseVideoPreflightRequest,
@@ -50,13 +55,17 @@ from app.schemas.video_composition_enhancement import (
     VideoCompositionEnhancementPreflightRequest,
     VideoCompositionEnhancementSubmitRequest,
 )
+from app.schemas.video_render_artifact import VideoRenderArtifactCreate
 from app.services.happyhorse_product_video_service import (
     HappyHorseProductVideoService,
 )
 from app.services.three_platform_video_preflight import (
     ThreePlatformVideoPreflightService,
 )
-from app.services.video_artifact_storage import LocalVideoArtifactStorage
+from app.services.video_artifact_storage import (
+    LocalVideoArtifactStorage,
+    VideoArtifactError,
+)
 from app.services.video_composition_enhancement_job_service import (
     VideoCompositionEnhancementJobService,
 )
@@ -79,6 +88,7 @@ PLATFORM_REQUEST_NAMES = {
 }
 SHOT_MOTIONS = ("zoom_in", "pan_right", "zoom_out", "pan_left")
 MAX_HAPPYHORSE_REFRESHES = 90
+MAX_VOICEOVER_EXPLICIT_RETRIES = 1
 
 
 class ProductVideoProductionBatchService:
@@ -524,6 +534,8 @@ class ProductVideoProductionBatchService:
                 self._fail_item(item, "PRODUCTION_HAPPYHORSE_REFRESH_UNKNOWN")
                 return
             if job.status == "FAILED" and self._happyhorse_refresh_is_retryable(task):
+                if self._reuse_sibling_dynamic_visual(item):
+                    return
                 self._fail_item(item, "PRODUCTION_HAPPYHORSE_REFRESH_RETRYABLE")
                 return
             if job.status in {"FAILED", "CANCELLED"}:
@@ -581,6 +593,126 @@ class ProductVideoProductionBatchService:
             "happyhorse_refresh_count": next_count,
             "happyhorse_refresh_job_id": submitted.job.id,
         }
+
+    def _reuse_sibling_dynamic_visual(
+        self,
+        item: ProductVideoProductionItem,
+    ) -> bool:
+        """Clone a persisted same-batch visual when result polling is rate-limited."""
+        batch = item.batch
+        source_item = next(
+            (
+                candidate
+                for candidate in batch.items
+                if candidate.id != item.id
+                and candidate.cloud_render_task_id is not None
+                and candidate.cloud_render_artifact_id is not None
+            ),
+            None,
+        )
+        project = self.session.get(VideoProject, item.video_project_id)
+        source_task = (
+            self.session.get(VideoRenderTask, source_item.cloud_render_task_id)
+            if source_item is not None
+            else None
+        )
+        source_artifact = (
+            self.session.get(
+                VideoRenderArtifact,
+                source_item.cloud_render_artifact_id,
+            )
+            if source_item is not None
+            else None
+        )
+        if (
+            source_item is None
+            or project is None
+            or project.product_id != batch.product_id
+            or source_task is None
+            or source_task.status != "SUCCEEDED"
+            or source_task.duration_seconds < 15
+            or source_artifact is None
+            or source_artifact.video_render_task_id != source_task.id
+            or not source_artifact.storage_path
+        ):
+            return False
+
+        storage_root = Path(self.settings.video_artifact_storage_root or "")
+        if not storage_root.is_absolute():
+            return False
+        storage = LocalVideoArtifactStorage(
+            storage_root,
+            self.settings.video_artifact_max_bytes,
+        )
+        try:
+            source_path, content_type = storage.resolve(source_artifact.storage_path)
+            content = source_path.read_bytes()
+        except (OSError, VideoArtifactError):
+            return False
+
+        task_repository = VideoRenderTaskRepository(self.session)
+        artifact_repository = VideoRenderArtifactRepository(self.session)
+        idempotency_key = (
+            f"production-visual-fallback:{batch.id}:{item.id}:{source_artifact.id}"
+        )
+        fallback_task = task_repository.get_by_idempotency_key(idempotency_key)
+        if fallback_task is None:
+            fallback_task = task_repository.create(
+                video_project_id=project.id,
+                scene_sequence=1,
+                render_prompt=(
+                    "Reuse a persisted same-product dynamic visual because the "
+                    "original provider result query was rate-limited."
+                ),
+                duration_seconds=15,
+                aspect_ratio="9:16",
+                resolution="720P",
+                idempotency_key=idempotency_key,
+            )
+        elif fallback_task.video_project_id != project.id:
+            return False
+
+        fallback_artifact = artifact_repository.get_by_task_id(fallback_task.id)
+        if fallback_artifact is None:
+            try:
+                stored, created = storage.store_immutable(
+                    task_id=fallback_task.id,
+                    content=content,
+                    content_type=content_type,
+                )
+                fallback_task.provider_name = "local_batch_visual_fallback"
+                fallback_artifact = artifact_repository.finalize_succeeded(
+                    fallback_task,
+                    VideoRenderArtifactCreate(
+                        provider_output_url=None,
+                        storage_path=stored.relative_path,
+                        metadata={
+                            "source_kind": "same_batch_dynamic_visual_fallback",
+                            "content_type": stored.content_type,
+                            "size_bytes": stored.size_bytes,
+                            "sha256": stored.sha256,
+                            "production_batch_id": batch.id,
+                            "source_production_item_id": source_item.id,
+                            "source_video_render_artifact_id": source_artifact.id,
+                        },
+                    ),
+                )
+            except (OSError, VideoArtifactError):
+                if "created" in locals() and created:
+                    storage.delete(stored.relative_path)
+                return False
+
+        item.cloud_render_task_id = fallback_task.id
+        item.cloud_render_artifact_id = fallback_artifact.id
+        item.stage_state_json = {
+            **item.stage_state_json,
+            "happyhorse_refresh_job_id": None,
+            "visual_fallback": "same_batch_dynamic_visual",
+            "visual_fallback_source_item_id": source_item.id,
+            "visual_fallback_source_artifact_id": source_artifact.id,
+        }
+        item.stage = "COMPOSING"
+        return True
 
     def _advance_composition(
         self,
@@ -736,6 +868,11 @@ class ProductVideoProductionBatchService:
         narration_digest = hashlib.sha256(
             version.full_narration.encode("utf-8")
         ).hexdigest()
+        retry_count = item.stage_state_json.get("voiceover_retry_count", 0)
+        if not isinstance(retry_count, int) or retry_count < 0:
+            self._fail_item(item, "PRODUCTION_VOICEOVER_RETRY_STATE_INVALID")
+            return
+        retry_suffix = f":retry:{retry_count}" if retry_count else ""
         submitted = VoiceoverGenerationService(self.session, self.settings).enqueue(
             batch.product_id,
             VoiceoverSubmitRequest(
@@ -746,7 +883,7 @@ class ProductVideoProductionBatchService:
                 speaking_rate=1.0,
                 narration_digest=narration_digest,
                 idempotency_key=(
-                    f"production:{batch.id}:item:{item.id}:qwen-voiceover"
+                    f"production:{batch.id}:item:{item.id}:qwen-voiceover{retry_suffix}"
                 ),
             ),
         )
@@ -773,6 +910,17 @@ class ProductVideoProductionBatchService:
         if job.status == "SUBMIT_UNKNOWN":
             self._fail_item(item, "PRODUCTION_VOICEOVER_SUBMIT_UNKNOWN")
             return
+        if job.status == "FAILED" and job.safe_error_code == "QWEN_TTS_FAILED":
+            retry_count = item.stage_state_json.get("voiceover_retry_count", 0)
+            if (
+                isinstance(retry_count, int)
+                and retry_count < MAX_VOICEOVER_EXPLICIT_RETRIES
+            ):
+                state = dict(item.stage_state_json)
+                state.pop("voiceover_job_id", None)
+                state["voiceover_retry_count"] = retry_count + 1
+                item.stage_state_json = state
+                return
         if job.status in {"FAILED", "CANCELLED"}:
             self._fail_item(item, "PRODUCTION_VOICEOVER_FAILED")
             return

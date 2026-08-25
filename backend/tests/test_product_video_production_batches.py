@@ -492,26 +492,11 @@ def test_advance_enqueues_wanx_jobs_once_and_recovers_exact_assets(
     pending_task = db_session.get(
         VideoRenderTask, pending_after["cloud_render_task_id"]
     )
-    pending_task.status = "SUCCEEDED"
-    pending_stored = video_storage.store(
-        task_id=pending_task.id,
-        content=f"fake-happyhorse-{pending_item['id']}".encode(),
-        content_type="video/mp4",
-    )
-    pending_artifact = VideoRenderArtifact(
-        video_render_task_id=pending_task.id,
-        storage_path=pending_stored.relative_path,
-        artifact_metadata={
-            "content_type": "video/mp4",
-            "size_bytes": pending_stored.size_bytes,
-            "sha256": pending_stored.sha256,
-        },
-    )
-    db_session.add(pending_artifact)
-    db_session.flush()
-    final_refresh_job.status = "SUCCEEDED"
-    final_refresh_job.result_entity_type = "video_render_artifact"
-    final_refresh_job.result_entity_id = pending_artifact.id
+    pending_task.status = "RUNNING"
+    pending_task.error_code = "refresh_quota_or_rate_limit"
+    pending_task.error_message = "Provider result query was rate-limited"
+    final_refresh_job.status = "FAILED"
+    final_refresh_job.safe_error_code = "HAPPYHORSE_REFRESH_REJECTED"
     final_refresh_job.completed_at = final_refresh_job.created_at
     db_session.commit()
 
@@ -524,6 +509,26 @@ def test_advance_enqueues_wanx_jobs_once_and_recovers_exact_assets(
     )
     assert db_session.query(VideoRenderArtifact).count() == 3
     assert db_session.query(ExecutionJob).count() == 15
+    fallback_item = next(
+        item
+        for item in all_downloaded.json()["items"]
+        if item["id"] == pending_item["id"]
+    )
+    assert (
+        fallback_item["stage_state_json"]["visual_fallback"]
+        == "same_batch_dynamic_visual"
+    )
+    fallback_task = db_session.get(
+        VideoRenderTask, fallback_item["cloud_render_task_id"]
+    )
+    fallback_artifact = db_session.get(
+        VideoRenderArtifact, fallback_item["cloud_render_artifact_id"]
+    )
+    assert fallback_task.provider_name == "local_batch_visual_fallback"
+    assert fallback_task.status == "SUCCEEDED"
+    assert fallback_artifact.artifact_metadata["source_kind"] == (
+        "same_batch_dynamic_visual_fallback"
+    )
 
     composition_submitted = client.post(endpoint)
     assert composition_submitted.status_code == 200
@@ -617,6 +622,39 @@ def test_advance_enqueues_wanx_jobs_once_and_recovers_exact_assets(
     assert repeated_voiceover.status_code == 200
     assert db_session.query(ExecutionJob).count() == 19
 
+    retry_item = voiceover_items[0]
+    failed_voiceover_job = db_session.get(
+        ExecutionJob,
+        retry_item["stage_state_json"]["voiceover_job_id"],
+    )
+    failed_voiceover_job.status = "FAILED"
+    failed_voiceover_job.safe_error_code = "QWEN_TTS_FAILED"
+    failed_voiceover_job.completed_at = failed_voiceover_job.created_at
+    db_session.commit()
+
+    retry_prepared = client.post(endpoint)
+    assert retry_prepared.status_code == 200
+    retry_prepared_item = next(
+        item
+        for item in retry_prepared.json()["items"]
+        if item["id"] == retry_item["id"]
+    )
+    assert retry_prepared_item["status"] == "RUNNING"
+    assert retry_prepared_item["stage"] == "GENERATING_VOICEOVER"
+    assert "voiceover_job_id" not in retry_prepared_item["stage_state_json"]
+    assert retry_prepared_item["stage_state_json"]["voiceover_retry_count"] == 1
+
+    retry_submitted = client.post(endpoint)
+    assert retry_submitted.status_code == 200
+    voiceover_items = retry_submitted.json()["items"]
+    retried_item = next(
+        item for item in voiceover_items if item["id"] == retry_item["id"]
+    )
+    assert retried_item["stage_state_json"]["voiceover_job_id"] != (
+        failed_voiceover_job.id
+    )
+    assert db_session.query(ExecutionJob).count() == 20
+
     for item in voiceover_items:
         job = db_session.get(ExecutionJob, item["stage_state_json"]["voiceover_job_id"])
         voice_content = f"voiceover-{item['id']}".encode()
@@ -652,7 +690,7 @@ def test_advance_enqueues_wanx_jobs_once_and_recovers_exact_assets(
         for item in voiceover_recovered.json()["items"]
     )
     assert db_session.query(VideoCompositionAudioArtifact).count() == 3
-    assert db_session.query(ExecutionJob).count() == 19
+    assert db_session.query(ExecutionJob).count() == 20
 
     enhancement_submitted = client.post(endpoint)
     assert enhancement_submitted.status_code == 200
@@ -683,12 +721,12 @@ def test_advance_enqueues_wanx_jobs_once_and_recovers_exact_assets(
         == [expected_subtitle, expected_subtitle]
         for enhancement in db_session.query(VideoCompositionEnhancement).all()
     )
-    assert db_session.query(ExecutionJob).count() == 22
+    assert db_session.query(ExecutionJob).count() == 23
 
     repeated_enhancement = client.post(endpoint)
     assert repeated_enhancement.status_code == 200
     assert db_session.query(VideoCompositionEnhancement).count() == 3
-    assert db_session.query(ExecutionJob).count() == 22
+    assert db_session.query(ExecutionJob).count() == 23
 
     for item in enhancement_items:
         job = db_session.get(
@@ -755,7 +793,7 @@ def test_advance_enqueues_wanx_jobs_once_and_recovers_exact_assets(
     assert {item["stage"] for item in completed_body["items"]} == {"COMPLETE"}
     assert all(item["final_video_artifact_id"] for item in completed_body["items"])
     assert all(item["subtitle_artifact_id"] for item in completed_body["items"])
-    assert db_session.query(ExecutionJob).count() == 22
+    assert db_session.query(ExecutionJob).count() == 23
 
 
 def test_advance_failure_and_controls_are_provider_job_scoped(
