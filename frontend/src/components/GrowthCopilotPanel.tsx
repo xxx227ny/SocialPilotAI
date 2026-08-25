@@ -62,31 +62,31 @@ type ExecutionState =
   | "uncertain";
 
 const MISSING_LABELS: Record<string, string> = {
-  campaign_data: "Campaign投放数据",
-  video_project: "VideoProject",
-  marketing_strategy: "MarketingStrategy",
-  copy_matrix: "CopyMatrix",
+  campaign_data: "广告投放数据",
+  video_project: "视频项目",
+  marketing_strategy: "营销策略",
+  copy_matrix: "文案矩阵",
   exact_content_chain: "同一Product的精确内容链",
   supported_reference_platforms: "受支持的精确Copy/Video平台",
-  provider_configuration: "Qwen Provider安全配置",
-  qwen_credentials_configuration: "Qwen凭据配置",
-  qwen_workspace_configuration: "Qwen Workspace配置",
-  qwen_region_configuration: "Qwen Region配置",
-  qwen_endpoint_configuration: "Qwen Endpoint配置",
-  qwen_model_configuration: "Qwen模型配置",
-  growth_execution: "Backend Growth执行开关",
-  stale_context_digest: "当前FeedbackContext已变化",
-  recommendation_digest_mismatch: "Recommendation摘要不匹配",
-  source_content_chain_mismatch: "Recommendation源内容链不匹配",
-  source_video_project_schema: "源VideoProject生产Schema无效",
-  recommendation_copy_platforms: "Copy约束平台不符合精确源CopyMatrix",
+  provider_configuration: "千问模型服务安全配置",
+  qwen_credentials_configuration: "千问凭据配置",
+  qwen_workspace_configuration: "千问工作区配置",
+  qwen_region_configuration: "千问区域配置",
+  qwen_endpoint_configuration: "千问接口地址配置",
+  qwen_model_configuration: "千问模型配置",
+  growth_execution: "后端投流优化执行开关",
+  stale_context_digest: "当前投放反馈上下文已变化",
+  recommendation_digest_mismatch: "投流建议摘要不匹配",
+  source_content_chain_mismatch: "投流建议源内容链不匹配",
+  source_video_project_schema: "源视频项目生产结构无效",
+  recommendation_copy_platforms: "文案约束平台不符合精确源文案矩阵",
   product_input: "商品生成资料不完整",
   copy_execution: "Backend Copy执行开关",
   v2_copy_execution: "Backend V2 Copy执行开关",
-  candidate_copy_matrix_mismatch: "候选CopyMatrix身份或Strategy关联不匹配",
-  recommendation_video_platform: "Recommendation视频平台与源VideoProject不匹配",
-  candidate_copy_platform: "候选CopyMatrix缺少严格有效的目标平台文案",
-  v2_video_project_execution: "Backend V2 VideoProject执行开关",
+  candidate_copy_matrix_mismatch: "候选文案矩阵身份或营销策略关联不匹配",
+  recommendation_video_platform: "投流建议视频平台与源视频项目不匹配",
+  candidate_copy_platform: "候选文案矩阵缺少严格有效的目标平台文案",
+  v2_video_project_execution: "后端第二版视频项目执行开关",
 };
 
 function isUncertainGenerationError(error: unknown): boolean {
@@ -318,7 +318,7 @@ export function GrowthCopilotPanel({
         setContextError(
           getApiErrorMessage(
             error,
-            "FeedbackContext读取失败，请检查Backend连接后重试。",
+            "投放反馈读取失败，请检查后端连接后重试。",
           ),
         );
       } finally {
@@ -391,7 +391,7 @@ export function GrowthCopilotPanel({
         return;
       }
       setNotice(
-        `已导入${result.imported_count}条Campaign记录；本操作未调用AI。`,
+        `已导入${result.imported_count}条广告投放记录；本操作未调用AI。`,
       );
       setFile(null);
       await readContext(expectedProductId, false);
@@ -406,7 +406,7 @@ export function GrowthCopilotPanel({
       setNotice(
         getApiErrorMessage(
           error,
-          "Campaign CSV导入失败，请检查字段、格式和数据范围。",
+          "广告投放CSV导入失败，请检查字段、格式和数据范围。",
         ),
       );
     } finally {
@@ -471,7 +471,7 @@ export function GrowthCopilotPanel({
       setPreflightError(
         getApiErrorMessage(
           error,
-          "Recommendation Preflight失败，请恢复Backend后重试。",
+          "投流建议前置检查失败，请恢复后端后重试。",
         ),
       );
     } finally {
@@ -495,7 +495,7 @@ export function GrowthCopilotPanel({
       cycle.product_id !== productId ||
       cycle.context_digest !== context.context_digest
     ) {
-      setNotice("监控周期已过期，请先重新读取FeedbackContext。");
+      setNotice("监控周期已过期，请先重新读取投放反馈。");
       return;
     }
     setReplanCycleId(cycle.id);
@@ -504,7 +504,7 @@ export function GrowthCopilotPanel({
     setAuthorizationConsumed(false);
     authorizationConsumedRef.current = false;
     setNotice(
-      `监控周期 #${cycle.id} 已交接到Qwen重新规划；Preflight不调用AI，仍需单独确认费用。`,
+      `监控周期 #${cycle.id} 已交接到千问重新规划；前置检查不调用AI，仍需单独确认费用。`,
     );
     recommendationSectionRef.current?.scrollIntoView({
       behavior: "smooth",
@@ -589,10 +589,10 @@ export function GrowthCopilotPanel({
         providerFailure
           ? getProviderFailureMessage(providerFailure)
           : uncertain
-          ? "执行结果不确定；不会自动重试。重新执行前必须重新Preflight并确认费用。"
+          ? "执行结果不确定；不会自动重试。重新执行前必须重新运行前置检查并确认费用。"
           : getApiErrorMessage(
               error,
-              "Recommendation执行失败；不会自动重试。",
+              "投流建议执行失败；不会自动重试。",
             ),
       );
       setPreflight(null);
@@ -677,7 +677,7 @@ export function GrowthCopilotPanel({
       setV2PreflightError(
         getApiErrorMessage(
           error,
-          "V2 Copy Preflight失败，请重新读取Context后重试。",
+          "第二版文案前置检查失败，请重新读取上下文后重试。",
         ),
       );
     } finally {
@@ -780,10 +780,10 @@ export function GrowthCopilotPanel({
       setV2ExecutionState(uncertain ? "uncertain" : "failed");
       setV2ExecutionError(
         uncertain
-          ? "V2 Copy结果不确定；不会自动重试，也不能在当前Recommendation上直接重提。"
+          ? "第二版文案结果不确定；不会自动重试，也不能在当前投流建议上直接重提。"
           : getApiErrorMessage(
               error,
-              "V2 Copy生成失败；重新执行前必须重新Preflight并确认费用。",
+              "第二版文案生成失败；重新执行前必须重新运行前置检查并确认费用。",
             ),
       );
       setV2Preflight(null);
@@ -876,7 +876,7 @@ export function GrowthCopilotPanel({
       setV2VideoPreflightError(
         getApiErrorMessage(
           error,
-          "V2 VideoProject Preflight failed; reread Context and retry.",
+          "第二版视频项目前置检查失败；请重新读取上下文后重试。",
         ),
       );
     } finally {
@@ -975,10 +975,10 @@ export function GrowthCopilotPanel({
       setV2VideoExecutionState(uncertain ? "uncertain" : "failed");
       setV2VideoExecutionError(
         uncertain
-          ? "V2 VideoProject result is uncertain. No automatic retry or latest-project recovery will be used."
+          ? "第二版视频项目结果不确定；不会自动重试或使用模糊项目恢复。"
           : getApiErrorMessage(
               error,
-              "V2 VideoProject generation failed; run a new Preflight and confirm cost again.",
+              "第二版视频项目生成失败；请重新运行前置检查并再次确认费用。",
             ),
       );
       setV2VideoPreflight(null);
@@ -1001,10 +1001,10 @@ export function GrowthCopilotPanel({
   );
 
   return (
-    <section className="growth-panel" aria-label="Structured FeedbackContext">
+    <section className="growth-panel" aria-label="投放反馈上下文">
       <div className="growth-panel__header">
         <div>
-          <span>STRUCTURED FEEDBACK CONTEXT</span>
+          <span>结构化投放反馈</span>
           <strong>投放反馈上下文</strong>
         </div>
         <div className="growth-panel__zero-ai">
@@ -1012,9 +1012,9 @@ export function GrowthCopilotPanel({
             {(recommendationResult?.provider_calls ?? 0) +
               (v2Result?.provider_calls ?? 0) +
               (v2VideoResult?.provider_calls ?? 0)}{" "}
-            AI Calls
+            次模型调用
           </strong>
-          <small>Context读取始终Provider-free</small>
+          <small>上下文读取始终不调用模型</small>
         </div>
       </div>
 
@@ -1028,7 +1028,7 @@ export function GrowthCopilotPanel({
               setFile(event.target.files?.[0] ?? null)
             }
           />
-          <span>{file?.name ?? "选择Campaign CSV"}</span>
+          <span>{file?.name ?? "选择广告投放CSV"}</span>
         </label>
         <button
           type="button"
@@ -1039,7 +1039,7 @@ export function GrowthCopilotPanel({
           }
           onClick={() => void handleUpload()}
         >
-          {uploading ? "导入中…" : "导入Campaign CSV"}
+          {uploading ? "导入中…" : "导入广告投放CSV"}
         </button>
         <button
           type="button"
@@ -1050,31 +1050,31 @@ export function GrowthCopilotPanel({
           }
           onClick={() => void readContext(productId, true)}
         >
-          {reading ? "读取中…" : "重新读取FeedbackContext"}
+          {reading ? "读取中…" : "重新读取投放反馈"}
         </button>
       </div>
       <p className="growth-panel__boundary">
-        CSV导入会追加Campaign记录，但不会调用AI；重复导入当前不会自动去重或替换。
+        CSV导入会追加广告投放记录，但不会调用AI；重复导入当前不会自动去重或替换。
       </p>
       {notice && <p className="growth-panel__status">{notice}</p>}
 
       {contextState === "loading" && (
         <ContextMessage
-          title="正在读取FeedbackContext"
-          detail="正在从本地持久化Campaign与精确内容链构建确定性快照。"
+          title="正在读取投放反馈"
+          detail="正在从本地广告投放记录与精确内容链构建确定性快照。"
         />
       )}
       {contextState === "error" && (
         <ContextMessage
-          title="FeedbackContext读取失败"
+          title="投放反馈读取失败"
           detail={contextError}
           error
         />
       )}
       {contextState === "empty" && context && (
         <ContextMessage
-          title="尚无Campaign数据"
-          detail="Context已安全返回；请主动导入合法CSV。系统不会自动上传或调用AI。"
+          title="尚无广告投放数据"
+          detail="投放反馈已安全返回；请主动导入合法CSV。系统不会自动上传或调用AI。"
         />
       )}
       {(contextState === "ready" || contextState === "incomplete") &&
@@ -1083,10 +1083,10 @@ export function GrowthCopilotPanel({
       <section
         ref={recommendationSectionRef}
         className="growth-recommendation"
-        aria-label="Recommendation Constraints"
+        aria-label="投流建议约束"
       >
         <div className="growth-context-section-title">
-          <strong>Recommendation-to-Generation Constraints</strong>
+          <strong>投流建议与后续生成约束</strong>
           <small>只生成测试假设与后续生成约束</small>
         </div>
         <div className="growth-recommendation__actions">
@@ -1101,29 +1101,29 @@ export function GrowthCopilotPanel({
           >
             {preflightState === "checking"
               ? "检查中…"
-              : "运行Recommendation Preflight"}
+              : "运行投流建议前置检查"}
           </button>
           <span>
-            Frontend Gate：
+            网页执行开关：
             {growthExecutionEnabled ? "已开启" : "默认关闭"}
           </span>
         </div>
 
         {preflightState === "idle" && (
           <ContextMessage
-            title="尚未运行Preflight"
-            detail="这是只读检查，不调用Provider、不写数据库。"
+            title="尚未运行前置检查"
+            detail="这是只读检查，不调用模型服务、不写数据库。"
           />
         )}
         {preflightState === "checking" && (
           <ContextMessage
-            title="正在运行Recommendation Preflight"
-            detail="正在重新核对Product、Context Digest与原子内容链。"
+            title="正在运行投流建议前置检查"
+            detail="正在重新核对商品、上下文摘要与原子内容链。"
           />
         )}
         {preflightState === "failed" && (
           <ContextMessage
-            title="Recommendation Preflight失败"
+            title="投流建议前置检查失败"
             detail={preflightError}
             error
           />
@@ -1149,7 +1149,7 @@ export function GrowthCopilotPanel({
             onChange={(event) => setFeeConfirmed(event.target.checked)}
           />
           <span>
-            我确认本次Recommendation会调用Qwen，可能产生费用；失败或不确定后不会自动重试。
+            我确认本次投流建议会调用千问，可能产生费用；失败或不确定后不会自动重试。
           </span>
         </label>
         <button
@@ -1159,19 +1159,19 @@ export function GrowthCopilotPanel({
           onClick={() => void handleExecuteRecommendation()}
         >
           {executionState === "submitting"
-            ? "正在生成受约束Recommendation…"
-            : "调用Qwen生成受约束Recommendation"}
+              ? "正在生成受约束投流建议…"
+              : "调用千问生成受约束投流建议"}
         </button>
         {executionState === "failed" && (
           <ContextMessage
-            title="Recommendation执行失败"
+            title="投流建议执行失败"
             detail={executionError}
             error
           />
         )}
         {executionState === "uncertain" && (
           <ContextMessage
-            title="Recommendation执行结果不确定"
+            title="投流建议执行结果不确定"
             detail={executionError}
             error
           />
@@ -1183,7 +1183,7 @@ export function GrowthCopilotPanel({
           <>
             {replanCycleId !== null && (
               <p className="growth-panel__status">
-                监控周期 #{replanCycleId} 的新Qwen Recommendation已生成；请核对后生成并激活新的内部优化方案。
+                 监控周期 #{replanCycleId} 的新千问投流建议已生成；请核对后生成并激活新的内部优化方案。
               </p>
             )}
             <RecommendationResult result={recommendationResult} />
@@ -1203,8 +1203,8 @@ export function GrowthCopilotPanel({
         )}
 
         <p className="growth-panel__boundary">
-          Recommendation不持久化；页面刷新后可能丢失。再次执行可能再次产生Provider费用。
-          C4.2必须重新验证Product、Digest和精确内容链。
+          投流建议不持久化；页面刷新后可能丢失。再次执行可能再次产生模型费用。
+          后续生成必须重新验证商品、摘要和精确内容链。
         </p>
 
         {recommendationResult && (
@@ -1213,9 +1213,9 @@ export function GrowthCopilotPanel({
             aria-label="Recommendation-Bound V2 Copy"
           >
             <div className="growth-context-section-title">
-              <strong>V2 Copy Candidate</strong>
+                <strong>第二版文案候选</strong>
               <small>
-                独立Preflight、独立费用确认；不会继承Recommendation授权
+                  独立前置检查、独立费用确认；不会继承投流建议授权
               </small>
             </div>
             <div className="growth-recommendation__actions">
@@ -1230,10 +1230,10 @@ export function GrowthCopilotPanel({
               >
                 {v2PreflightState === "checking"
                   ? "检查中…"
-                  : "运行V2 Copy Preflight"}
+                    : "运行第二版文案前置检查"}
               </button>
               <span>
-                Frontend Gates：
+                网页执行开关：
                 {copyExecutionEnabled && v2CopyExecutionEnabled
                   ? "均已开启"
                   : "默认关闭"}
@@ -1244,19 +1244,19 @@ export function GrowthCopilotPanel({
               v2ExecutionState !== "succeeded" &&
               v2ExecutionState !== "uncertain" && (
                 <ContextMessage
-                  title="尚未运行V2 Copy Preflight"
-                  detail="只读核对Recommendation Digest、Context和精确内容链，不调用Provider、不写数据库。"
+                  title="尚未运行第二版文案前置检查"
+                  detail="只读核对投流建议摘要、上下文和精确内容链，不调用模型服务、不写数据库。"
                 />
               )}
             {v2PreflightState === "checking" && (
               <ContextMessage
-                title="正在运行V2 Copy Preflight"
+                title="正在运行第二版文案前置检查"
                 detail="正在重新计算摘要并核对全部源身份。"
               />
             )}
             {v2PreflightState === "failed" && (
               <ContextMessage
-                title="V2 Copy Preflight失败"
+                title="第二版文案前置检查失败"
                 detail={v2PreflightError}
                 error
               />
@@ -1284,7 +1284,7 @@ export function GrowthCopilotPanel({
                 }
               />
               <span>
-                我单独确认本次V2 Copy Candidate会调用Qwen并可能产生费用；此授权仅使用一次。
+                我单独确认本次第二版文案候选会调用千问并可能产生费用；此授权仅使用一次。
               </span>
             </label>
             <button
@@ -1294,19 +1294,19 @@ export function GrowthCopilotPanel({
               onClick={() => void handleExecuteV2Copy()}
             >
               {v2ExecutionState === "submitting"
-                ? "正在生成V2 Copy Candidate…"
-                : "调用Qwen生成V2 Copy Candidate"}
+                  ? "正在生成第二版文案候选…"
+                  : "调用千问生成第二版文案候选"}
             </button>
             {v2ExecutionState === "failed" && (
               <ContextMessage
-                title="V2 Copy生成失败"
+                title="第二版文案生成失败"
                 detail={v2ExecutionError}
                 error
               />
             )}
             {v2ExecutionState === "uncertain" && (
               <ContextMessage
-                title="V2 Copy结果不确定"
+                title="第二版文案结果不确定"
                 detail={v2ExecutionError}
                 error
               />
@@ -1315,9 +1315,9 @@ export function GrowthCopilotPanel({
               <V2CopyCandidateResult result={v2Result} />
             )}
             <p className="growth-panel__boundary">
-              仅保存V2 Copy Candidate；未修改源Copy，未创建VideoProject，
+              仅保存第二版文案候选；未修改源文案，未创建视频项目，
               父子版本关系尚未持久化。网络响应丢失时无法可靠确认本次是否落库，
-              不会自动重试或用latest CopyMatrix冒充结果。
+              不会自动重试或用模糊文案矩阵冒充结果。
             </p>
           </section>
         )}
@@ -1325,13 +1325,13 @@ export function GrowthCopilotPanel({
         {recommendationResult && v2Result && (
           <section
             className="growth-v2-video"
-            aria-label="Recommendation-Bound V2 VideoProject"
+              aria-label="投流建议绑定的第二版视频项目"
           >
             <div className="growth-context-section-title">
-              <strong>V2 VideoProject Candidate</strong>
+                <strong>第二版视频项目候选</strong>
               <small>
-                Exact candidate CopyMatrix #{v2Result.generated_copy_matrix.id};
-                Qwen planning only, no Wanx or render
+                  精确候选文案矩阵 #{v2Result.generated_copy_matrix.id}；
+                  仅由千问规划，不调用万象或渲染
               </small>
             </div>
             <div className="growth-recommendation__actions">
@@ -1345,33 +1345,33 @@ export function GrowthCopilotPanel({
                 onClick={() => void handleV2VideoPreflight()}
               >
                 {v2VideoPreflightState === "checking"
-                  ? "Checking..."
-                  : "Run V2 VideoProject Preflight"}
+                    ? "检查中…"
+                    : "运行第二版视频项目前置检查"}
               </button>
               <span>
-                Frontend Gate:{" "}
+                网页执行开关：{" "}
                 {v2VideoProjectExecutionEnabled
-                  ? "enabled"
-                  : "default closed"}
+                  ? "已开启"
+                  : "默认关闭"}
               </span>
             </div>
             {v2VideoPreflightState === "idle" &&
               v2VideoExecutionState !== "succeeded" &&
               v2VideoExecutionState !== "uncertain" && (
                 <ContextMessage
-                  title="V2 VideoProject Preflight not yet run"
-                  detail="Read-only validation; no Provider call and no database write."
+                  title="尚未运行第二版视频项目前置检查"
+                  detail="只读验证；不调用模型服务，也不写数据库。"
                 />
               )}
             {v2VideoPreflightState === "checking" && (
               <ContextMessage
-                title="Checking V2 VideoProject inputs"
-                detail="Revalidating Context, Recommendation, source chain, candidate CopyMatrix, and production constraints."
+                title="正在检查第二版视频项目输入"
+                detail="重新核对上下文、投流建议、来源链、候选文案矩阵和生产约束。"
               />
             )}
             {v2VideoPreflightState === "failed" && (
               <ContextMessage
-                title="V2 VideoProject Preflight failed"
+                title="第二版视频项目前置检查失败"
                 detail={v2VideoPreflightError}
                 error
               />
@@ -1398,8 +1398,7 @@ export function GrowthCopilotPanel({
                 }
               />
               <span>
-                I separately authorize this single Qwen VideoProject-planning
-                call. This authorization does not permit Wanx or rendering.
+                我单独授权本次千问视频项目规划调用；此授权不允许调用万象或执行渲染。
               </span>
             </label>
             <button
@@ -1409,19 +1408,19 @@ export function GrowthCopilotPanel({
               onClick={() => void handleExecuteV2Video()}
             >
               {v2VideoExecutionState === "submitting"
-                ? "Generating V2 VideoProject..."
-                : "Call Qwen to create V2 VideoProject"}
+                ? "正在生成第二版视频项目…"
+                : "调用千问创建第二版视频项目"}
             </button>
             {v2VideoExecutionState === "failed" && (
               <ContextMessage
-                title="V2 VideoProject generation failed"
+                title="第二版视频项目生成失败"
                 detail={v2VideoExecutionError}
                 error
               />
             )}
             {v2VideoExecutionState === "uncertain" && (
               <ContextMessage
-                title="V2 VideoProject result uncertain"
+                title="第二版视频项目结果不确定"
                 detail={v2VideoExecutionError}
                 error
               />
@@ -1430,10 +1429,8 @@ export function GrowthCopilotPanel({
               <V2VideoCandidateResult result={v2VideoResult} />
             )}
             <p className="growth-panel__boundary">
-              The saved VideoProject references the exact V2 Copy Candidate.
-              Recommendation and parent-version provenance are not persisted.
-              No automatic render, retry, Submit, Refresh, or latest-project
-              recovery is performed.
+              已保存的视频项目精确引用第二版文案候选。投流建议与父版本来源尚未持久化；
+              不会自动渲染、重试、提交、刷新或使用模糊视频项目恢复。
             </p>
           </section>
         )}
@@ -1468,13 +1465,13 @@ function ContextResult({ context }: { context: FeedbackContext }) {
     <div className="growth-context-result">
       <div className="growth-context-summary">
         <div>
-          <small>Context readiness</small>
+          <small>数据上下文状态</small>
           <strong>
-            {context.context_ready ? "READY" : "INCOMPLETE"}
+            {context.context_ready ? "已就绪" : "不完整"}
           </strong>
         </div>
         <div>
-          <small>Campaign</small>
+          <small>广告活动</small>
           <strong>{context.campaign_count}条</strong>
         </div>
         <div>
@@ -1486,7 +1483,7 @@ function ContextResult({ context }: { context: FeedbackContext }) {
           </strong>
         </div>
         <div>
-          <small>Context Digest</small>
+          <small>上下文摘要</small>
           <strong title={context.context_digest}>
             {context.context_digest.slice(0, 12)}…
           </strong>
@@ -1515,19 +1512,19 @@ function ContextResult({ context }: { context: FeedbackContext }) {
       {context.content_chain_ready ? (
         <div className="growth-context-chain">
           <div>
-            <small>MarketingStrategy</small>
+            <small>营销策略</small>
             <strong>{asId(context.marketing_strategy_id)}</strong>
           </div>
           <div>
-            <small>CopyMatrix</small>
+            <small>文案矩阵</small>
             <strong>{asId(context.copy_matrix_id)}</strong>
           </div>
           <div>
-            <small>VideoProject</small>
+            <small>视频项目</small>
             <strong>{asId(context.video_project_id)}</strong>
           </div>
           <p>
-            精确选择：latest VideoProject → 它引用的CopyMatrix与MarketingStrategy
+            精确选择：按编号固定视频项目，并使用其引用的文案矩阵与营销策略
           </p>
         </div>
       ) : (
@@ -1539,7 +1536,7 @@ function ContextResult({ context }: { context: FeedbackContext }) {
 
       {context.missing_requirements.length > 0 && (
         <div className="growth-context-missing">
-          <strong>Missing requirements</strong>
+          <strong>尚缺条件</strong>
           <ul>
             {context.missing_requirements.map((item) => (
               <li key={item}>{MISSING_LABELS[item] ?? item}</li>
@@ -1549,9 +1546,9 @@ function ContextResult({ context }: { context: FeedbackContext }) {
       )}
 
       <p className="growth-context-attribution">
-        产品级归因边界：Campaign指标只能归属于当前Product，不能证明由当前CopyMatrix、
-        VideoProject或Artifact产生。当前内容链仅是下一阶段的精确参考链；
-        VideoProject没有MarketingBrief外键。
+        商品级归因边界：广告活动指标只能归属于当前商品，不能证明由当前文案矩阵、
+        视频项目或成品产生。当前内容链仅是下一阶段的精确参考链；
+        视频项目没有营销简报外键。
       </p>
     </div>
   );
@@ -1575,7 +1572,7 @@ function ProviderFailureSummary({
           <strong>{failure.phase}</strong>
         </div>
         <div>
-          <small>Provider HTTP</small>
+          <small>模型服务响应码</small>
           <strong>{failure.provider_http_status ?? "未收到响应"}</strong>
         </div>
         <div>
@@ -1584,9 +1581,9 @@ function ProviderFailureSummary({
         </div>
       </div>
       {failure.request_id_digest && (
-        <p>Request ID安全摘要：{failure.request_id_digest}</p>
+        <p>请求编号安全摘要：{failure.request_id_digest}</p>
       )}
-      <p>失败后旧Preflight和费用授权已失效，不会自动重试。</p>
+      <p>失败后旧前置检查和费用授权已失效，不会自动重试。</p>
     </div>
   );
 }
@@ -1602,21 +1599,21 @@ function PreflightResult({
     <div className="growth-recommendation__preflight">
       <div className="growth-context-summary">
         <div>
-          <small>Preflight</small>
-          <strong>{state === "ready" ? "READY" : "BLOCKED"}</strong>
+          <small>前置检查</small>
+          <strong>{state === "ready" ? "已就绪" : "已阻止"}</strong>
         </div>
         <div>
-          <small>Input</small>
-          <strong>{preflight.input_ready ? "READY" : "BLOCKED"}</strong>
+          <small>输入数据</small>
+          <strong>{preflight.input_ready ? "已就绪" : "已阻止"}</strong>
         </div>
         <div>
-          <small>Provider配置</small>
+          <small>模型服务配置</small>
           <strong>
             {preflight.provider_configured ? "已配置" : "未配置"}
           </strong>
         </div>
         <div>
-          <small>Backend Gate</small>
+          <small>后端开关</small>
           <strong>
             {preflight.execution_enabled ? "已开启" : "默认关闭"}
           </strong>
@@ -1626,7 +1623,7 @@ function PreflightResult({
       <p>{preflight.attribution_notice}</p>
       {preflight.missing_requirements.length > 0 && (
         <div className="growth-context-missing">
-          <strong>Blocked requirements</strong>
+          <strong>阻止执行的条件</strong>
           <ul>
             {preflight.missing_requirements.map((item) => (
               <li key={item}>{MISSING_LABELS[item] ?? item}</li>
@@ -1643,24 +1640,24 @@ function RecommendationResult({ result }: { result: GrowthAnalysis }) {
   return (
     <div className="growth-recommendation__result">
       <div className="growth-context-section-title">
-        <strong>本次受约束Recommendation</strong>
+        <strong>本次受约束投流建议</strong>
         <small>
-          Context {result.source_context_digest.slice(0, 12)}… · Strategy #
-          {result.source_marketing_strategy_id} · CopyMatrix #
-          {result.source_copy_matrix_id} · VideoProject #
+          上下文 {result.source_context_digest.slice(0, 12)}… · 营销策略 #
+          {result.source_marketing_strategy_id} · 文案矩阵 #
+          {result.source_copy_matrix_id} · 视频项目 #
           {result.source_video_project_id}
         </small>
       </div>
       <p>{recommendation.summary}</p>
 
-      <h5>Observations · 测试假设</h5>
+      <h5>观察结果与测试假设</h5>
       <div className="growth-recommendation__cards">
         {recommendation.observations.map((item, index) => (
           <article
             key={`${item.scope}-${item.platform ?? "overall"}-${item.metric}-${index}`}
           >
             <strong>
-              {item.platform ?? "Overall"} · {item.metric}
+              {item.platform ?? "总体"} · {item.metric}
             </strong>
             <small>{item.direction}</small>
             <p>{item.hypothesis}</p>
@@ -1668,13 +1665,13 @@ function RecommendationResult({ result }: { result: GrowthAnalysis }) {
         ))}
       </div>
 
-      <h5>Copy constraints</h5>
+      <h5>文案约束</h5>
       <div className="growth-recommendation__cards">
         {recommendation.copy_constraints.map((item) => (
           <article key={item.platform}>
             <strong>{item.platform}</strong>
-            <p>Hook：{item.hook_direction}</p>
-            <p>Angle：{item.message_angle}</p>
+            <p>开场钩子：{item.hook_direction}</p>
+            <p>表达角度：{item.message_angle}</p>
             <p>CTA：{item.cta_direction}</p>
             <p>保留：{item.must_preserve.join("；")}</p>
             <p>避免：{item.must_avoid.join("；")}</p>
@@ -1682,27 +1679,27 @@ function RecommendationResult({ result }: { result: GrowthAnalysis }) {
         ))}
       </div>
 
-      <h5>Video constraint</h5>
+      <h5>视频约束</h5>
       <article className="growth-recommendation__video">
         <strong>{recommendation.video_constraint.platform}</strong>
-        <p>Opening：{recommendation.video_constraint.opening_hook_direction}</p>
-        <p>Visual：{recommendation.video_constraint.visual_focus}</p>
-        <p>Pacing：{recommendation.video_constraint.pacing_direction}</p>
+        <p>开场：{recommendation.video_constraint.opening_hook_direction}</p>
+        <p>画面重点：{recommendation.video_constraint.visual_focus}</p>
+        <p>节奏：{recommendation.video_constraint.pacing_direction}</p>
         <p>CTA：{recommendation.video_constraint.cta_direction}</p>
       </article>
 
-      <h5>Budget guidance</h5>
+      <h5>预算建议</h5>
       <p>{recommendation.budget_guidance}</p>
       <p className="growth-context-attribution">
-        Product级数据形成的测试假设，不是创意因果证明。本次结果未持久化、
-        未修改预算、未生成V2 Copy或VideoProject，也没有自动执行权限。
+        商品级数据形成的测试假设，不是创意因果证明。本次结果未持久化、
+        未修改预算、未生成第二版文案或视频项目，也没有自动执行权限。
       </p>
       <p className="growth-context-attribution">
-        Recommendation Digest：
+        投流建议摘要：
         <span title={result.recommendation_digest}>
           {result.recommendation_digest.slice(0, 12)}…
         </span>
-        ；完整性范围为确定性往返校验，不是签名、鉴权或Provider来源证明。
+        ；完整性范围为确定性往返校验，不是签名、鉴权或模型服务来源证明。
       </p>
     </div>
   );
@@ -1719,37 +1716,37 @@ function V2CopyPreflightResult({
     <div className="growth-recommendation__preflight">
       <div className="growth-context-summary">
         <div>
-          <small>V2 Preflight</small>
-          <strong>{state === "ready" ? "READY" : "BLOCKED"}</strong>
+          <small>第二版文案前置检查</small>
+          <strong>{state === "ready" ? "已就绪" : "已阻止"}</strong>
         </div>
         <div>
-          <small>源CopyMatrix平台</small>
+          <small>源文案矩阵平台</small>
           <strong>{preflight.source_copy_platforms.join(" / ")}</strong>
         </div>
         <div>
-          <small>Recommendation允许引用平台</small>
+          <small>投流建议允许引用的平台</small>
           <strong>
             {preflight.allowed_copy_constraint_platforms.join(" / ")}
           </strong>
         </div>
         <div>
-          <small>Recommendation实际Copy目标平台</small>
+          <small>投流建议的实际文案目标平台</small>
           <strong>
             {preflight.recommendation_target_copy_platforms.join(" / ")}
           </strong>
         </div>
         <div>
-          <small>本次V2 Copy生成目标平台</small>
+          <small>本次第二版文案目标平台</small>
           <strong>{preflight.v2_copy_target_platforms.join(" / ")}</strong>
         </div>
         <div>
-          <small>Copy Gate</small>
+          <small>文案生成开关</small>
           <strong>
             {preflight.copy_execution_enabled ? "已开启" : "默认关闭"}
           </strong>
         </div>
         <div>
-          <small>V2 Copy Gate</small>
+          <small>第二版文案开关</small>
           <strong>
             {preflight.v2_copy_execution_enabled
               ? "已开启"
@@ -1758,7 +1755,7 @@ function V2CopyPreflightResult({
         </div>
       </div>
       <p>
-        Preflight Digest：
+        前置检查摘要：
         <span title={preflight.preflight_digest}>
           {preflight.preflight_digest.slice(0, 12)}…
         </span>
@@ -1767,7 +1764,7 @@ function V2CopyPreflightResult({
       <p>{preflight.association_notice}</p>
       {preflight.missing_requirements.length > 0 && (
         <div className="growth-context-missing">
-          <strong>Blocked requirements</strong>
+          <strong>阻止执行的条件</strong>
           <ul>
             {preflight.missing_requirements.map((item) => (
               <li key={item}>{MISSING_LABELS[item] ?? item}</li>
@@ -1787,30 +1784,30 @@ function V2CopyCandidateResult({
   return (
     <div className="growth-v2-copy__result">
       <div className="growth-context-section-title">
-        <strong>V2 Copy Candidate</strong>
+        <strong>第二版文案候选</strong>
         <small>
-          CopyMatrix #{result.copy_matrix_id}
+          文案矩阵 #{result.copy_matrix_id}
         </small>
       </div>
       <div className="growth-context-summary">
         <div>
-          <small>源CopyMatrix平台</small>
+          <small>源文案矩阵平台</small>
           <strong>{result.source_copy_platforms.join(" / ")}</strong>
         </div>
         <div>
-          <small>Recommendation允许引用平台</small>
+          <small>投流建议允许引用的平台</small>
           <strong>
             {result.allowed_copy_constraint_platforms.join(" / ")}
           </strong>
         </div>
         <div>
-          <small>Recommendation实际Copy目标平台</small>
+          <small>投流建议的实际文案目标平台</small>
           <strong>
             {result.recommendation_target_copy_platforms.join(" / ")}
           </strong>
         </div>
         <div>
-          <small>本次V2 Copy生成目标平台</small>
+          <small>本次第二版文案目标平台</small>
           <strong>{result.v2_copy_target_platforms.join(" / ")}</strong>
         </div>
         <div>
@@ -1820,37 +1817,37 @@ function V2CopyCandidateResult({
       </div>
       <div className="growth-context-chain">
         <div>
-          <small>Source Strategy</small>
+          <small>源营销策略</small>
           <strong>#{result.source_marketing_strategy_id}</strong>
         </div>
         <div>
-          <small>Source CopyMatrix</small>
+          <small>源文案矩阵</small>
           <strong>#{result.source_copy_matrix_id}</strong>
         </div>
         <div>
-          <small>Source VideoProject</small>
+          <small>源视频项目</small>
           <strong>#{result.source_video_project_id}</strong>
         </div>
       </div>
       <p>
-        Context {result.source_context_digest.slice(0, 12)}… · Recommendation{" "}
+        上下文 {result.source_context_digest.slice(0, 12)}… · 投流建议{" "}
         {result.source_recommendation_digest.slice(0, 12)}…
       </p>
       <div className="growth-v2-copy__cards">
         {result.generated_copy_matrix.copies.map((copy) => (
           <article key={copy.platform}>
             <strong>{copy.platform}</strong>
-            <p>Hook：{copy.hook}</p>
-            <p>Caption：{copy.caption}</p>
-            <p>Hashtags：{copy.hashtags.join(" ")}</p>
+            <p>开场钩子：{copy.hook}</p>
+            <p>正文：{copy.caption}</p>
+            <p>话题标签：{copy.hashtags.join(" ")}</p>
             <p>CTA：{copy.cta}</p>
           </article>
         ))}
       </div>
       <ul className="growth-v2-copy__boundaries">
-        <li>仅保存V2 Copy Candidate</li>
-        <li>未修改源Copy</li>
-        <li>未创建VideoProject</li>
+        <li>仅保存第二版文案候选</li>
+        <li>未修改源文案</li>
+        <li>未创建视频项目</li>
         <li>父子版本关系尚未持久化</li>
       </ul>
     </div>
@@ -1868,31 +1865,31 @@ function V2VideoPreflightResult({
     <div className="growth-recommendation__preflight">
       <div className="growth-context-summary">
         <div>
-          <small>Preflight</small>
-          <strong>{state === "ready" ? "READY" : "BLOCKED"}</strong>
+          <small>前置检查</small>
+          <strong>{state === "ready" ? "已就绪" : "已阻止"}</strong>
         </div>
         <div>
-          <small>Candidate CopyMatrix</small>
+          <small>候选文案矩阵</small>
           <strong>#{preflight.candidate_copy_matrix_id}</strong>
         </div>
         <div>
-          <small>Production</small>
+          <small>成片规格</small>
           <strong>
             {preflight.platform} · {preflight.duration_seconds}s ·{" "}
             {preflight.aspect_ratio}
           </strong>
         </div>
         <div>
-          <small>Backend Gate</small>
+          <small>后端开关</small>
           <strong>
             {preflight.v2_video_project_execution_enabled
-              ? "enabled"
-              : "default closed"}
+              ? "已开启"
+              : "默认关闭"}
           </strong>
         </div>
       </div>
       <p>
-        Preflight Digest:{" "}
+        前置检查摘要：{" "}
         <span title={preflight.preflight_digest}>
           {preflight.preflight_digest.slice(0, 12)}…
         </span>
@@ -1901,7 +1898,7 @@ function V2VideoPreflightResult({
       <p>{preflight.association_notice}</p>
       {preflight.missing_requirements.length > 0 && (
         <div className="growth-context-missing">
-          <strong>Blocked requirements</strong>
+          <strong>阻止执行的条件</strong>
           <ul>
             {preflight.missing_requirements.map((item) => (
               <li key={item}>{MISSING_LABELS[item] ?? item}</li>
@@ -1923,10 +1920,10 @@ function V2VideoCandidateResult({
     <div className="growth-v2-video__result">
       <div className="growth-context-section-title">
         <strong>
-          VideoProject #{project.id} · {project.title}
+          视频项目 #{project.id} · {project.title}
         </strong>
         <small>
-          CopyMatrix #{result.candidate_copy_matrix_id} · {project.platform} ·{" "}
+          文案矩阵 #{result.candidate_copy_matrix_id} · {project.platform} ·{" "}
           {project.duration_seconds}s · {project.aspect_ratio}
         </small>
       </div>
@@ -1935,7 +1932,7 @@ function V2VideoCandidateResult({
         {project.scenes.map((scene) => (
           <li key={scene.sequence}>
             <strong>
-              Scene {scene.sequence} · {scene.duration_seconds}s ·{" "}
+              分镜 {scene.sequence} · {scene.duration_seconds}秒 ·{" "}
               {scene.shot_type}
             </strong>
             <p>{scene.visual_description}</p>
@@ -1944,29 +1941,29 @@ function V2VideoCandidateResult({
           </li>
         ))}
       </ul>
-      <p>CTA: {project.cta}</p>
+      <p>行动号召：{project.cta}</p>
       <ul className="growth-v2-copy__boundaries">
         <li>
-          Candidate CopyMatrix association persisted ={" "}
-          {result.candidate_copy_matrix_association_persisted ? "yes" : "no"}
+          候选文案矩阵关联已保存：{" "}
+          {result.candidate_copy_matrix_association_persisted ? "是" : "否"}
         </li>
         <li>
-          Candidate Copy → source Copy parent persisted ={" "}
+          候选文案与源文案的父子关系已保存：{" "}
           {result.candidate_copy_source_parent_relation_persisted
-            ? "yes"
-            : "no"}
+            ? "是"
+            : "否"}
         </li>
         <li>
-          New VideoProject → source VideoProject parent persisted ={" "}
-          {result.source_video_parent_relation_persisted ? "yes" : "no"}
+          新视频项目与源视频项目的父子关系已保存：{" "}
+          {result.source_video_parent_relation_persisted ? "是" : "否"}
         </li>
         <li>
-          Recommendation persisted ={" "}
-          {result.recommendation_persisted ? "yes" : "no"}
+          投流建议已保存：{" "}
+          {result.recommendation_persisted ? "是" : "否"}
         </li>
-        <li>Wanx Calls = {result.wanx_calls}</li>
-        <li>RenderTask = {result.render_tasks_created}</li>
-        <li>Artifact = {result.artifacts_created}</li>
+        <li>万象调用次数：{result.wanx_calls}</li>
+        <li>渲染任务数：{result.render_tasks_created}</li>
+        <li>成品文件数：{result.artifacts_created}</li>
         <li>尚未渲染</li>
       </ul>
       <p>{result.association_notice}</p>

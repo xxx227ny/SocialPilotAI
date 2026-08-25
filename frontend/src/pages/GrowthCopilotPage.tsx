@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 
 import { getFeedbackContext } from "../api/growth";
+import { GrowthCopilotPanel } from "../components/GrowthCopilotPanel";
+import { OperationalProductSelector } from "../components/product/OperationalProductSelector";
 import { DemoContextBar } from "../components/showcase/DemoContextBar";
 import { PerformanceFeedbackLoop } from "../components/growth/PerformanceFeedbackLoop";
 import { WinningCreativePattern } from "../components/growth/WinningCreativePattern";
@@ -43,6 +45,8 @@ export function GrowthCopilotPage() {
     return () => controller.abort();
   }, [demoSlug, isPresentation, productId]);
 
+  if (!isPresentation) return <GrowthCopilotWorkspace />;
+
   return (
     <div className="competition-page growth-competition-page">
       <DemoContextBar />
@@ -82,6 +86,30 @@ export function GrowthCopilotPage() {
       ) : (
         <PageState title="演示快照未就绪" detail={error} error />
       )}
+    </div>
+  );
+}
+
+function GrowthCopilotWorkspace() {
+  return (
+    <div className="competition-page growth-workspace-page">
+      <header className="competition-hero">
+        <div>
+          <span>投流优化工作台</span>
+          <h1>AI 投流策略优化</h1>
+          <p>监控渠道 ROAS，生成预算与竞价建议，并在安全沙箱中执行和回滚。</p>
+        </div>
+        <div className="readonly-badge">
+          <strong>目标 3</strong>
+          <span>真实数据输入 · 沙箱执行</span>
+        </div>
+      </header>
+      <OperationalProductSelector
+        title="选择商品并查看投放闭环"
+        description="每个商品独立管理广告数据、优化方案、沙箱执行与监控记录。"
+      >
+        {(product) => <GrowthCopilotPanel productId={product.id} />}
+      </OperationalProductSelector>
     </div>
   );
 }

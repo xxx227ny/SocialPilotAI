@@ -241,10 +241,10 @@ export function GrowthOptimizationPanel({
       setExecutionKey(
         sandboxExecutionIdempotencyKey(run, context.context_digest, executions.length),
       );
-      setMessage("沙箱执行Preflight已通过；请明确确认后执行。");
+      setMessage("沙箱执行前置检查已通过；请明确确认后执行。");
     } catch (error) {
       if (request === operation.current) {
-        setMessage(getApiErrorMessage(error, "沙箱执行Preflight失败。"));
+        setMessage(getApiErrorMessage(error, "沙箱执行前置检查失败。"));
       }
     } finally {
       if (request === operation.current) setBusy(false);
@@ -350,7 +350,7 @@ export function GrowthOptimizationPanel({
       setAutomationConfirmed(false);
       setMessage(
         saved.mode === "AUTO_SANDBOX" && !saved.kill_switch_engaged
-          ? "AUTO_SANDBOX已启用；所有动作仍只进入本地沙箱。"
+          ? "自动沙箱已启用；所有动作仍只进入本地沙箱。"
           : "自动化控制已保存，当前不会自动执行。",
       );
     } catch (error) {
@@ -378,7 +378,7 @@ export function GrowthOptimizationPanel({
         confirm_auto_sandbox: false,
       }));
       setAutomationConfirmed(false);
-      setMessage("Kill Switch已开启；后续自动评估全部阻断。现有历史不会删除。");
+      setMessage("紧急停止开关已开启；后续自动评估全部阻断。现有历史不会删除。");
     } catch (error) {
       if (request === operation.current) {
         setMessage(getApiErrorMessage(error, "Kill Switch操作失败。"));
@@ -411,8 +411,8 @@ export function GrowthOptimizationPanel({
       if (request !== operation.current) return;
       setMessage(
         result.reused
-          ? `已恢复自动沙箱Execution #${result.execution.id}。`
-          : `自动策略已通过全部上限并完成Execution #${result.execution.id}；真实平台未修改。`,
+          ? `已恢复自动沙箱执行 #${result.execution.id}。`
+          : `自动策略已通过全部上限并完成执行 #${result.execution.id}；真实平台未修改。`,
       );
     } catch (error) {
       if (request === operation.current) {
@@ -446,7 +446,7 @@ export function GrowthOptimizationPanel({
       setExecutions(executionItems);
       setMessage(
         result.cycle
-          ? `监控周期 #${result.cycle.id}：${result.cycle.status}；Provider调用0，真实广告修改0。`
+          ? `监控周期 #${result.cycle.id}：${result.cycle.status}；模型调用0，真实广告修改0。`
           : "当前周期尚未到期，没有写入审计记录。",
       );
     } catch (error) {
@@ -464,7 +464,7 @@ export function GrowthOptimizationPanel({
     <section className="growth-recommendation" aria-label="ROAS预算竞价优化">
       <div className="growth-context-section-title">
         <strong>ROAS预算与竞价优化</strong>
-        <small>Qwen建议 + 确定性分配 · 系统内部方案</small>
+        <small>千问建议 + 确定性分配 · 系统内部方案</small>
       </div>
       <label>
         <input
@@ -472,7 +472,7 @@ export function GrowthOptimizationPanel({
           checked={autoRefresh}
           onChange={(event) => setAutoRefresh(event.target.checked)}
         />
-        每15秒串行刷新ROAS Context
+        每15秒串行刷新ROAS上下文
       </label>
       <div className="growth-panel__controls">
         <NumberInput label="总预算" value={policy.total_budget} setValue={(value) => setPolicy((old) => ({ ...old, total_budget: value }))} />
@@ -481,7 +481,7 @@ export function GrowthOptimizationPanel({
           {busy ? "处理中…" : "生成并自动激活内部方案"}
         </button>
       </div>
-      {!analysis && <p>请先调用Qwen生成受约束Recommendation。</p>}
+      {!analysis && <p>请先调用千问生成受约束投流建议。</p>}
       {message && <p className="growth-panel__status">{message}</p>}
       <p className="growth-panel__boundary">
         当前仅更新SocialPilot AI内部方案；外部广告账户尚未连接，不代表平台预算已经修改。
@@ -492,20 +492,20 @@ export function GrowthOptimizationPanel({
       ))}
       <section className="growth-sandbox" aria-label="广告预算沙箱执行">
         <div className="growth-context-section-title">
-          <strong>受控广告Adapter</strong>
-          <small>SANDBOX · 不连接、不修改真实广告账户</small>
+          <strong>受控广告适配器</strong>
+          <small>沙箱 · 不连接、不修改真实广告账户</small>
         </div>
         <button
           type="button"
           disabled={!canPreflightSandboxExecution(active, context, busy)}
           onClick={() => active && void preflightSandbox(active)}
         >
-          运行沙箱执行Preflight
+          运行沙箱执行前置检查
         </button>
         {executionPreflight && active && (
           <div className="growth-sandbox__confirm">
             <p>
-              READY · Plan #{executionPreflight.optimization_run_id} · Provider {executionPreflight.provider_name}
+              已就绪 · 方案 #{executionPreflight.optimization_run_id} · 执行器 {executionPreflight.provider_name}
             </p>
             <label>
               <input
@@ -525,13 +525,13 @@ export function GrowthOptimizationPanel({
           </div>
         )}
         <p className="growth-panel__boundary">
-          所有记录固定为SANDBOX；Provider调用0，external_mutation_performed=false。
+          所有记录固定为沙箱模式；模型调用0，真实广告平台修改为否。
         </p>
         <section className="growth-automation" aria-label="自动模式与安全上限">
           <div className="growth-context-section-title">
             <strong>自动模式与安全上限</strong>
             <small>
-              {automation?.mode ?? "MANUAL"} · Kill Switch
+              {automation?.mode === "AUTO_SANDBOX" ? "自动沙箱" : "手动模式"} · 紧急停止开关
               {automation?.kill_switch_engaged ?? true ? "已开启" : "已关闭"}
             </small>
           </div>
@@ -548,8 +548,8 @@ export function GrowthOptimizationPanel({
                 setAutomationConfirmed(false);
               }}
             >
-              <option value="MANUAL">MANUAL</option>
-              <option value="AUTO_SANDBOX">AUTO_SANDBOX</option>
+              <option value="MANUAL">手动模式</option>
+              <option value="AUTO_SANDBOX">自动沙箱</option>
             </select>
           </label>
           <label>
@@ -564,7 +564,7 @@ export function GrowthOptimizationPanel({
                 setAutomationConfirmed(false);
               }}
             />
-            Kill Switch保持开启
+            保持紧急停止开关开启
           </label>
           <label>
             <input
@@ -652,7 +652,7 @@ export function GrowthOptimizationPanel({
               disabled={busy || Boolean(automation?.kill_switch_engaged)}
               onClick={() => void engageKillSwitch()}
             >
-              立即开启Kill Switch
+              立即开启紧急停止开关
             </button>
             <button
               type="button"
@@ -670,7 +670,7 @@ export function GrowthOptimizationPanel({
             </button>
           </div>
           <p className="growth-panel__boundary">
-            周期Runner需由外部调度器按次启动；数据变化时只记录REPLAN_REQUIRED，不会偷偷调用Qwen。AUTO_SANDBOX仍不连接广告平台。
+            监控周期需由外部调度器按次启动；数据变化时只记录“需要重新规划”，不会偷偷调用千问。自动沙箱仍不连接广告平台。
           </p>
           <div aria-label="ROAS监控周期历史">
             {cycles.length === 0 ? (
@@ -678,7 +678,7 @@ export function GrowthOptimizationPanel({
             ) : (
               cycles.map((cycle) => (
                 <p key={cycle.id}>
-                  周期 #{cycle.id} · {cycle.status} · Plan {cycle.optimization_run_id ?? "无"} · Execution {cycle.execution_id ?? "无"} · {cycle.resolution_status === "RESOLVED" ? `已由Plan #${cycle.resolved_by_optimization_run_id}解决` : "未解决"} · Provider 0 · 外部修改 否
+                  周期 #{cycle.id} · {cycle.status} · 方案 {cycle.optimization_run_id ?? "无"} · 执行 {cycle.execution_id ?? "无"} · {cycle.resolution_status === "RESOLVED" ? `已由方案 #${cycle.resolved_by_optimization_run_id}解决` : "未解决"} · 模型调用 0 · 外部修改 否
                 </p>
               ))
             )}
@@ -687,14 +687,14 @@ export function GrowthOptimizationPanel({
             latestCycle.resolution_status === "UNRESOLVED" && (
             <div className="growth-sandbox__confirm">
               <p>
-                当前ROAS Context已变化，旧Active Plan不能继续自动执行。请重新运行Qwen Recommendation Preflight并单独确认费用。
+                 当前ROAS上下文已变化，旧的已激活方案不能继续自动执行。请重新运行千问投流建议前置检查并单独确认费用。
               </p>
               <button
                 type="button"
                 disabled={!canRequestQwenReplan(latestCycle, context, busy)}
                 onClick={() => requestQwenReplan(latestCycle)}
               >
-                转到Qwen重新规划
+                转到千问重新规划
               </button>
             </div>
           )}
@@ -721,11 +721,11 @@ function NumberInput({ label, value, setValue }: { label: string; value: number;
 }
 
 function RunCard({ run, active = false, activate }: { run: GrowthOptimizationRun; active?: boolean; activate?: () => void }) {
-  return <article className="growth-context-card"><header><strong>方案 #{run.id} · {run.status}</strong><small>{run.execution_scope} · 外部平台 {run.external_execution_status}</small></header><p>总预算 {run.recommended_total_budget.toFixed(2)}</p><ul>{run.actions.map((action) => <li key={action.platform}><strong>{action.platform}</strong>：预算 {action.recommended_budget.toFixed(2)} · 竞价 {signedPercent(action.bid_adjustment_pct)} · {action.action}</li>)}</ul>{!active && activate && <button type="button" onClick={activate}>按精确Plan ID激活</button>}</article>;
+  return <article className="growth-context-card"><header><strong>方案 #{run.id} · {run.status}</strong><small>{run.execution_scope} · 外部平台 {run.external_execution_status}</small></header><p>总预算 {run.recommended_total_budget.toFixed(2)}</p><ul>{run.actions.map((action) => <li key={action.platform}><strong>{action.platform}</strong>：预算 {action.recommended_budget.toFixed(2)} · 竞价 {signedPercent(action.bid_adjustment_pct)} · {action.action}</li>)}</ul>{!active && activate && <button type="button" onClick={activate}>按精确方案编号激活</button>}</article>;
 }
 
 function ExecutionCard({ execution, busy, rollback }: { execution: GrowthOptimizationExecution; busy: boolean; rollback: () => void }) {
-  return <article className="growth-context-card"><header><strong>Execution #{execution.id} · {execution.status}</strong><small>{execution.execution_mode} · {execution.provider_name} · {execution.trigger_kind}</small></header><p>真实平台修改：否 · Plan #{execution.optimization_run_id}</p><ul>{execution.result_actions.map((action) => <li key={action.platform}><strong>{action.platform}</strong>：结果预算 {action.recommended_budget.toFixed(2)} · 竞价 {signedPercent(action.bid_adjustment_pct)}</li>)}</ul>{execution.status === "SUCCEEDED" && <button type="button" disabled={busy} onClick={rollback}>按精确Execution ID回滚</button>}</article>;
+  return <article className="growth-context-card"><header><strong>执行记录 #{execution.id} · {execution.status}</strong><small>{execution.execution_mode} · {execution.provider_name} · {execution.trigger_kind}</small></header><p>真实平台修改：否 · 方案 #{execution.optimization_run_id}</p><ul>{execution.result_actions.map((action) => <li key={action.platform}><strong>{action.platform}</strong>：结果预算 {action.recommended_budget.toFixed(2)} · 竞价 {signedPercent(action.bid_adjustment_pct)}</li>)}</ul>{execution.status === "SUCCEEDED" && <button type="button" disabled={busy} onClick={rollback}>按精确执行编号回滚</button>}</article>;
 }
 
 function signedPercent(value: number) {
