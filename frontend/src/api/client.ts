@@ -14,6 +14,12 @@ export const apiClient = axios.create({
   withCredentials: true,
 });
 
+export function apiContentUrl(path: string): string {
+  const baseUrl = apiClient.defaults.baseURL?.replace(/\/$/, "") ?? "";
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `${baseUrl}${normalizedPath}`;
+}
+
 const SAFE_PROVIDER_MESSAGES: Record<string, string> = {
   "Qwen provider authentication failed":
     "Qwen认证失败；请在本机核验QWEN_API_KEY与对应区域和Workspace。",

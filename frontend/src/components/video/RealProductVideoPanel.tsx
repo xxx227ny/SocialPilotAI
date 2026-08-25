@@ -46,8 +46,9 @@ import type {
   BatchQwenScriptRequest,
 } from "../../types/batchVideo";
 import type {
-  ProductVideoSource,
+  ProductVideoProductionItem,
   ProductVideoProductionResult,
+  ProductVideoSource,
   RealProductVideoPhase,
   ThreePlatformVideoPreflight,
   UploadedProductImage,
@@ -57,6 +58,8 @@ import {
   buildBatchQwenScriptRequest,
   pollExactJob,
   productionBatchTerminal,
+  productionBatchRecoverable,
+  productionPollDelayMs,
   productionFailureMessage,
   productionProgress,
   productionStageLabel,
@@ -818,9 +821,12 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
     setProduction(value);
   }
 
-  async function waitForProduction(signal: AbortSignal) {
+  async function waitForProduction(
+    signal: AbortSignal,
+    items: ProductVideoProductionItem[] = [],
+  ) {
     await new Promise<void>((resolve, reject) => {
-      const timer = window.setTimeout(resolve, 2000);
+      const timer = window.setTimeout(resolve, productionPollDelayMs(items));
       signal.addEventListener(
         "abort",
         () => {
@@ -858,7 +864,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
       if (!operation.current.current(active.id)) return;
       applyProduction(current);
       if (!productionBatchTerminal(current.batch, current.items)) {
-        await waitForProduction(active.signal);
+        await waitForProduction(active.signal, current.items);
       }
     }
     throw new Error("批量生产等待超时，已保留批次，可稍后继续。 ");
@@ -913,9 +919,9 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
     if (!production) return;
     const active = operation.current.begin();
     try {
-      const resumed =
-        production.batch.status === "PAUSED"
-          ? await resumeProductVideoProductionBatch(
+        const resumed =
+          ["PAUSED", "PARTIAL_FAILED"].includes(production.batch.status)
+            ? await resumeProductVideoProductionBatch(
               product.id,
               production.batch.id,
               active.signal,
@@ -1194,13 +1200,15 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
             </button>
             <button
               type="button"
-              disabled={productionBatchTerminal(
-                production.batch,
-                production.items,
-              )}
+              disabled={
+                productionBatchTerminal(production.batch, production.items) &&
+                !productionBatchRecoverable(production.batch, production.items)
+              }
               onClick={() => void continueProductionBatch()}
             >
-              继续推进
+              {productionBatchRecoverable(production.batch, production.items)
+                ? "重试失败平台"
+                : "继续推进"}
             </button>
             <button
               type="button"

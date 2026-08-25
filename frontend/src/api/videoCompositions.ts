@@ -1,4 +1,4 @@
-import { apiClient } from "./client";
+import { apiClient, apiContentUrl } from "./client";
 import type { ExecutionJob } from "../types/execution";
 import type {
   CompositionShotInput,
@@ -44,4 +44,5 @@ export async function getCompositionArtifact(artifactId: number, signal?: AbortS
   return response.data;
 }
 
-export const compositionArtifactContentUrl = (artifactId: number) => `/api/v1/video-composition-artifacts/${artifactId}/content`;
+export const compositionArtifactContentUrl = (artifactId: number) =>
+  apiContentUrl(`/video-composition-artifacts/${artifactId}/content`);

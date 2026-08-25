@@ -39,7 +39,10 @@ const ERROR_MESSAGES: Record<string, string> = {
   PRODUCTION_HAPPYHORSE_SUBMIT_FAILED: "商品动态视频提交失败。",
   PRODUCTION_HAPPYHORSE_SUBMIT_UNKNOWN:
     "商品动态视频提交状态不确定，系统已停止自动重试以避免重复扣费。",
-  PRODUCTION_HAPPYHORSE_REFRESH_FAILED: "商品动态视频结果读取失败。",
+  PRODUCTION_HAPPYHORSE_REFRESH_FAILED:
+    "商品动态视频结果读取遇到临时限制，可点击“重试失败平台”继续读取原任务。",
+  PRODUCTION_HAPPYHORSE_REFRESH_RETRYABLE:
+    "云端暂时限制结果查询；原视频任务已保留，请稍后点击“重试失败平台”。",
   PRODUCTION_HAPPYHORSE_REFRESH_LIMIT: "商品动态视频等待超时。",
   PRODUCTION_COMPOSITION_FAILED: "视频标准化合成失败。",
   PRODUCTION_VOICEOVER_FAILED: "千问配音生成失败。",
@@ -72,6 +75,33 @@ export function productionBatchTerminal(
     items.length > 0 &&
     items.every((item) => ["SUCCEEDED", "FAILED", "CANCELLED"].includes(item.status))
   );
+}
+
+export function productionBatchRecoverable(
+  batch: ProductVideoProductionBatch,
+  items: ProductVideoProductionItem[],
+): boolean {
+  return (
+    batch.status === "PARTIAL_FAILED" &&
+    items.some(
+      (item) =>
+        item.status === "FAILED" &&
+        [
+          "PRODUCTION_HAPPYHORSE_REFRESH_FAILED",
+          "PRODUCTION_HAPPYHORSE_REFRESH_RETRYABLE",
+        ].includes(item.safe_error_code ?? ""),
+    )
+  );
+}
+
+export function productionPollDelayMs(
+  items: ProductVideoProductionItem[],
+): number {
+  return items.some(
+    (item) => item.status === "RUNNING" && item.stage === "GENERATING_VIDEO",
+  )
+    ? 10_000
+    : 2_000;
 }
 
 export function selectThreePlatformSources(

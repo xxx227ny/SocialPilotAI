@@ -221,6 +221,36 @@ class ProductVideoProductionBatchService:
             batch.status = "WAITING"
             self._sync_batch_status(batch)
             self.session.commit()
+        elif batch.status == "PARTIAL_FAILED":
+            recovered = False
+            for item in batch.items:
+                task = (
+                    self.session.get(VideoRenderTask, item.cloud_render_task_id)
+                    if item.cloud_render_task_id is not None
+                    else None
+                )
+                if (
+                    item.status == "FAILED"
+                    and item.safe_error_code
+                    in {
+                        "PRODUCTION_HAPPYHORSE_REFRESH_FAILED",
+                        "PRODUCTION_HAPPYHORSE_REFRESH_RETRYABLE",
+                    }
+                    and self._happyhorse_refresh_is_retryable(task)
+                ):
+                    item.status = "RUNNING"
+                    item.safe_error_code = None
+                    item.completed_at = None
+                    item.stage_state_json = {
+                        **item.stage_state_json,
+                        "happyhorse_refresh_job_id": None,
+                    }
+                    recovered = True
+            if recovered:
+                batch.status = "RUNNING"
+                batch.completed_at = None
+                self._sync_batch_status(batch)
+                self.session.commit()
         return self._create_read(self._required(product_id, batch_id), reused=True)
 
     def cancel(
@@ -492,6 +522,9 @@ class ProductVideoProductionBatchService:
                 return
             if job.status == "SUBMIT_UNKNOWN":
                 self._fail_item(item, "PRODUCTION_HAPPYHORSE_REFRESH_UNKNOWN")
+                return
+            if job.status == "FAILED" and self._happyhorse_refresh_is_retryable(task):
+                self._fail_item(item, "PRODUCTION_HAPPYHORSE_REFRESH_RETRYABLE")
                 return
             if job.status in {"FAILED", "CANCELLED"}:
                 self._fail_item(item, "PRODUCTION_HAPPYHORSE_REFRESH_FAILED")
@@ -938,6 +971,19 @@ class ProductVideoProductionBatchService:
         item.status = "FAILED"
         item.safe_error_code = code
         item.completed_at = utc_now()
+
+    @staticmethod
+    def _happyhorse_refresh_is_retryable(task: VideoRenderTask | None) -> bool:
+        return bool(
+            task
+            and task.status in {"SUBMITTED", "PENDING", "RUNNING"}
+            and task.error_code
+            in {
+                "refresh_quota_or_rate_limit",
+                "refresh_timeout",
+                "refresh_network",
+            }
+        )
 
     def _execution_jobs(self, batch: ProductVideoProductionBatch) -> list[ExecutionJob]:
         ids: set[int] = set()

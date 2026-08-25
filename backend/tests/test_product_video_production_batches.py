@@ -376,6 +376,36 @@ def test_advance_enqueues_wanx_jobs_once_and_recovers_exact_assets(
     )
     assert db_session.query(ExecutionJob).count() == 9
 
+    retryable_item_read = task_recovery.json()["items"][0]
+    retryable_item = db_session.get(
+        ProductVideoProductionItem, retryable_item_read["id"]
+    )
+    retryable_task = db_session.get(
+        VideoRenderTask, retryable_item_read["cloud_render_task_id"]
+    )
+    retryable_batch = db_session.get(ProductVideoProductionBatch, batch_id)
+    retryable_task.error_code = "refresh_quota_or_rate_limit"
+    retryable_item.status = "FAILED"
+    retryable_item.safe_error_code = "PRODUCTION_HAPPYHORSE_REFRESH_RETRYABLE"
+    retryable_item.completed_at = retryable_item.created_at
+    retryable_batch.status = "PARTIAL_FAILED"
+    db_session.commit()
+
+    retried = client.post(
+        f"/api/v1/products/{product.id}/real-product-video/"
+        f"production-batches/{batch_id}/resume"
+    )
+    assert retried.status_code == 200
+    retried_body = retried.json()
+    recovered_item = next(
+        item for item in retried_body["items"] if item["id"] == retryable_item.id
+    )
+    assert retried_body["batch"]["status"] == "RUNNING"
+    assert recovered_item["status"] == "RUNNING"
+    assert recovered_item["safe_error_code"] is None
+    assert recovered_item["completed_at"] is None
+    assert recovered_item["stage_state_json"]["happyhorse_refresh_job_id"] is None
+
     refresh_submit = client.post(endpoint)
     assert refresh_submit.status_code == 200
     refresh_items = refresh_submit.json()["items"]

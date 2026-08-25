@@ -130,6 +130,25 @@ try {
     ),
     true,
   );
+  assert.equal(
+    state.productionBatchRecoverable(
+      { status: "PARTIAL_FAILED" },
+      [
+        { status: "SUCCEEDED" },
+        {
+          status: "FAILED",
+          safe_error_code: "PRODUCTION_HAPPYHORSE_REFRESH_FAILED",
+        },
+      ],
+    ),
+    true,
+  );
+  assert.equal(
+    state.productionPollDelayMs([
+      { status: "RUNNING", stage: "GENERATING_VIDEO" },
+    ]),
+    10_000,
+  );
   behavior++;
   const oneClickRequest = state.buildBatchQwenScriptRequest(
     [
@@ -166,6 +185,7 @@ try {
     path.join(root, "src/api/videoCompositionEnhancements.ts"),
     "utf8",
   );
+  const apiClient = await fs.readFile(path.join(root, "src/api/client.ts"), "utf8");
   const productVideoApi = await fs.readFile(
     path.join(root, "src/api/productMarketingVideo.ts"),
     "utf8",
@@ -243,6 +263,12 @@ try {
     enhancementApi,
     /preflight_expires_at:\s*preflight\.expires_at/,
   );
+  assert.ok(apiClient.includes("export function apiContentUrl"));
+  assert.ok(enhancementApi.includes("apiContentUrl("));
+  assert.ok(productVideoApi.includes("apiContentUrl("));
+  assert.ok(!enhancementApi.includes("`/api/v1/video-composition"));
+  assert.ok(!productVideoApi.includes("`/api/v1/video-render-artifacts"));
+  safety += 5;
   for (const action of ["advance", "pause", "resume", "cancel"]) {
     assert.ok(productVideoApi.includes(`\"${action}\"`));
     safety++;

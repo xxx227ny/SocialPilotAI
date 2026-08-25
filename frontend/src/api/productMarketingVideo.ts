@@ -1,4 +1,4 @@
-import { apiClient } from "./client";
+import { apiClient, apiContentUrl } from "./client";
 import type { ExecutionJob } from "../types/execution";
 import type {
   HappyHorseVideoPreflight,
@@ -203,7 +203,7 @@ export async function refreshHappyHorseVideo(
 }
 
 export const happyHorseVideoContentUrl = (artifactId: number) =>
-  `/api/v1/video-render-artifacts/${artifactId}/content`;
+  apiContentUrl(`/video-render-artifacts/${artifactId}/content`);
 
 export async function getExactMarketingJob(jobId: number, signal?: AbortSignal) {
   const response = await apiClient.get<ExecutionJob>(`/execution-jobs/${jobId}`, {

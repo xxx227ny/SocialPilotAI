@@ -1,4 +1,4 @@
-import { apiClient } from "./client";
+import { apiClient, apiContentUrl } from "./client";
 import type { ExecutionJob } from "../types/execution";
 import type {
   CompositionAudioArtifact,
@@ -46,5 +46,7 @@ export async function getCompositionEnhancementArtifact(artifactId: number, sign
   return response.data;
 }
 
-export const compositionEnhancementContentUrl = (artifactId: number) => `/api/v1/video-composition-enhancement-artifacts/${artifactId}/content`;
-export const compositionSubtitleContentUrl = (artifactId: number) => `/api/v1/video-composition-subtitle-artifacts/${artifactId}/content`;
+export const compositionEnhancementContentUrl = (artifactId: number) =>
+  apiContentUrl(`/video-composition-enhancement-artifacts/${artifactId}/content`);
+export const compositionSubtitleContentUrl = (artifactId: number) =>
+  apiContentUrl(`/video-composition-subtitle-artifacts/${artifactId}/content`);
