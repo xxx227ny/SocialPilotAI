@@ -130,7 +130,7 @@ class VideoRenderOperationRead(BaseModel):
     video_project_id: int
     product_id: int
     marketing_strategy_id: int
-    copy_matrix_id: int
+    copy_matrix_id: int | None
     task: VideoRenderTaskSafeRead
     artifact: VideoRenderArtifactReferenceRead | None = None
     reused: bool
@@ -144,7 +144,7 @@ class VideoRenderPreflightRead(BaseModel):
     video_project_id: int
     product_id: int
     marketing_strategy_id: int
-    copy_matrix_id: int
+    copy_matrix_id: int | None
     input_ready: bool
     provider: Literal["Wanx"] = "Wanx"
     provider_configured: bool
@@ -175,7 +175,7 @@ class VideoRenderSubmitJobRequest(BaseModel):
 
     product_id: int = Field(gt=0)
     marketing_strategy_id: int = Field(gt=0)
-    copy_matrix_id: int = Field(gt=0)
+    copy_matrix_id: int | None = Field(default=None, gt=0)
     input_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     preflight_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     preflight_expires_at: datetime

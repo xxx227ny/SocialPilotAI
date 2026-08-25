@@ -46,7 +46,7 @@ class WanxVideoRenderSubmitV1Input(BaseModel):
     video_project_id: int = Field(gt=0)
     product_id: int = Field(gt=0)
     marketing_strategy_id: int = Field(gt=0)
-    copy_matrix_id: int = Field(gt=0)
+    copy_matrix_id: int | None = Field(default=None, gt=0)
     frozen_input_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     preflight_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     preflight_expires_at: datetime
@@ -77,9 +77,7 @@ class _ContextVisualProvider(VisualGenerationProvider):
         self.context = context
         self.provider = provider
 
-    async def submit(
-        self, request: VisualGenerationRequest
-    ) -> VisualTaskSubmission:
+    async def submit(self, request: VisualGenerationRequest) -> VisualTaskSubmission:
         self.context.before_provider_call(may_submit_external=True)
         return await self.provider.submit(request)
 
@@ -107,15 +105,11 @@ class WanxVideoRenderSubmitV1Handler:
         self.output_fetcher = output_fetcher
         self.artifact_storage = artifact_storage
 
-    def execute(
-        self, context: ExecutionContext, payload: BaseModel
-    ) -> HandlerResult:
+    def execute(self, context: ExecutionContext, payload: BaseModel) -> HandlerResult:
         data = WanxVideoRenderSubmitV1Input.model_validate(payload)
         with self.session_factory() as session:
             try:
-                preflight = VideoRenderPreflightService(
-                    session, self.settings
-                ).run(
+                preflight = VideoRenderPreflightService(session, self.settings).run(
                     data.video_project_id,
                     expires_at=data.preflight_expires_at,
                 )
@@ -123,8 +117,7 @@ class WanxVideoRenderSubmitV1Handler:
                 return HandlerResult.failed("VIDEO_RENDER_PREFLIGHT_FAILED")
             if (
                 preflight.product_id != data.product_id
-                or preflight.marketing_strategy_id
-                != data.marketing_strategy_id
+                or preflight.marketing_strategy_id != data.marketing_strategy_id
                 or preflight.copy_matrix_id != data.copy_matrix_id
             ):
                 return HandlerResult.failed("VIDEO_RENDER_IDENTITY_MISMATCH")
@@ -175,9 +168,7 @@ class WanxVideoRenderRefreshV1Handler:
         self.output_fetcher = output_fetcher
         self.artifact_storage = artifact_storage
 
-    def execute(
-        self, context: ExecutionContext, payload: BaseModel
-    ) -> HandlerResult:
+    def execute(self, context: ExecutionContext, payload: BaseModel) -> HandlerResult:
         data = WanxVideoRenderRefreshV1Input.model_validate(payload)
         with self.session_factory() as session:
             try:
@@ -186,12 +177,11 @@ class WanxVideoRenderRefreshV1Handler:
                 )
                 if task.video_project_id != data.video_project_id:
                     return HandlerResult.failed("VIDEO_RENDER_IDENTITY_MISMATCH")
-                if compute_video_render_task_digest(
-                    session, task, self.settings
-                ) != data.frozen_task_digest:
-                    return HandlerResult.failed(
-                        "VIDEO_RENDER_FROZEN_DIGEST_MISMATCH"
-                    )
+                if (
+                    compute_video_render_task_digest(session, task, self.settings)
+                    != data.frozen_task_digest
+                ):
+                    return HandlerResult.failed("VIDEO_RENDER_FROZEN_DIGEST_MISMATCH")
                 result = asyncio.run(
                     VideoRenderExecutionService(
                         session,
@@ -209,9 +199,7 @@ class WanxVideoRenderRefreshV1Handler:
                 else "video_render_task"
             )
             entity_id = (
-                result.artifact.id
-                if result.artifact is not None
-                else result.task.id
+                result.artifact.id if result.artifact is not None else result.task.id
             )
             return HandlerResult.succeeded(
                 provider_name="wanx",

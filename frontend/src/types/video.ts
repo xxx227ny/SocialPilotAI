@@ -168,7 +168,7 @@ export interface VideoRenderPreflight {
   video_project_id: number;
   product_id: number;
   marketing_strategy_id: number;
-  copy_matrix_id: number;
+  copy_matrix_id: number | null;
   input_ready: boolean;
   provider: "Wanx";
   provider_configured: boolean;
@@ -197,7 +197,7 @@ export interface VideoRenderPreflight {
 export interface VideoRenderSubmitJobRequest {
   product_id: number;
   marketing_strategy_id: number;
-  copy_matrix_id: number;
+  copy_matrix_id: number | null;
   input_digest: string;
   preflight_digest: string;
   preflight_expires_at: string;
@@ -323,7 +323,7 @@ export interface VideoRenderOperation {
   video_project_id: number;
   product_id: number;
   marketing_strategy_id: number;
-  copy_matrix_id: number;
+  copy_matrix_id: number | null;
   task: VideoRenderTaskSafe;
   artifact: VideoRenderArtifactReference | null;
   reused: boolean;

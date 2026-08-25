@@ -103,6 +103,11 @@ try {
   check(state.buildVideoRenderSubmitRequest(preflight), { product_id: 1, marketing_strategy_id: 2,
     copy_matrix_id: 3, input_digest: digest, preflight_digest: "b".repeat(64),
     preflight_expires_at: "2099-01-01T00:00:00Z", cost_confirmed: true }, "frozen submit identity");
+  check(state.buildVideoRenderSubmitRequest({ ...preflight, copy_matrix_id: null }), {
+    product_id: 1, marketing_strategy_id: 2, copy_matrix_id: null,
+    input_digest: digest, preflight_digest: "b".repeat(64),
+    preflight_expires_at: "2099-01-01T00:00:00Z", cost_confirmed: true,
+  }, "optional copy matrix remains explicitly null");
 
   const panelSource = readFileSync(join(root, "src/components/video/VideoRenderPreflightPanel.tsx"), "utf8");
   const unmountStart = panelSource.indexOf("useEffect(() => {\n    return () => {");

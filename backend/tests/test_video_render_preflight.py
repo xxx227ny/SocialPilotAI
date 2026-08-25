@@ -42,9 +42,7 @@ def configured_settings(
 
 
 def count_rows(db_session: Session, model: type) -> int:
-    return int(
-        db_session.scalar(select(func.count()).select_from(model)) or 0
-    )
+    return int(db_session.scalar(select(func.count()).select_from(model)) or 0)
 
 
 def test_exact_project_and_preflight_are_read_only(
@@ -102,26 +100,39 @@ def test_exact_project_and_preflight_are_read_only(
         "exact_video_project_render_task_execution_contract"
         not in body["missing_requirements"]
     )
-    assert (
-        "uncertain_submit_recovery_contract"
-        not in body["missing_requirements"]
-    )
-    assert (
-        "durable_video_artifact_storage_contract"
-        not in body["missing_requirements"]
-    )
+    assert "uncertain_submit_recovery_contract" not in body["missing_requirements"]
+    assert "durable_video_artifact_storage_contract" not in body["missing_requirements"]
     assert "MarketingBrief" in body["association_notice"]
     assert provider_resolutions == 0
     assert before == after == (0, 0)
+
+
+def test_preflight_accepts_project_without_optional_copy_matrix(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    project = create_video_project(db_session)
+    project.copy_matrix_id = None
+    db_session.commit()
+    app.dependency_overrides[get_settings] = configured_settings
+
+    response = client.get(preflight_path(project.id))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["video_project_id"] == project.id
+    assert body["copy_matrix_id"] is None
+    assert body["input_ready"] is True
+    assert len(body["input_digest"]) == 64
+    assert count_rows(db_session, VideoRenderTask) == 0
+    assert count_rows(db_session, VideoRenderArtifact) == 0
 
 
 def test_render_input_digest_is_stable_and_preflight_expiry_is_independent(
     db_session: Session, tmp_path: Path
 ) -> None:
     project = create_video_project(db_session)
-    app_settings = configured_settings(
-        execution_enabled=True, storage_root=tmp_path
-    )
+    app_settings = configured_settings(execution_enabled=True, storage_root=tmp_path)
     service = VideoRenderPreflightService(db_session, app_settings)
     first_expiry = datetime(2030, 1, 1, tzinfo=UTC)
     second_expiry = first_expiry + timedelta(minutes=1)
@@ -181,9 +192,7 @@ def test_preflight_rejects_cross_product_associations(
 
     assert response.status_code == 200
     assert response.json()["input_ready"] is False
-    assert "marketing_strategy_association" in response.json()[
-        "missing_requirements"
-    ]
+    assert "marketing_strategy_association" in response.json()["missing_requirements"]
     assert "copy_matrix_association" in response.json()["missing_requirements"]
 
 
@@ -306,9 +315,7 @@ def test_latest_video_project_is_deterministic_and_read_only(
     db_session.refresh(second)
     before = count_rows(db_session, VideoProject)
 
-    response = client.get(
-        f"/api/v1/products/{first.product_id}/video-projects/latest"
-    )
+    response = client.get(f"/api/v1/products/{first.product_id}/video-projects/latest")
 
     assert response.status_code == 200
     assert response.json()["id"] == second.id
@@ -319,9 +326,7 @@ def test_latest_video_project_404_states(
     client: TestClient,
     db_session: Session,
 ) -> None:
-    missing_product = client.get(
-        "/api/v1/products/999/video-projects/latest"
-    )
+    missing_product = client.get("/api/v1/products/999/video-projects/latest")
     product = Product(
         name="No video",
         category="Appliance",
@@ -331,9 +336,7 @@ def test_latest_video_project_404_states(
     )
     db_session.add(product)
     db_session.commit()
-    no_project = client.get(
-        f"/api/v1/products/{product.id}/video-projects/latest"
-    )
+    no_project = client.get(f"/api/v1/products/{product.id}/video-projects/latest")
 
     assert missing_product.status_code == 404
     assert no_project.status_code == 404

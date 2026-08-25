@@ -174,10 +174,12 @@ class VideoRenderPreflightService:
         product = self.session.get(Product, project.product_id)
         if product is None:
             raise AppError("Video project Product not found", status_code=404)
-        strategy = self.session.get(
-            MarketingStrategy, project.marketing_strategy_id
+        strategy = self.session.get(MarketingStrategy, project.marketing_strategy_id)
+        copy_matrix = (
+            self.session.get(CopyMatrix, project.copy_matrix_id)
+            if project.copy_matrix_id is not None
+            else None
         )
-        copy_matrix = self.session.get(CopyMatrix, project.copy_matrix_id)
         first_scene = next(
             (
                 scene
@@ -243,9 +245,7 @@ class VideoRenderPreflightService:
         return self._digest(payload)
 
     @staticmethod
-    def compute_preflight_digest(
-        *, input_digest: str, expires_at: datetime
-    ) -> str:
+    def compute_preflight_digest(*, input_digest: str, expires_at: datetime) -> str:
         return VideoRenderPreflightService._digest(
             {
                 "render_contract_version": WORKSPACE_RENDER_CONTRACT_VERSION,
@@ -272,9 +272,7 @@ class VideoRenderPreflightService:
         )
         return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
-    def _input_requirements(
-        self, project: VideoProject, product: Product
-    ) -> list[str]:
+    def _input_requirements(self, project: VideoProject, product: Product) -> list[str]:
         missing: list[str] = []
         required_text = {
             "platform": project.platform,
@@ -306,9 +304,7 @@ class VideoRenderPreflightService:
                 None,
             )
             first_duration = (
-                first_scene.get("duration_seconds")
-                if first_scene is not None
-                else None
+                first_scene.get("duration_seconds") if first_scene is not None else None
             )
             if (
                 not isinstance(first_duration, int)
@@ -320,19 +316,17 @@ class VideoRenderPreflightService:
         if project.aspect_ratio not in WANX_RATIOS:
             missing.append("wanx_aspect_ratio")
 
-        strategy = self.session.get(
-            MarketingStrategy, project.marketing_strategy_id
-        )
+        strategy = self.session.get(MarketingStrategy, project.marketing_strategy_id)
         if strategy is None or strategy.product_id != product.id:
             missing.append("marketing_strategy_association")
-        copy_matrix = self.session.get(CopyMatrix, project.copy_matrix_id)
-        if (
-            copy_matrix is None
-            or copy_matrix.product_id != product.id
-            or copy_matrix.marketing_strategy_id
-            != project.marketing_strategy_id
-        ):
-            missing.append("copy_matrix_association")
+        if project.copy_matrix_id is not None:
+            copy_matrix = self.session.get(CopyMatrix, project.copy_matrix_id)
+            if (
+                copy_matrix is None
+                or copy_matrix.product_id != product.id
+                or copy_matrix.marketing_strategy_id != project.marketing_strategy_id
+            ):
+                missing.append("copy_matrix_association")
 
         try:
             VideoPlanSchema.model_validate(

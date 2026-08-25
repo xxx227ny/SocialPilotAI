@@ -30,9 +30,7 @@ def settings(root: Path) -> Settings:
 
 
 def enqueue(client: TestClient, project_id: int) -> int:
-    checked = client.get(
-        f"/api/v1/video-projects/{project_id}/render-preflight"
-    ).json()
+    checked = client.get(f"/api/v1/video-projects/{project_id}/render-preflight").json()
     response = client.post(
         f"/api/v1/video-projects/{project_id}/render-execution",
         json={
@@ -95,6 +93,31 @@ def test_fake_queue_submit_is_once_across_repeated_http_and_two_workers(
     assert provider.fetch_calls == 0
 
 
+def test_queue_renders_project_without_optional_copy_matrix(
+    client: TestClient, db_session: Session, tmp_path: Path
+) -> None:
+    project = create_video_project(db_session)
+    project.copy_matrix_id = None
+    db_session.commit()
+    app.dependency_overrides[get_settings] = lambda: settings(tmp_path)
+
+    job_id = enqueue(client, project.id)
+    queued = db_session.get(ExecutionJob, job_id)
+    assert queued is not None
+    assert queued.input_payload["copy_matrix_id"] is None
+
+    provider = MockVisualProvider()
+    result = worker(
+        db_session,
+        tmp_path,
+        provider,
+        "wanx-null-copy-matrix-worker",
+    ).run_once()
+
+    assert result.status == WorkerRunStatus.SUCCEEDED
+    assert provider.submit_calls == 1
+
+
 def test_submit_unknown_never_retries_or_resubmits(
     client: TestClient, db_session: Session, tmp_path: Path
 ) -> None:
@@ -104,9 +127,7 @@ def test_submit_unknown_never_retries_or_resubmits(
     provider = MockVisualProvider(
         submit_error=ProviderConnectionError("fake uncertain transport")
     )
-    execution_worker = worker(
-        db_session, tmp_path, provider, "wanx-unknown-worker"
-    )
+    execution_worker = worker(db_session, tmp_path, provider, "wanx-unknown-worker")
 
     assert execution_worker.run_once().status == WorkerRunStatus.SUBMIT_UNKNOWN
     assert execution_worker.run_once().status == WorkerRunStatus.NO_JOB
