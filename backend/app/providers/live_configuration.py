@@ -195,7 +195,13 @@ def wanx_missing_requirements(settings: Settings) -> tuple[str, ...]:
 
 
 def effective_qwen_api_key(settings: Settings) -> str:
-    """Return QWEN_API_KEY, or its deprecated DASHSCOPE-only alias."""
+    """Return credentials paired with the configured provider endpoint."""
+    if _token_plan_credentials_selected(settings):
+        return (
+            _secret_file(settings.token_plan_api_key_file)
+            or _secret(settings.qwen_api_key)
+            or _secret(settings.dashscope_api_key)
+        )
     return (
         _secret(settings.qwen_api_key)
         or _secret(settings.dashscope_api_key)
@@ -204,10 +210,18 @@ def effective_qwen_api_key(settings: Settings) -> str:
 
 
 def effective_wanx_api_key(settings: Settings) -> str:
-    """Use an explicit Wanx key or the shared Token Plan key file."""
+    """Use credentials paired with the active Qwen/Wanx provider profile."""
+    if _token_plan_credentials_selected(settings):
+        return _secret_file(settings.token_plan_api_key_file) or _secret(
+            settings.wanx_api_key
+        )
     return _secret(settings.wanx_api_key) or _secret_file(
         settings.token_plan_api_key_file
     )
+
+
+def _token_plan_credentials_selected(settings: Settings) -> bool:
+    return _normalize_endpoint(settings.qwen_endpoint) == TOKEN_PLAN_QWEN_ENDPOINT
 
 
 def controlled_qwen_endpoint(value: str | None) -> str:

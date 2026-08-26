@@ -31,9 +31,11 @@ from app.providers.base import (
 )
 from app.providers.live_configuration import (
     QWEN_REGION_ENDPOINT_TEMPLATES,
+    TOKEN_PLAN_QWEN_ENDPOINT,
     WANX_REGION_ENDPOINT_TEMPLATES,
     audit_live_provider_configuration,
     effective_qwen_api_key,
+    effective_wanx_api_key,
     get_provider_failure_metadata,
     metadata_for_transport_failure,
     qwen_provider_configured,
@@ -191,6 +193,31 @@ def test_dashscope_is_a_one_way_deprecated_qwen_alias() -> None:
     assert effective_qwen_api_key(settings) == "safe-legacy-qwen-key"
     assert qwen_provider_configured(settings) is True
     assert wanx_provider_configured(settings) is False
+
+
+def test_token_plan_endpoint_prefers_shared_token_file(
+    tmp_path: Path,
+) -> None:
+    token_file = tmp_path / "token-plan.key"
+    token_file.write_text("safe-token-plan-test-key\n", encoding="utf-8")
+    settings = strict_settings(
+        qwen_endpoint=TOKEN_PLAN_QWEN_ENDPOINT,
+        token_plan_api_key_file=str(token_file),
+    )
+
+    assert effective_qwen_api_key(settings) == "safe-token-plan-test-key"
+    assert effective_wanx_api_key(settings) == "safe-token-plan-test-key"
+
+
+def test_legacy_endpoint_keeps_explicit_provider_credentials(
+    tmp_path: Path,
+) -> None:
+    token_file = tmp_path / "token-plan.key"
+    token_file.write_text("safe-token-plan-test-key\n", encoding="utf-8")
+    settings = strict_settings(token_plan_api_key_file=str(token_file))
+
+    assert effective_qwen_api_key(settings) == QWEN_KEY
+    assert effective_wanx_api_key(settings) == WANX_KEY
 
 
 @pytest.mark.parametrize(
