@@ -120,6 +120,9 @@ try {
   assert.match(component, /复制此平台/);
   assert.match(component, /导出 JSON/);
   assert.match(component, /导出 CSV/);
+  assert.match(component, /document\.body\.appendChild\(link\)/);
+  assert.match(component, /window\.setTimeout\(\(\) => URL\.revokeObjectURL\(url\), 1_000\)/);
+  assert.match(component, /已导出/);
   assert.match(component, /重新生成文案/);
   assert.match(component, /regeneration_key/);
   assert.match(component, /crypto\.randomUUID/);

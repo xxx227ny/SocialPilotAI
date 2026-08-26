@@ -531,13 +531,22 @@ function CopyMatrixResult({
     }
   }
 
-  function download(filename: string, content: string, contentType: string) {
+  function download(
+    filename: string,
+    content: string,
+    contentType: string,
+    label: string,
+  ) {
     const url = URL.createObjectURL(new Blob([content], { type: contentType }));
     const link = document.createElement("a");
     link.href = url;
     link.download = filename;
+    link.hidden = true;
+    document.body.appendChild(link);
     link.click();
-    URL.revokeObjectURL(url);
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+    setCopyFeedback(`${label}已导出。`);
   }
 
   return (
@@ -568,6 +577,7 @@ function CopyMatrixResult({
               `copy-matrix-${matrix.id}.json`,
               JSON.stringify(matrix, null, 2),
               "application/json;charset=utf-8",
+              "JSON 文件",
             )
           }
         >
@@ -581,6 +591,7 @@ function CopyMatrixResult({
               `copy-matrix-${matrix.id}.csv`,
               copyMatrixCsv(matrix),
               "text/csv;charset=utf-8",
+              "CSV 文件",
             )
           }
         >
