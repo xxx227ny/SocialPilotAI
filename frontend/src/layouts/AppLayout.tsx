@@ -1,9 +1,10 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
 
 import { PresentationToolbar } from "../components/dashboard/PresentationToolbar";
 import { PresentationFlowNav } from "../components/showcase/PresentationFlowNav";
 import { SystemReadinessPanel } from "../components/system/SystemReadinessPanel";
 import { usePresentationMode } from "../context/PresentationModeContext";
+import { useAuth } from "../context/AuthContext";
 
 const navItems = [
   { to: "/", label: "总览", icon: "⌂", end: true },
@@ -15,6 +16,13 @@ const navItems = [
 
 export function AppLayout() {
   const { isPresentation } = usePresentationMode();
+  const { enabled: authEnabled, logout, username } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    await logout();
+    navigate("/", { replace: true });
+  };
 
   return (
     <div className={`app-shell${isPresentation ? " app-shell--presentation" : ""}`}>
@@ -60,7 +68,12 @@ export function AppLayout() {
           <div className="topbar__right">
             <span className="phase-pill">黑客松演示</span>
             <PresentationToolbar />
-            <span className="avatar">SP</span>
+            {authEnabled && <div className="account-menu">
+              <span className="avatar" aria-hidden="true">SP</span>
+              <span className="account-menu__name">{username}</span>
+              <button type="button" onClick={handleLogout}>退出登录</button>
+            </div>}
+            {!authEnabled && <span className="avatar">SP</span>}
           </div>
         </header>}
         {isPresentation && <>

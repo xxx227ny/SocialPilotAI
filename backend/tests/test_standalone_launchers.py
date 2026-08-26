@@ -41,9 +41,14 @@ def test_start_launcher_uses_persistent_runtime_and_consistent_gates() -> None:
         assert f'$env:{frontend} = "true"' in script
     assert '$env:ENABLE_LIVE_WANX_DEMO = "false"' in script
     assert "seed_development_data" not in script
-    assert "Provider" not in script.replace(
-        '"http://127.0.0.1:8000/api/v1/system/readiness"', ""
-    )
+    for secret_name in (
+        "QWEN_API_KEY",
+        "WANX_API_KEY",
+        "DASHSCOPE_API_KEY",
+        "DEMO_AUTH_PASSWORD_HASH",
+        "DEMO_AUTH_SESSION_SECRET",
+    ):
+        assert secret_name not in script
     assert "C:\\Users\\" not in script
 
 

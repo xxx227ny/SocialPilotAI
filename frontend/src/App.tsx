@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 
 import { usePresentationMode } from "./context/PresentationModeContext";
+import { useAuth } from "./context/AuthContext";
 import { AppLayout } from "./layouts/AppLayout";
 import { DashboardPage } from "./pages/DashboardPage";
 import { ContentStudioPage } from "./pages/ContentStudioPage";
@@ -8,10 +9,18 @@ import { CopyMatrixPage } from "./pages/CopyMatrixPage";
 import { GrowthCopilotPage } from "./pages/GrowthCopilotPage";
 import { ProductCenterPage } from "./pages/ProductCenterPage";
 import { SnapshotPresentationPage } from "./pages/SnapshotPresentationPage";
+import { LoginPage } from "./pages/LoginPage";
 import { parseSnapshotPresentationRoute } from "./components/presentation/snapshotPresentationState";
 
 export default function App() {
+  const { authenticated, checking } = useAuth();
   const location = useLocation();
+  if (checking) {
+    return <main className="auth-loading" aria-live="polite">正在检查登录状态…</main>;
+  }
+  if (!authenticated) {
+    return <LoginPage />;
+  }
   const snapshotRoute = parseSnapshotPresentationRoute(location.search);
   if (snapshotRoute.kind !== "legacy") {
     return <SnapshotPresentationPage route={snapshotRoute} />;

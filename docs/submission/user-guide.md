@@ -18,7 +18,20 @@ npm run dev -- --host 127.0.0.1
 
 浏览器打开：`http://127.0.0.1:5173`
 
-当前版本没有登录步骤。API Key 只保存在仓库外的安全环境文件中，不要粘贴到网页、代码、截图或聊天记录。
+页面启动后先使用管理员提供的复赛测试账号登录。登录成功后才能访问商品中心、文案矩阵、视频工厂和投流优化；右上角可退出登录。
+
+账号密码和 API Key 都只保存在仓库外的安全环境文件中，不要粘贴到代码、截图或公开仓库。部署方需要配置：
+
+```text
+ENABLE_DEMO_AUTH=true
+DEMO_AUTH_USERNAME=<测试账号>
+DEMO_AUTH_PASSWORD_HASH=<PBKDF2-SHA256密码哈希>
+DEMO_AUTH_SESSION_SECRET=<至少32字符的随机会话密钥>
+DEMO_AUTH_SESSION_TTL_SECONDS=28800
+DEMO_AUTH_COOKIE_SECURE=true  # HTTPS部署使用true；本机HTTP验收使用false
+```
+
+密码不会进入浏览器存储；登录状态使用带 `HttpOnly` 和 `SameSite=strict` 的签名 Cookie。未启用账号配置时，开发和自动化测试仍保持原有兼容模式。
 
 ## 2. 页面分工
 

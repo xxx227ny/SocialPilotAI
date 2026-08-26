@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     api_v1_prefix: str = "/api/v1"
     debug: bool = False
     database_url: str = "sqlite:///./socialpilot.db"
+    enable_demo_auth: bool = False
+    demo_auth_username: str | None = Field(default=None, min_length=3, max_length=120)
+    demo_auth_password_hash: SecretStr | None = None
+    demo_auth_session_secret: SecretStr | None = None
+    demo_auth_session_ttl_seconds: int = Field(default=28_800, ge=900, le=86_400)
+    demo_auth_cookie_secure: bool = False
     qwen_api_key: SecretStr | None = None
     token_plan_api_key_file: str | None = None
     # Deprecated one-way alias for QWEN_API_KEY. Never used by Wanx.
@@ -164,6 +170,18 @@ class Settings(BaseSettings):
             and self.qwen_video_script_cost_min > self.qwen_video_script_cost_max
         ):
             raise ValueError("Qwen video script cost range is invalid")
+        if self.enable_demo_auth:
+            if not self.demo_auth_username or not self.demo_auth_username.strip():
+                raise ValueError("Demo authentication username is required")
+            if self.demo_auth_password_hash is None:
+                raise ValueError("Demo authentication password hash is required")
+            password_hash = self.demo_auth_password_hash.get_secret_value()
+            if not password_hash.startswith("pbkdf2_sha256$"):
+                raise ValueError("Demo authentication password hash is invalid")
+            if self.demo_auth_session_secret is None:
+                raise ValueError("Demo authentication session secret is required")
+            if len(self.demo_auth_session_secret.get_secret_value()) < 32:
+                raise ValueError("Demo authentication session secret is too short")
         return self
 
 
