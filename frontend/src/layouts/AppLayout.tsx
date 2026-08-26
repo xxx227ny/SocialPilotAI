@@ -7,7 +7,7 @@ import { usePresentationMode } from "../context/PresentationModeContext";
 import { useAuth } from "../context/AuthContext";
 
 const navItems = [
-  { to: "/", label: "总览", icon: "⌂", end: true },
+  { to: "/", label: "主页", icon: "⌂", end: true },
   { to: "/products", label: "商品中心", icon: "□" },
   { to: "/copy-matrix", label: "文案矩阵", icon: "✦" },
   { to: "/content-studio", label: "视频工厂", icon: "▶" },

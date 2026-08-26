@@ -1,273 +1,117 @@
-import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 
-import { getDemoSnapshot } from "../api/dashboard";
-import portableBlenderVisual from "../assets/portable-blender.svg";
-import { usePresentationMode } from "../context/PresentationModeContext";
-import type {
-  DashboardSnapshot,
-  PipelineStatus,
-  PlatformMetrics,
-} from "../types/dashboard";
+const capabilities = [
+  {
+    number: "01",
+    title: "AI 短视频批量生产",
+    summary: "根据商品卖点和目标平台，自动完成脚本、商品画面、配音、字幕与成片。",
+    details: ["支持 TikTok、YouTube Shorts、Instagram Reels", "三平台独立生成，失败互不影响", "成片可在线预览并批量下载"],
+    action: "进入视频工厂",
+    to: "/content-studio",
+  },
+  {
+    number: "02",
+    title: "AI 社媒文案矩阵",
+    summary: "围绕同一商品，为不同社交平台生成符合平台语气和内容结构的营销文案。",
+    details: ["适配 TikTok、Instagram、Facebook、Pinterest", "支持复制、导出和重新生成", "品牌规则与商品卖点贯穿全部文案"],
+    action: "进入文案矩阵",
+    to: "/copy-matrix",
+  },
+  {
+    number: "03",
+    title: "AI 投流策略优化",
+    summary: "汇总各渠道投放数据，计算 ROAS 等核心指标，并给出预算和竞价调整建议。",
+    details: ["统一查看渠道表现", "识别高效与低效投放", "在安全沙箱中验证优化方案"],
+    action: "进入投流优化",
+    to: "/growth-copilot",
+  },
+];
+
+const workflow = [
+  { title: "建立商品资料", detail: "在商品中心录入商品名称、卖点、目标市场、品牌规则，并上传清晰商品图。", to: "/products", action: "打开商品中心" },
+  { title: "生成内容矩阵", detail: "选择商品和目标平台，使用千问生成各平台文案；确认内容后可复制或导出。", to: "/copy-matrix", action: "开始生成文案" },
+  { title: "批量生成视频", detail: "创建批量任务，确认模型调用与费用，让系统依次完成脚本、画面、配音和成片。", to: "/content-studio", action: "开始生成视频" },
+  { title: "分析并优化投放", detail: "导入或使用沙箱投放数据，查看 ROAS、CTR、CVR 和 CPA，再应用优化建议。", to: "/growth-copilot", action: "查看投放分析" },
+];
 
 export function DashboardPage() {
-  const { isPresentation } = usePresentationMode();
-  const [snapshot, setSnapshot] = useState<DashboardSnapshot | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState("");
-
-  useEffect(() => {
-    void getDemoSnapshot()
-      .then((result) => {
-        setSnapshot(result);
-        setMessage("");
-      })
-      .catch(() => {
-        setMessage("Demo Snapshot 尚未准备，请在比赛前完成预置数据准备。");
-      })
-      .finally(() => setLoading(false));
-  }, []);
-
   return (
-    <div className={`showcase-dashboard${isPresentation ? " showcase-dashboard--presentation" : ""}`}>
-      <ShowcaseHero snapshot={snapshot} />
-      {loading ? (
-        <ShowcaseState title="正在读取演示快照" detail="只读取预置数据，不触发任何生成流程。" />
-      ) : snapshot ? (
-        <SnapshotShowcase snapshot={snapshot} />
-      ) : (
-        <ShowcaseState title="演示快照未就绪" detail={message} error />
-      )}
-    </div>
-  );
-}
-
-function ShowcaseHero({ snapshot }: { snapshot: DashboardSnapshot | null }) {
-  return (
-    <section className="showcase-hero">
-      <div className="showcase-hero__brand">
-        <span className="showcase-hero__mark">S</span>
+    <div className="home-guide">
+      <section className="home-guide__hero">
         <div>
-          <small>ALIBABA CLOUD AI HACKATHON</small>
-          <h1>SocialPilot AI</h1>
-          <p>AI 驱动跨境电商社媒增长闭环</p>
+          <span className="home-guide__eyebrow">SOCIALPILOT AI 使用指南</span>
+          <h1>从一个商品，完成跨平台内容生产与增长优化</h1>
+          <p>
+            SocialPilot 是面向跨境电商团队的 AI 社媒营销工作台。系统把商品资料、平台文案、
+            营销视频和投放反馈串成一条可操作的业务流程，减少在多个工具之间反复切换。
+          </p>
+          <div className="home-guide__actions">
+            <Link className="home-guide__primary" to="/products">开始使用</Link>
+            <a href="#usage-guide">查看使用步骤</a>
+          </div>
         </div>
-      </div>
-      <div className="showcase-trust">
-        <span>{snapshot?.demo?.badge ?? "Demo Snapshot"}</span>
-        <strong>{snapshot?.demo?.ai_calls ?? 0} AI Calls</strong>
-        <span>{snapshot?.demo?.notice ?? "使用预置演示数据"}</span>
-        <p>现场展示使用预置快照，真实 AI 链路已独立验证。</p>
-      </div>
-    </section>
-  );
-}
-
-function SnapshotShowcase({ snapshot }: { snapshot: DashboardSnapshot }) {
-  const metrics = snapshot.growth.metrics;
-  return (
-    <div className="showcase-content">
-      <ProductStory snapshot={snapshot} />
-      <ProductScenarios />
-      <MarketingValueStory />
-      <BusinessFlow snapshot={snapshot} />
-      <section className="showcase-outcomes" aria-label="核心结果">
-        <OutcomeCard
-          eyebrow="CONTENT MATRIX"
-          value={String(snapshot.copy_matrix?.copies.length ?? 0)}
-          unit="个平台"
-          label="差异化社媒内容"
-        />
-        <OutcomeCard
-          eyebrow="VIDEO PLAN"
-          value={String(snapshot.video_project?.duration_seconds ?? 0)}
-          unit="秒"
-          label="结构化视频生产方案"
-        />
-        <OutcomeCard
-          eyebrow="GROWTH RESULT"
-          value={metrics?.roas == null ? "—" : metrics.roas.toFixed(2)}
-          unit="x ROAS"
-          label="基于预置投放快照"
-          accent
-        />
+        <aside aria-label="产品流程摘要">
+          <span>完整营销闭环</span>
+          <ol>
+            <li><strong>理解商品</strong><small>资料、卖点与品牌规则</small></li>
+            <li><strong>生产内容</strong><small>文案、图片、配音与视频</small></li>
+            <li><strong>优化增长</strong><small>ROAS 分析与策略建议</small></li>
+          </ol>
+        </aside>
       </section>
-      <GrowthShowcase snapshot={snapshot} />
+
+      <section className="home-guide__section" aria-labelledby="product-introduction">
+        <header>
+          <span>产品说明</span>
+          <h2 id="product-introduction">SocialPilot 能帮你做什么？</h2>
+          <p>只需准备商品信息和商品图片，系统即可协助完成内容生产、视频制作和投放优化。</p>
+        </header>
+        <div className="home-guide__summary">
+          <article><strong>输入</strong><p>商品资料、商品图片、品牌规则和目标平台。</p></article>
+          <article><strong>AI 处理</strong><p>千问负责理解、脚本、文案和配音，万象负责商品视觉与动态视频。</p></article>
+          <article><strong>输出</strong><p>平台文案、营销成片、字幕文件、投放建议和可核验记录。</p></article>
+        </div>
+      </section>
+
+      <section className="home-guide__section" aria-labelledby="product-capabilities">
+        <header>
+          <span>产品功能</span>
+          <h2 id="product-capabilities">围绕比赛三大目标构建</h2>
+          <p>每个模块均可单独使用，也可以按照商品 → 文案 → 视频 → 投放的顺序形成完整闭环。</p>
+        </header>
+        <div className="home-guide__capabilities">
+          {capabilities.map((capability) => (
+            <article key={capability.number}>
+              <span>{capability.number}</span>
+              <h3>{capability.title}</h3>
+              <p>{capability.summary}</p>
+              <ul>{capability.details.map((detail) => <li key={detail}>{detail}</li>)}</ul>
+              <Link to={capability.to}>{capability.action}<span aria-hidden="true">→</span></Link>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="home-guide__section home-guide__section--workflow" id="usage-guide" aria-labelledby="usage-guide-title">
+        <header>
+          <span>使用说明</span>
+          <h2 id="usage-guide-title">第一次使用，按这四步操作</h2>
+          <p>建议先完成商品与品牌资料，再依次生成文案和视频，最后进入投流优化查看增长建议。</p>
+        </header>
+        <ol className="home-guide__workflow">
+          {workflow.map((step, index) => (
+            <li key={step.title}>
+              <span>{index + 1}</span>
+              <div><h3>{step.title}</h3><p>{step.detail}</p><Link to={step.to}>{step.action}</Link></div>
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      <section className="home-guide__tip">
+        <div><span>演示建议</span><strong>第一次体验时，先选择一个资料完整且已绑定品牌版本的商品。</strong></div>
+        <p>涉及千问、万象或语音模型的操作会先显示预计调用次数与费用，确认后才会正式执行。</p>
+      </section>
     </div>
   );
-}
-
-function ProductStory({ snapshot }: { snapshot: DashboardSnapshot }) {
-  return (
-    <section className="product-story">
-      <div className="product-story__visual">
-        <div className="product-story__visual-glow" aria-hidden="true" />
-        <img src={portableBlenderVisual} alt="便携搅拌杯概念视觉，不代表真实商品照片" />
-        <span>DEMO CONCEPT VISUAL</span>
-      </div>
-      <div className="product-story__copy">
-        <span>DEMO PRODUCT · PORTABLE BLENDER</span>
-        <h2>{snapshot.product.name.replace(" Demo", "")}</h2>
-        <blockquote>面向高流动生活方式的随身鲜饮工具</blockquote>
-        <p>{snapshot.product.description}</p>
-        <div className="product-story__markets">
-          <small>目标市场</small>
-          {snapshot.product.target_markets.map((market) => <strong key={market}>{market}</strong>)}
-        </div>
-      </div>
-      <div className="product-story__details">
-        <StoryList title="商品卖点" items={snapshot.product.selling_points} />
-        <div className="product-story__promise">
-          <strong>商品理解</strong>
-          <p>从便携设计、充电方式与使用门槛出发，连接用户场景与平台表达。</p>
-          <span>Product insight → Content direction</span>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function ProductScenarios() {
-  const scenarios = [
-    { number: "01", name: "Morning Rush", title: "忙碌早晨", description: "用更短的准备时间，把随身鲜饮带进通勤节奏。", keywords: ["快速准备", "便携", "健康生活"] },
-    { number: "02", name: "Desk Blend", title: "办公室场景", description: "无需大型设备，在办公桌边也能随时制作新鲜饮品。", keywords: ["轻量设备", "随时制作"] },
-    { number: "03", name: "Gym Carry", title: "运动场景", description: "训练结束后随身携带，让补充与移动生活自然衔接。", keywords: ["训练后补充", "移动使用"] },
-  ];
-
-  return (
-    <section className="product-scenarios">
-      <header>
-        <div><span>CROSS-BORDER STORY</span><h2>为什么这个商品适合跨境市场？</h2></div>
-        <p>以下内容为 Demo 营销场景假设，用于展示商品洞察如何转化为内容方向。</p>
-      </header>
-      <div className="product-scenarios__grid">
-        {scenarios.map((scenario) => (
-          <article key={scenario.name}>
-            <span>{scenario.number}</span>
-            <small>{scenario.name}</small>
-            <h3>{scenario.title}</h3>
-            <p>{scenario.description}</p>
-            <div>{scenario.keywords.map((keyword) => <em key={keyword}>{keyword}</em>)}</div>
-          </article>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function MarketingValueStory() {
-  const steps = [
-    { number: "01", label: "商品卖点", detail: "理解产品能力与差异" },
-    { number: "02", label: "用户需求", detail: "映射真实使用场景" },
-    { number: "03", label: "平台内容", detail: "适配不同社媒表达" },
-    { number: "04", label: "投放反馈", detail: "指导下一轮增长" },
-  ];
-
-  return (
-    <section className="marketing-value-story">
-      <header><span>MORE THAN GENERATION</span><h2>AI 理解商品，而不是只生成内容</h2></header>
-      <div>
-        {steps.map((step, index) => (
-          <article key={step.label}>
-            <span>{step.number}</span><strong>{step.label}</strong><p>{step.detail}</p>
-            {index < steps.length - 1 && <i>→</i>}
-          </article>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function BusinessFlow({ snapshot }: { snapshot: DashboardSnapshot }) {
-  const metrics = snapshot.growth.metrics;
-  const steps: Array<{ label: string; summary: string; status: PipelineStatus }> = [
-    { label: "商品洞察", summary: `${snapshot.product.selling_points.length} 个核心卖点，聚焦 ${snapshot.product.target_markets.join(" / ")}`, status: "complete" },
-    { label: "营销策略", summary: snapshot.strategy?.positioning ?? "等待营销策略", status: snapshot.strategy ? "complete" : "missing" },
-    { label: "社媒内容矩阵", summary: snapshot.copy_matrix ? `${snapshot.copy_matrix.copies.length} 个平台差异化表达` : "等待内容矩阵", status: snapshot.copy_matrix ? "complete" : "missing" },
-    { label: "短视频方案", summary: snapshot.video_project ? `${snapshot.video_project.duration_seconds} 秒 · ${snapshot.video_project.scenes.length} 个分镜` : "等待视频方案", status: snapshot.video_project ? "complete" : "missing" },
-    { label: "投放分析", summary: metrics?.roas == null ? "等待投放数据" : `总体 ROAS ${metrics.roas.toFixed(2)}x`, status: metrics ? "complete" : "missing" },
-    { label: "增长反馈", summary: snapshot.growth.recommendation?.recommendations[0] ?? "等待优化建议", status: snapshot.growth.recommendation ? "complete" : snapshot.growth.status },
-  ];
-
-  return (
-    <section className="business-flow">
-      <header><span>THE GROWTH LOOP</span><h2>从商品洞察到增长反馈</h2></header>
-      <div className="business-flow__track">
-        {steps.map((step, index) => (
-          <article className={`business-step business-step--${step.status}`} key={step.label}>
-            <span>{String(index + 1).padStart(2, "0")}</span>
-            <div><small>{step.status === "complete" ? "已完成" : "待补充"}</small><strong>{step.label}</strong><p>{step.summary}</p></div>
-            {index < steps.length - 1 && <i>↓</i>}
-          </article>
-        ))}
-      </div>
-      <div className="feedback-loop">增长数据反馈下一轮策略、文案与视频素材</div>
-    </section>
-  );
-}
-
-function GrowthShowcase({ snapshot }: { snapshot: DashboardSnapshot }) {
-  const growth = snapshot.growth;
-  const metrics = growth.metrics;
-  return (
-    <section className="growth-showcase">
-      <header>
-        <div><span>GROWTH COPILOT</span><h2>让投放数据指导下一轮内容</h2></div>
-        <p>指标由确定性引擎基于 Campaign 总量计算，展示层不重新计算业务指标。</p>
-      </header>
-      {metrics ? <>
-        <div className="growth-showcase__totals">
-          <GrowthMetric label="ROAS" value={formatRatio(metrics.roas)} />
-          <GrowthMetric label="CTR" value={formatPercent(metrics.ctr)} />
-          <GrowthMetric label="CVR" value={formatPercent(metrics.conversion_rate)} />
-          <GrowthMetric label="CPA" value={formatCurrency(metrics.cpa)} />
-        </div>
-        <div className="platform-performance">
-          {growth.platform_metrics.map((item) => <PlatformCard item={item} key={item.platform} />)}
-        </div>
-      </> : <ShowcaseState title="暂无投放指标" detail="Snapshot 中没有可展示的 Campaign 数据。" />}
-      {growth.recommendation && <div className="growth-next-action">
-        <div><small>下一步增长动作</small><strong>{growth.recommendation.recommendations[0]}</strong></div>
-        <p>{growth.recommendation.budget_suggestion}</p>
-      </div>}
-    </section>
-  );
-}
-
-function PlatformCard({ item }: { item: PlatformMetrics }) {
-  return (
-    <article>
-      <header><strong>{item.platform}</strong><span>{formatRatio(item.metrics.roas)} ROAS</span></header>
-      <div><small>CTR</small><strong>{formatPercent(item.metrics.ctr)}</strong></div>
-      <div><small>CVR</small><strong>{formatPercent(item.metrics.conversion_rate)}</strong></div>
-      <div><small>CPA</small><strong>{formatCurrency(item.metrics.cpa)}</strong></div>
-    </article>
-  );
-}
-
-function OutcomeCard({ eyebrow, value, unit, label, accent = false }: { eyebrow: string; value: string; unit: string; label: string; accent?: boolean }) {
-  return <article className={accent ? "outcome-card outcome-card--accent" : "outcome-card"}><span>{eyebrow}</span><div><strong>{value}</strong><em>{unit}</em></div><p>{label}</p></article>;
-}
-
-function GrowthMetric({ label, value }: { label: string; value: string }) {
-  return <div><span>{label}</span><strong>{value}</strong></div>;
-}
-
-function StoryList({ title, items }: { title: string; items: string[] }) {
-  return <div><strong>{title}</strong><ul>{items.map((item) => <li key={item}>{item}</li>)}</ul></div>;
-}
-
-function ShowcaseState({ title, detail, error = false }: { title: string; detail: string; error?: boolean }) {
-  return <section className={`showcase-state${error ? " showcase-state--error" : ""}`}><span>{error ? "!" : "…"}</span><strong>{title}</strong><p>{detail}</p></section>;
-}
-
-function formatPercent(value: number) {
-  return `${(value * 100).toFixed(2)}%`;
-}
-
-function formatCurrency(value: number | null) {
-  return value == null ? "—" : `$${value.toFixed(2)}`;
-}
-
-function formatRatio(value: number | null) {
-  return value == null ? "—" : `${value.toFixed(2)}x`;
 }
