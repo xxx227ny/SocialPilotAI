@@ -7,6 +7,7 @@ import type { PublishArtifactCandidate, PublishTask } from "../../types/social";
 import type { VideoProject } from "../../types/video";
 
 export interface PresentationArtifactSource extends PublishArtifactCandidate {
+  copy_matrix_id: number;
   marketing_strategy_id: number;
 }
 
@@ -19,14 +20,20 @@ export function buildPresentationArtifactSources(
   return artifacts
     .flatMap((artifact) => {
       const project = projectsById.get(artifact.video_project_id);
+      const copyMatrixId = artifact.copy_matrix_id;
       if (
         !project ||
+        copyMatrixId === null ||
         project.product_id !== productId ||
-        project.copy_matrix_id !== artifact.copy_matrix_id
+        project.copy_matrix_id !== copyMatrixId
       ) {
         return [];
       }
-      return [{ ...artifact, marketing_strategy_id: project.marketing_strategy_id }];
+      return [{
+        ...artifact,
+        copy_matrix_id: copyMatrixId,
+        marketing_strategy_id: project.marketing_strategy_id,
+      }];
     })
     .sort((left, right) => left.artifact_id - right.artifact_id);
 }

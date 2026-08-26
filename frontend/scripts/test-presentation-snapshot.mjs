@@ -58,6 +58,12 @@ try {
     ),
     [],
   );
+  assert.deepEqual(
+    state.buildPresentationArtifactSources(1, [
+      { ...artifact, copy_matrix_id: null },
+    ], [project]),
+    [],
+  );
 
   const brief = {
     id: 5,

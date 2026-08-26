@@ -107,7 +107,7 @@ class PublishArtifactCandidateRead(BaseModel):
     artifact_id: int
     render_task_id: int
     video_project_id: int
-    copy_matrix_id: int
+    copy_matrix_id: int | None
     content_type: str
     size_bytes: int
     sha256: str
@@ -388,7 +388,7 @@ class YouTubePreflightRead(BaseModel):
     artifact_id: int
     render_task_id: int
     video_project_id: int
-    copy_matrix_id: int
+    copy_matrix_id: int | None
     privacy_status: Literal["private"]
     synthetic_media: Literal[True]
     notify_subscribers: Literal[False]

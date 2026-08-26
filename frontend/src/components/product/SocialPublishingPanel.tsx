@@ -1253,7 +1253,9 @@ function YouTubePublisher({
           </label>
           {selectedArtifact ? (
             <p className="youtube-publisher__identity">
-              CopyMatrix #{selectedArtifact.copy_matrix_id} · VideoProject #
+              {selectedArtifact.copy_matrix_id === null
+                ? "未关联文案矩阵"
+                : `文案矩阵 #${selectedArtifact.copy_matrix_id}`} · VideoProject #
               {selectedArtifact.video_project_id} · RenderTask #
               {selectedArtifact.render_task_id} · Artifact #
               {selectedArtifact.artifact_id}

@@ -653,6 +653,46 @@ def test_publish_is_idempotent_and_refreshes_same_task(
     assert db_session.scalar(select(func.count()).select_from(PublishTask)) == 1
 
 
+def test_youtube_publish_accepts_artifact_without_copy_matrix(
+    client: TestClient, db_session: Session, tmp_path: Path
+) -> None:
+    provider = FakeYouTubeProvider()
+    settings, storage = configure(tmp_path, provider)
+    product_id, artifact_id = create_publishable_artifact(db_session, storage)
+    artifact = db_session.get(VideoRenderArtifact, artifact_id)
+    assert artifact is not None
+    project = artifact.video_render_task.video_project
+    project.copy_matrix_id = None
+    db_session.commit()
+
+    candidates = client.get(
+        f"/api/v1/products/{product_id}/publishing/youtube/artifacts"
+    )
+    account = connect_account(client, db_session, product_id)
+    payload = metadata(account.id, artifact_id)
+    preflight = client.post(
+        f"/api/v1/products/{product_id}/publishing/youtube/preflight", json=payload
+    )
+    created = client.post(
+        f"/api/v1/products/{product_id}/publishing/youtube",
+        json=publish_request(payload, preflight.json()),
+    )
+
+    assert candidates.status_code == 200
+    assert candidates.json()[0]["copy_matrix_id"] is None
+    assert preflight.status_code == 200
+    assert preflight.json()["copy_matrix_id"] is None
+    assert created.status_code == 201
+    assert (
+        run_youtube_worker(
+            db_session, settings, storage, provider, "youtube-submit-no-copy-matrix"
+        ).status
+        == WorkerRunStatus.SUCCEEDED
+    )
+    assert provider.session_calls == 1
+    assert provider.media_calls == 1
+
+
 def test_uncertain_upload_never_retries(
     client: TestClient, db_session: Session, tmp_path: Path
 ) -> None:

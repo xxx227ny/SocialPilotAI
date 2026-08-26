@@ -43,7 +43,7 @@ export interface PublishArtifactCandidate {
   artifact_id: number;
   render_task_id: number;
   video_project_id: number;
-  copy_matrix_id: number;
+  copy_matrix_id: number | null;
   content_type: string;
   size_bytes: number;
   sha256: string;
@@ -75,7 +75,7 @@ export interface YouTubePreflight {
   artifact_id: number;
   render_task_id: number;
   video_project_id: number;
-  copy_matrix_id: number;
+  copy_matrix_id: number | null;
   privacy_status: "private";
   synthetic_media: true;
   notify_subscribers: false;

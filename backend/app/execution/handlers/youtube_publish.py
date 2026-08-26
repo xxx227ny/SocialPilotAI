@@ -46,7 +46,7 @@ class YouTubePublishSubmitV1Input(BaseModel):
     artifact_id: int = Field(gt=0)
     render_task_id: int = Field(gt=0)
     video_project_id: int = Field(gt=0)
-    copy_matrix_id: int = Field(gt=0)
+    copy_matrix_id: int | None = Field(default=None, gt=0)
     publish_task_id: int = Field(gt=0)
     frozen_input_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     preflight_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
