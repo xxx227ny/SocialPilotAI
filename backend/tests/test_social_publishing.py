@@ -827,15 +827,28 @@ def test_pytest_and_fake_smoke_disable_dotenv_from_code(
 
 def test_provider_profile_selects_legacy_or_token_plan_env(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     monkeypatch.setattr("app.core.config._running_under_pytest", lambda: False)
     monkeypatch.delenv("SOCIALPILOT_DISABLE_DOTENV", raising=False)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env").write_text(
+        "ENABLE_SOCIAL_ACCOUNT_BINDING=true\nQWEN_MODEL=legacy-model\n",
+        encoding="utf-8",
+    )
+    (tmp_path / ".env.token-plan").write_text(
+        "QWEN_MODEL=token-plan-model\n",
+        encoding="utf-8",
+    )
 
     monkeypatch.setenv("SOCIALPILOT_PROVIDER_PROFILE", "legacy")
     assert _local_env_file() == ".env"
 
     monkeypatch.setenv("SOCIALPILOT_PROVIDER_PROFILE", "token-plan")
-    assert _local_env_file() == ".env.token-plan"
+    assert _local_env_file() == (".env", ".env.token-plan")
+    settings = Settings(_env_file=_local_env_file())
+    assert settings.enable_social_account_binding is True
+    assert settings.qwen_model == "token-plan-model"
 
     monkeypatch.setenv("SOCIALPILOT_PROVIDER_PROFILE", "invalid")
     with pytest.raises(ValueError, match="SOCIALPILOT_PROVIDER_PROFILE"):
