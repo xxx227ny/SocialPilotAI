@@ -13,6 +13,10 @@ from app.providers import (
     ProviderQuotaError,
     TextGenerationProvider,
 )
+from app.providers.live_configuration import (
+    get_provider_failure_metadata,
+    public_provider_failure,
+)
 from app.repositories.marketing import MarketingRepository
 from app.repositories.product import ProductRepository
 from app.repositories.strategy import MarketingStrategyRepository
@@ -27,6 +31,17 @@ ASSOCIATION_NOTICE = (
     "MarketingBrief association exists only in this execution response and "
     "is not persisted; MarketingStrategy remains persisted by product_id."
 )
+
+
+def _provider_app_error(message: str, status_code: int, error: Exception) -> AppError:
+    metadata = get_provider_failure_metadata(error)
+    return AppError(
+        message,
+        status_code=status_code,
+        provider_failure=(
+            public_provider_failure(metadata) if metadata is not None else None
+        ),
+    )
 
 
 class MarketingStrategyService:
@@ -69,9 +84,7 @@ class MarketingStrategyService:
         # execution service at module import time.
         from app.services.strategy_preflight import StrategyPreflightService
 
-        preflight = StrategyPreflightService(
-            self.session, self.settings
-        ).run(task_id)
+        preflight = StrategyPreflightService(self.session, self.settings).run(task_id)
         if not preflight.input_ready:
             raise AppError(
                 "Strategy preflight input requirements are not satisfied",
@@ -90,21 +103,19 @@ class MarketingStrategyService:
             association_notice=ASSOCIATION_NOTICE,
         )
 
-    def _generate_and_save(
-        self, product: Product, prompt: str
-    ) -> MarketingStrategy:
+    def _generate_and_save(self, product: Product, prompt: str) -> MarketingStrategy:
         try:
             raw_result = self.provider.generate(prompt)
         except ProviderAuthenticationError as exc:
-            raise AppError("Qwen authentication failed", status_code=502) from exc
+            raise _provider_app_error("Qwen authentication failed", 502, exc) from exc
         except ProviderConnectionError as exc:
-            raise AppError("Qwen service is unavailable", status_code=503) from exc
+            raise _provider_app_error("Qwen service is unavailable", 503, exc) from exc
         except ProviderQuotaError as exc:
-            raise AppError(
-                "Qwen quota or rate limit reached", status_code=429
+            raise _provider_app_error(
+                "Qwen quota or rate limit reached", 429, exc
             ) from exc
         except ProviderModelError as exc:
-            raise AppError("Qwen generation failed", status_code=502) from exc
+            raise _provider_app_error("Qwen generation failed", 502, exc) from exc
 
         try:
             parsed_result = json.loads(raw_result)
@@ -155,9 +166,7 @@ class MarketingStrategyService:
         target_market_snapshot = (
             market_match.group(1).split(",") if market_match is not None else []
         )
-        audience = TARGET_MARKET_AUDIENCE_PATTERN.sub(
-            "", task.audience or ""
-        ).strip()
+        audience = TARGET_MARKET_AUDIENCE_PATTERN.sub("", task.audience or "").strip()
         return {
             "product": cls.prepare_product_input(product),
             "marketing_brief": {
@@ -207,9 +216,7 @@ class MarketingStrategyQueryService:
             raise AppError("Marketing strategy not found", status_code=404)
         return strategy
 
-    def get_exact_for_task(
-        self, task_id: int, strategy_id: int
-    ) -> MarketingStrategy:
+    def get_exact_for_task(self, task_id: int, strategy_id: int) -> MarketingStrategy:
         task = self.marketing_repository.get(task_id)
         if task is None:
             raise AppError("Marketing task not found", status_code=404)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Protocol
 from uuid import UUID
 
@@ -100,12 +101,50 @@ class QwenCopyMatrixGenerateV1Handler:
                 result = CopyGenerationService(
                     session, guarded_provider, self.settings
                 ).generate_for_marketing_task(brief.id, strategy.id)
-            except AppError:
-                if context.provider_state()[1]:
-                    raise
+            except AppError as error:
+                if error.provider_failure is not None:
+                    return _provider_failure_result(error.provider_failure)
+                if context.provider_state()[0] > 0:
+                    return HandlerResult.failed(
+                        "COPY_INVALID_RESPONSE",
+                        provider_submission_state="RESPONSE_RECEIVED",
+                    )
                 return HandlerResult.failed("COPY_EXECUTION_REJECTED")
             return HandlerResult.succeeded(
                 provider_name="qwen",
                 result_entity_type="copy_matrix",
                 result_entity_id=result.copy_matrix.id,
             )
+
+
+def _provider_failure_result(failure: object) -> HandlerResult:
+    phase = str(getattr(failure, "phase", "response"))
+    http_status = getattr(failure, "provider_http_status", None)
+    safe_error_code = str(getattr(failure, "safe_error_code", "provider_error"))
+    request_id_digest = getattr(failure, "request_id_digest", None)
+    uncertain = bool(getattr(failure, "uncertain", False))
+    potentially_billable = bool(getattr(failure, "potentially_billable", False))
+    details = {
+        "phase": phase,
+        "http_status": http_status,
+        "request_id_digest": request_id_digest,
+        "potentially_billable": potentially_billable,
+    }
+    normalized = re.sub(r"[^A-Z0-9_]", "_", safe_error_code.upper())
+    code = f"COPY_{normalized}"[:100]
+    if uncertain:
+        return HandlerResult.submit_unknown(
+            code,
+            safe_error_details=details,
+            provider_name="qwen",
+        )
+    state = (
+        "NOT_SUBMITTED"
+        if phase == "connect" and not potentially_billable
+        else "EXPLICIT_FAILURE"
+    )
+    return HandlerResult.failed(
+        code,
+        safe_error_details=details,
+        provider_submission_state=state,
+    )

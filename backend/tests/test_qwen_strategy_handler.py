@@ -22,6 +22,10 @@ from app.execution.registry import ExecutionHandlerRegistry
 from app.execution.worker import ExecutionWorker, WorkerRunStatus
 from app.models import ExecutionJob, MarketingBrief, MarketingStrategy, Product
 from app.providers import TextGenerationProvider
+from app.providers.live_configuration import (
+    provider_error_from_metadata,
+    provider_failure_metadata,
+)
 from app.schemas.execution import ExecutionJobCreate, ExecutionJobRetryRequest
 from app.services.execution_queue_service import ExecutionQueueService
 from app.services.strategy_preflight import StrategyPreflightService
@@ -128,9 +132,7 @@ def create_job(
                 source_type="marketing_brief",
                 source_id=brief_id,
                 input_digest=hashlib.sha256(
-                    json.dumps(
-                        payload.model_dump(), sort_keys=True
-                    ).encode()
+                    json.dumps(payload.model_dump(), sort_keys=True).encode()
                 ).hexdigest(),
                 idempotency_key=f"qwen-strategy-handler-{suffix}",
                 input_payload=payload.model_dump(),
@@ -285,6 +287,45 @@ def test_changed_source_identity_or_digest_fails_before_provider(
         assert retried.status == "QUEUED"
 
 
+def test_classified_quota_failure_is_certain_and_retryable(
+    strategy_sessions: sessionmaker[Session],
+) -> None:
+    product_id, brief_id, digest = create_sources(strategy_sessions)
+    error = provider_error_from_metadata(
+        provider_failure_metadata(
+            provider="qwen",
+            phase="response",
+            http_status=429,
+            uncertain=False,
+            potentially_billable=False,
+        )
+    )
+    provider = FakeQwenProvider(error=error)
+    job_id = create_job(
+        strategy_sessions,
+        product_id=product_id,
+        brief_id=brief_id,
+        digest=digest,
+        suffix="quota",
+    )
+
+    result = make_worker(
+        strategy_sessions, provider, "strategy-worker-quota"
+    ).run_once()
+
+    assert result.status == WorkerRunStatus.FAILED
+    assert provider.calls == 1
+    job = read_job(strategy_sessions, job_id)
+    assert job.uncertain is False
+    assert job.safe_error_code == "STRATEGY_RATE_OR_QUOTA_LIMITED"
+    assert job.safe_error_details["http_status"] == 429
+    with strategy_sessions() as session:
+        retried = ExecutionQueueService(session).retry(
+            job_id, ExecutionJobRetryRequest(retry_confirmed=True)
+        )
+        assert retried.status == "QUEUED"
+
+
 def test_provider_exception_is_submit_unknown_and_never_retryable(
     strategy_sessions: sessionmaker[Session],
 ) -> None:
@@ -330,9 +371,7 @@ def test_payload_error_and_api_shape_are_secret_free(
         preflight_product_id=product_id + 1,
     )
 
-    make_worker(
-        strategy_sessions, provider, "strategy-worker-secret-safe"
-    ).run_once()
+    make_worker(strategy_sessions, provider, "strategy-worker-secret-safe").run_once()
     job = read_job(strategy_sessions, job_id)
     serialized = json.dumps(
         {

@@ -13,6 +13,10 @@ from app.providers import (
     ProviderQuotaError,
     TextGenerationProvider,
 )
+from app.providers.live_configuration import (
+    get_provider_failure_metadata,
+    public_provider_failure,
+)
 from app.repositories.copy import CopyMatrixRepository
 from app.repositories.marketing import MarketingRepository
 from app.repositories.product import ProductRepository
@@ -30,6 +34,17 @@ COPY_EXECUTION_ASSOCIATION_NOTICE = (
     "MarketingBrief association exists only in this execution response because "
     "CopyMatrix has no MarketingBrief foreign key."
 )
+
+
+def _provider_app_error(message: str, status_code: int, error: Exception) -> AppError:
+    metadata = get_provider_failure_metadata(error)
+    return AppError(
+        message,
+        status_code=status_code,
+        provider_failure=(
+            public_provider_failure(metadata) if metadata is not None else None
+        ),
+    )
 
 
 class CopyGenerationService:
@@ -62,13 +77,15 @@ class CopyGenerationService:
         try:
             raw_result = self.provider.generate(self._build_prompt(product, strategy))
         except ProviderAuthenticationError as exc:
-            raise AppError("Qwen authentication failed", status_code=502) from exc
+            raise _provider_app_error("Qwen authentication failed", 502, exc) from exc
         except ProviderConnectionError as exc:
-            raise AppError("Qwen service is unavailable", status_code=503) from exc
+            raise _provider_app_error("Qwen service is unavailable", 503, exc) from exc
         except ProviderQuotaError as exc:
-            raise AppError("Qwen quota or rate limit reached", status_code=429) from exc
+            raise _provider_app_error(
+                "Qwen quota or rate limit reached", 429, exc
+            ) from exc
         except ProviderModelError as exc:
-            raise AppError("Qwen generation failed", status_code=502) from exc
+            raise _provider_app_error("Qwen generation failed", 502, exc) from exc
 
         try:
             parsed_result = json.loads(raw_result)
@@ -170,13 +187,15 @@ class CopyGenerationService:
         try:
             return self.provider.generate(prompt)
         except ProviderAuthenticationError as exc:
-            raise AppError("Qwen authentication failed", status_code=502) from exc
+            raise _provider_app_error("Qwen authentication failed", 502, exc) from exc
         except ProviderConnectionError as exc:
-            raise AppError("Qwen service is unavailable", status_code=503) from exc
+            raise _provider_app_error("Qwen service is unavailable", 503, exc) from exc
         except ProviderQuotaError as exc:
-            raise AppError("Qwen quota or rate limit reached", status_code=429) from exc
+            raise _provider_app_error(
+                "Qwen quota or rate limit reached", 429, exc
+            ) from exc
         except ProviderModelError as exc:
-            raise AppError("Qwen generation failed", status_code=502) from exc
+            raise _provider_app_error("Qwen generation failed", 502, exc) from exc
 
     def _require_execution_enabled(self) -> None:
         if not self.settings.enable_copy_execution:

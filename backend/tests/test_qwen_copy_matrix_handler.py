@@ -28,6 +28,10 @@ from app.models import (
     Product,
 )
 from app.providers import TextGenerationProvider
+from app.providers.live_configuration import (
+    provider_error_from_metadata,
+    provider_failure_metadata,
+)
 from app.schemas.execution import ExecutionJobCreate, ExecutionJobRetryRequest
 from app.services.copy_preflight import CopyPreflightService
 from app.services.execution_queue_service import ExecutionQueueService
@@ -294,6 +298,44 @@ def test_changed_source_fails_before_provider_and_can_retry(
     with copy_sessions() as session:
         job = ExecutionQueueService(session).get(job_id)
         assert job.uncertain is False
+        retried = ExecutionQueueService(session).retry(
+            job_id, ExecutionJobRetryRequest(retry_confirmed=True)
+        )
+        assert retried.status == "QUEUED"
+
+
+def test_classified_quota_failure_is_certain_and_retryable(
+    copy_sessions: sessionmaker[Session],
+) -> None:
+    product_id, brief_id, strategy_id, digest = create_sources(copy_sessions)
+    error = provider_error_from_metadata(
+        provider_failure_metadata(
+            provider="qwen",
+            phase="response",
+            http_status=429,
+            uncertain=False,
+            potentially_billable=False,
+        )
+    )
+    provider = FakeQwenProvider(error=error)
+    job_id = create_job(
+        copy_sessions,
+        product_id=product_id,
+        brief_id=brief_id,
+        strategy_id=strategy_id,
+        digest=digest,
+        suffix="quota",
+    )
+
+    result = make_worker(copy_sessions, provider, "copy-worker-quota").run_once()
+
+    assert result.status == WorkerRunStatus.FAILED
+    assert provider.calls == 1
+    with copy_sessions() as session:
+        job = ExecutionQueueService(session).get(job_id)
+        assert job.uncertain is False
+        assert job.safe_error_code == "COPY_RATE_OR_QUOTA_LIMITED"
+        assert job.safe_error_details["http_status"] == 429
         retried = ExecutionQueueService(session).retry(
             job_id, ExecutionJobRetryRequest(retry_confirmed=True)
         )
