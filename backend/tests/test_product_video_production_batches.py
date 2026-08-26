@@ -749,6 +749,63 @@ def test_advance_enqueues_wanx_jobs_once_and_recovers_exact_assets(
     assert "manual-rate-limit:1" in manual_retried_job.idempotency_key
     assert db_session.query(ExecutionJob).count() == 22
 
+    manual_retried_job.status = "SUBMIT_UNKNOWN"
+    manual_retried_job.safe_error_code = "QWEN_TTS_RESULT_UNKNOWN"
+    manual_retried_job.uncertain = True
+    manual_retried_job.completed_at = manual_retried_job.created_at
+    terminal_item = db_session.get(ProductVideoProductionItem, retry_item["id"])
+    terminal_batch = db_session.get(ProductVideoProductionBatch, batch_id)
+    terminal_item.status = "FAILED"
+    terminal_item.safe_error_code = "PRODUCTION_VOICEOVER_SUBMIT_UNKNOWN"
+    terminal_item.completed_at = manual_retried_job.completed_at
+    terminal_batch.status = "PARTIAL_FAILED"
+    terminal_batch.completed_at = manual_retried_job.completed_at
+    db_session.commit()
+
+    unchanged = client.post(
+        f"/api/v1/products/{product.id}/real-product-video/"
+        f"production-batches/{batch_id}/resume"
+    ).json()
+    unchanged_item = next(
+        item for item in unchanged["items"] if item["id"] == retry_item["id"]
+    )
+    assert unchanged_item["status"] == "FAILED"
+    assert unchanged_item["stage_state_json"]["voiceover_job_id"] == (
+        manual_retried_job.id
+    )
+
+    confirmed = client.post(
+        f"/api/v1/products/{product.id}/real-product-video/"
+        f"production-batches/{batch_id}/resume",
+        json={"confirm_uncertain_voiceover_replacement": True},
+    ).json()
+    confirmed_item = next(
+        item for item in confirmed["items"] if item["id"] == retry_item["id"]
+    )
+    assert confirmed_item["status"] == "RUNNING"
+    assert "voiceover_job_id" not in confirmed_item["stage_state_json"]
+    assert (
+        confirmed_item["stage_state_json"]["voiceover_uncertain_replacement_count"] == 1
+    )
+    assert confirmed_item["stage_state_json"]["voiceover_replaced_unknown_job_ids"] == [
+        manual_retried_job.id
+    ]
+    assert manual_retried_job.status == "SUBMIT_UNKNOWN"
+    assert manual_retried_job.uncertain is True
+
+    replacement_submitted = client.post(endpoint)
+    assert replacement_submitted.status_code == 200
+    voiceover_items = replacement_submitted.json()["items"]
+    replacement_item = next(
+        item for item in voiceover_items if item["id"] == retry_item["id"]
+    )
+    replacement_job = db_session.get(
+        ExecutionJob, replacement_item["stage_state_json"]["voiceover_job_id"]
+    )
+    assert replacement_job.id != manual_retried_job.id
+    assert "uncertain-replacement:1" in replacement_job.idempotency_key
+    assert db_session.query(ExecutionJob).count() == 23
+
     for item in voiceover_items:
         job = db_session.get(ExecutionJob, item["stage_state_json"]["voiceover_job_id"])
         voice_content = f"voiceover-{item['id']}".encode()
@@ -784,7 +841,7 @@ def test_advance_enqueues_wanx_jobs_once_and_recovers_exact_assets(
         for item in voiceover_recovered.json()["items"]
     )
     assert db_session.query(VideoCompositionAudioArtifact).count() == 3
-    assert db_session.query(ExecutionJob).count() == 22
+    assert db_session.query(ExecutionJob).count() == 23
 
     enhancement_submitted = client.post(endpoint)
     assert enhancement_submitted.status_code == 200
@@ -815,12 +872,12 @@ def test_advance_enqueues_wanx_jobs_once_and_recovers_exact_assets(
         == [expected_subtitle, expected_subtitle]
         for enhancement in db_session.query(VideoCompositionEnhancement).all()
     )
-    assert db_session.query(ExecutionJob).count() == 25
+    assert db_session.query(ExecutionJob).count() == 26
 
     repeated_enhancement = client.post(endpoint)
     assert repeated_enhancement.status_code == 200
     assert db_session.query(VideoCompositionEnhancement).count() == 3
-    assert db_session.query(ExecutionJob).count() == 25
+    assert db_session.query(ExecutionJob).count() == 26
 
     for item in enhancement_items:
         job = db_session.get(
@@ -896,7 +953,7 @@ def test_advance_enqueues_wanx_jobs_once_and_recovers_exact_assets(
     assert {item["stage"] for item in completed_body["items"]} == {"COMPLETE"}
     assert all(item["final_video_artifact_id"] for item in completed_body["items"])
     assert all(item["subtitle_artifact_id"] for item in completed_body["items"])
-    assert db_session.query(ExecutionJob).count() == 25
+    assert db_session.query(ExecutionJob).count() == 26
 
     downloaded = client.get(
         f"/api/v1/products/{product.id}/real-product-video/"

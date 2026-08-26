@@ -93,8 +93,18 @@ export const pauseProductVideoProductionBatch = (
 export const resumeProductVideoProductionBatch = (
   productId: number,
   batchId: number,
+  confirmUncertainVoiceoverReplacement = false,
   signal?: AbortSignal,
-) => controlProductVideoProductionBatch(productId, batchId, "resume", signal);
+) =>
+  apiClient
+    .post<ProductVideoProductionResult>(
+      `/products/${productId}/real-product-video/production-batches/${batchId}/resume`,
+      confirmUncertainVoiceoverReplacement
+        ? { confirm_uncertain_voiceover_replacement: true }
+        : undefined,
+      { signal },
+    )
+    .then((response) => response.data);
 
 export const cancelProductVideoProductionBatch = (
   productId: number,

@@ -91,6 +91,7 @@ export function productionBatchRecoverable(
           "PRODUCTION_HAPPYHORSE_REFRESH_FAILED",
           "PRODUCTION_HAPPYHORSE_REFRESH_RETRYABLE",
           "PRODUCTION_VOICEOVER_FAILED",
+          "PRODUCTION_VOICEOVER_SUBMIT_UNKNOWN",
         ].includes(item.safe_error_code ?? ""),
     )
   );

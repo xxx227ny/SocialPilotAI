@@ -923,7 +923,21 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
 
   async function continueProductionBatch() {
     if (!production) return;
+    const hasUncertainVoiceover = production.items.some(
+      (item) =>
+        item.status === "FAILED" &&
+        item.safe_error_code === "PRODUCTION_VOICEOVER_SUBMIT_UNKNOWN",
+    );
     if (
+      hasUncertainVoiceover &&
+      !window.confirm(
+        "上一次千问配音结果不确定。确认使用当前通道为失败平台创建一次替换配音？原任务记录会保留，本次可能产生一次重复费用。",
+      )
+    ) {
+      return;
+    }
+    if (
+      !hasUncertainVoiceover &&
       production.batch.status === "PARTIAL_FAILED" &&
       production.items.some(
         (item) =>
@@ -943,6 +957,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
             ? await resumeProductVideoProductionBatch(
               product.id,
               production.batch.id,
+              hasUncertainVoiceover,
               active.signal,
             )
           : production;

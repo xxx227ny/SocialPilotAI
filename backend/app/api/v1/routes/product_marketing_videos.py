@@ -19,6 +19,7 @@ from app.schemas.product_marketing_video import (
     ProductVideoPrepareRequest,
     ProductVideoProductionCreateRead,
     ProductVideoProductionCreateRequest,
+    ProductVideoProductionResumeRequest,
     ProductVideoSceneRead,
     ProductVideoSourceRead,
     ThreePlatformVideoPreflightRead,
@@ -186,9 +187,19 @@ def pause_product_video_production_batch(
     response_model=ProductVideoProductionCreateRead,
 )
 def resume_product_video_production_batch(
-    product_id: int, batch_id: int, db: Db, settings: SettingsDep
+    product_id: int,
+    batch_id: int,
+    db: Db,
+    settings: SettingsDep,
+    data: ProductVideoProductionResumeRequest | None = None,
 ) -> ProductVideoProductionCreateRead:
-    return ProductVideoProductionBatchService(db, settings).resume(product_id, batch_id)
+    return ProductVideoProductionBatchService(db, settings).resume(
+        product_id,
+        batch_id,
+        confirm_uncertain_voiceover_replacement=bool(
+            data and data.confirm_uncertain_voiceover_replacement
+        ),
+    )
 
 
 @router.post(

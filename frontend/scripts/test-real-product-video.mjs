@@ -150,6 +150,19 @@ try {
         { status: "SUCCEEDED" },
         {
           status: "FAILED",
+          safe_error_code: "PRODUCTION_VOICEOVER_SUBMIT_UNKNOWN",
+        },
+      ],
+    ),
+    true,
+  );
+  assert.equal(
+    state.productionBatchRecoverable(
+      { status: "PARTIAL_FAILED" },
+      [
+        { status: "SUCCEEDED" },
+        {
+          status: "FAILED",
           safe_error_code: "PRODUCTION_VOICEOVER_FAILED",
         },
       ],
@@ -232,6 +245,7 @@ try {
     "selectThreePlatformSources",
     "buildThreePlatformPreflightPayload",
     "确认只重试失败平台的千问配音",
+    "确认使用当前通道为失败平台创建一次替换配音",
     "preflightThreePlatformVideo",
     "检查三平台调用与费用",
     "我已确认上述调用次数",
@@ -288,6 +302,9 @@ try {
   assert.ok(enhancementApi.includes("apiContentUrl("));
   assert.ok(productVideoApi.includes("apiContentUrl("));
   assert.ok(productVideoApi.includes("/download"));
+  assert.ok(
+    productVideoApi.includes("confirm_uncertain_voiceover_replacement"),
+  );
   assert.ok(!enhancementApi.includes("`/api/v1/video-composition"));
   assert.ok(!productVideoApi.includes("`/api/v1/video-render-artifacts"));
   safety += 5;

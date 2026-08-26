@@ -200,6 +200,10 @@ class ProductVideoProductionCreateRequest(ThreePlatformVideoPreflightRequest):
     cost_confirmed: Literal[True]
 
 
+class ProductVideoProductionResumeRequest(BaseModel):
+    confirm_uncertain_voiceover_replacement: Literal[True] | None = None
+
+
 class ProductVideoProductionBatchRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

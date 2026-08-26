@@ -91,6 +91,7 @@ MAX_HAPPYHORSE_REFRESHES = 90
 MAX_VOICEOVER_EXPLICIT_RETRIES = 1
 MAX_VOICEOVER_CONFIG_RETRIES = 1
 MAX_VOICEOVER_MANUAL_RATE_LIMIT_RETRIES = 3
+MAX_VOICEOVER_UNCERTAIN_REPLACEMENTS = 1
 
 
 class ProductVideoProductionBatchService:
@@ -223,7 +224,11 @@ class ProductVideoProductionBatchService:
         return self._create_read(self._required(product_id, batch_id), reused=True)
 
     def resume(
-        self, product_id: int, batch_id: int
+        self,
+        product_id: int,
+        batch_id: int,
+        *,
+        confirm_uncertain_voiceover_replacement: bool = False,
     ) -> ProductVideoProductionCreateRead:
         batch = self._required(product_id, batch_id)
         if batch.status == "PAUSED":
@@ -252,6 +257,21 @@ class ProductVideoProductionBatchService:
                     and (
                         self._prepare_voice_config_recovery(item, voiceover_job)
                         or self._prepare_voice_rate_limit_recovery(item, voiceover_job)
+                    )
+                ):
+                    item.status = "RUNNING"
+                    item.safe_error_code = None
+                    item.completed_at = None
+                    recovered = True
+                    continue
+                if (
+                    confirm_uncertain_voiceover_replacement
+                    and item.status == "FAILED"
+                    and item.safe_error_code == "PRODUCTION_VOICEOVER_SUBMIT_UNKNOWN"
+                    and item.stage == "GENERATING_VOICEOVER"
+                    and voiceover_job is not None
+                    and self._prepare_uncertain_voiceover_replacement(
+                        item, voiceover_job
                     )
                 ):
                     item.status = "RUNNING"
@@ -917,6 +937,17 @@ class ProductVideoProductionBatchService:
             retry_suffix += f":voice-config:{config_retry_count}"
         if manual_rate_limit_retry_count:
             retry_suffix += f":manual-rate-limit:{manual_rate_limit_retry_count}"
+        uncertain_replacement_count = item.stage_state_json.get(
+            "voiceover_uncertain_replacement_count", 0
+        )
+        if (
+            not isinstance(uncertain_replacement_count, int)
+            or uncertain_replacement_count < 0
+        ):
+            self._fail_item(item, "PRODUCTION_VOICEOVER_RETRY_STATE_INVALID")
+            return
+        if uncertain_replacement_count:
+            retry_suffix += f":uncertain-replacement:{uncertain_replacement_count}"
         submitted = VoiceoverGenerationService(self.session, self.settings).enqueue(
             batch.product_id,
             VoiceoverSubmitRequest(
@@ -1034,6 +1065,38 @@ class ProductVideoProductionBatchService:
         state = dict(item.stage_state_json)
         state.pop("voiceover_job_id", None)
         state["voiceover_manual_rate_limit_retry_count"] = retry_count + 1
+        item.stage_state_json = state
+        return True
+
+    @staticmethod
+    def _prepare_uncertain_voiceover_replacement(
+        item: ProductVideoProductionItem,
+        job: ExecutionJob,
+    ) -> bool:
+        replacement_count = item.stage_state_json.get(
+            "voiceover_uncertain_replacement_count", 0
+        )
+        if not (
+            isinstance(replacement_count, int)
+            and 0 <= replacement_count < MAX_VOICEOVER_UNCERTAIN_REPLACEMENTS
+            and job.status == "SUBMIT_UNKNOWN"
+            and job.uncertain
+            and job.result_entity_type is None
+            and job.result_entity_id is None
+        ):
+            return False
+        replaced_ids = item.stage_state_json.get(
+            "voiceover_replaced_unknown_job_ids", []
+        )
+        if not (
+            isinstance(replaced_ids, list)
+            and all(isinstance(value, int) and value > 0 for value in replaced_ids)
+        ):
+            return False
+        state = dict(item.stage_state_json)
+        state.pop("voiceover_job_id", None)
+        state["voiceover_uncertain_replacement_count"] = replacement_count + 1
+        state["voiceover_replaced_unknown_job_ids"] = [*replaced_ids, job.id]
         item.stage_state_json = state
         return True
 
