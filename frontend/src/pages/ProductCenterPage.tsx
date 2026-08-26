@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { getApiErrorMessage } from "../api/client";
-import { getProduct, listProducts } from "../api/products";
+import {
+  getProduct,
+  listProducts,
+  productImageContentUrl,
+  uploadProductImage,
+} from "../api/products";
 import { BrandKitOnboardingPanel } from "../components/product/BrandKitOnboardingPanel";
 import { ProductCreateForm } from "../components/product/ProductCreateForm";
 import { usePresentationMode } from "../context/PresentationModeContext";
@@ -243,6 +248,8 @@ export function ProductCenterPage() {
                 <ProductDetail
                   key={selectedProduct.id}
                   product={selectedProduct}
+                  allowUpload={!isPresentation}
+                  onProductUpdated={handleProductUpdated}
                 />
               ) : null}
             </div>
@@ -282,9 +289,62 @@ function ProductState({
 
 function ProductDetail({
   product,
+  allowUpload,
+  onProductUpdated,
 }: {
   product: Product;
+  allowUpload: boolean;
+  onProductUpdated: (product: Product) => void;
 }) {
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadMessage, setUploadMessage] = useState("");
+  const [uploadError, setUploadError] = useState("");
+  const uploadRequestId = useRef(0);
+  const uploadController = useRef<AbortController | null>(null);
+
+  useEffect(
+    () => () => {
+      uploadRequestId.current += 1;
+      uploadController.current?.abort();
+    },
+    [],
+  );
+
+  async function handleUpload() {
+    if (!selectedFile || uploading) return;
+    const requestId = ++uploadRequestId.current;
+    uploadController.current?.abort();
+    const controller = new AbortController();
+    uploadController.current = controller;
+    setUploading(true);
+    setUploadMessage("");
+    setUploadError("");
+    try {
+      const uploaded = await uploadProductImage(
+        product.id,
+        selectedFile,
+        controller.signal,
+      );
+      const refreshed = await getProduct(product.id, controller.signal);
+      if (requestId !== uploadRequestId.current) return;
+      onProductUpdated(refreshed);
+      setSelectedFile(null);
+      setUploadMessage(
+        uploaded.reused
+          ? `图片内容已存在，已复用素材 #${uploaded.id}。`
+          : `真实商品图片已上传为素材 #${uploaded.id}。`,
+      );
+    } catch (error) {
+      if (controller.signal.aborted || requestId !== uploadRequestId.current) return;
+      setUploadError(
+        getApiErrorMessage(error, "真实商品图片上传失败，请检查格式后重试。"),
+      );
+    } finally {
+      if (requestId === uploadRequestId.current) setUploading(false);
+    }
+  }
+
   return (
     <article className="product-detail-card">
       <header>
@@ -327,17 +387,84 @@ function ProductDetail({
         </section>
       </div>
 
+      {allowUpload && (
+        <section className="product-asset-upload">
+          <div>
+            <h4>上传真实商品素材</h4>
+            <p>
+              请选择清晰的商品实拍图或官方商品图。视频工厂会把你选中的图片作为所有分镜的主参考图。
+            </p>
+          </div>
+          <label className="product-asset-upload__picker">
+            <span>选择 JPG、PNG 或 WebP 图片</span>
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              disabled={uploading}
+              onChange={(event) => {
+                setSelectedFile(event.target.files?.[0] ?? null);
+                setUploadMessage("");
+                setUploadError("");
+              }}
+            />
+          </label>
+          {selectedFile && (
+            <p className="product-asset-upload__selection">
+              已选择：{selectedFile.name} · {formatFileSize(selectedFile.size)}
+            </p>
+          )}
+          <button
+            type="button"
+            disabled={!selectedFile || uploading}
+            onClick={() => void handleUpload()}
+          >
+            {uploading ? "上传中…" : "上传并加入商品素材"}
+          </button>
+          {uploadMessage && <p className="product-asset-upload__success">{uploadMessage}</p>}
+          {uploadError && <p className="product-asset-upload__error">{uploadError}</p>}
+        </section>
+      )}
+
       <section className="product-detail-card__assets">
         <h4>素材摘要</h4>
         <strong>{product.assets.length} 个素材</strong>
         {product.assets.length > 0 && (
-          <ul>
+          <div className="product-asset-grid">
             {product.assets.map((asset) => (
-              <li key={asset.id}>
-                {asset.file_name} · {asset.file_type.toUpperCase()}
-              </li>
+              <article key={asset.id}>
+                {asset.sha256 && asset.content_type?.startsWith("image/") ? (
+                  <img
+                    src={productImageContentUrl(product.id, asset.id)}
+                    alt={`${product.name} 素材 ${asset.id}`}
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="product-asset-grid__placeholder">无预览</div>
+                )}
+                <div>
+                  <strong>素材 #{asset.id}</strong>
+                  <span
+                    className={
+                      asset.file_name === "wanx-product.png"
+                        ? "product-asset-origin product-asset-origin--ai"
+                        : "product-asset-origin"
+                    }
+                  >
+                    {asset.file_name === "wanx-product.png"
+                      ? "万象生成素材"
+                      : "商品参考素材"}
+                  </span>
+                  <p>{asset.file_name}</p>
+                  <small>
+                    {asset.width && asset.height
+                      ? `${asset.width} × ${asset.height} · `
+                      : ""}
+                    {asset.size_bytes ? formatFileSize(asset.size_bytes) : asset.file_type.toUpperCase()}
+                  </small>
+                </div>
+              </article>
             ))}
-          </ul>
+          </div>
         )}
       </section>
 
@@ -346,6 +473,12 @@ function ProductDetail({
       </p>
     </article>
   );
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function formatDateTime(value: string) {

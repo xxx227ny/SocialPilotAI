@@ -291,6 +291,9 @@ try {
   assert.ok(page.includes("<RealProductVideoPanel product={product}"));
   assert.ok(page.includes("一键商品视频"));
   assert.ok(!productCenter.includes("RealProductVideoPanel"));
+  assert.ok(productCenter.includes("uploadProductImage"));
+  assert.ok(productCenter.includes("上传真实商品素材"));
+  assert.ok(productCenter.includes("productImageContentUrl"));
   assert.ok(feature.includes("VITE_ENABLE_REAL_PRODUCT_VIDEO"));
   assert.ok(!panel.toLowerCase().includes("latest"));
   assert.ok(!panel.includes("uploadProductImage"));

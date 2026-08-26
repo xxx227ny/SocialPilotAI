@@ -4,7 +4,7 @@ import type {
   ProductUpdatePayload,
 } from "../types/product";
 import type { UploadedProductImage } from "../types/productMarketingVideo";
-import { apiClient } from "./client";
+import { apiClient, apiContentUrl } from "./client";
 
 export async function listProducts(): Promise<Product[]> {
   const response = await apiClient.get<Product[]>("/products");
@@ -49,4 +49,11 @@ export async function uploadProductImage(
     { signal },
   );
   return response.data;
+}
+
+export function productImageContentUrl(
+  productId: number,
+  assetId: number,
+): string {
+  return apiContentUrl(`/products/${productId}/image-assets/${assetId}/content`);
 }
