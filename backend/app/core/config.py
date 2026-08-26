@@ -175,12 +175,23 @@ def get_settings() -> Settings:
 def _local_env_file() -> str | None:
     """Load local runtime configuration, but never during tests or fake smoke."""
     disabled = os.getenv("SOCIALPILOT_DISABLE_DOTENV", "").lower()
-    if disabled in {"1", "true", "yes"} or "pytest" in sys.modules:
+    if disabled in {"1", "true", "yes"} or _running_under_pytest():
         return None
+    profile = os.getenv("SOCIALPILOT_PROVIDER_PROFILE", "auto").strip().lower()
+    if profile not in {"auto", "legacy", "token-plan"}:
+        raise ValueError("SOCIALPILOT_PROVIDER_PROFILE is invalid")
+    if profile == "legacy":
+        return ".env"
     token_plan = Path(".env.token-plan")
+    if profile == "token-plan":
+        return str(token_plan)
     if token_plan.is_file():
         return str(token_plan)
     return ".env"
+
+
+def _running_under_pytest() -> bool:
+    return "pytest" in sys.modules
 
 
 settings = get_settings()

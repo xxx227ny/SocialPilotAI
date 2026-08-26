@@ -825,6 +825,23 @@ def test_pytest_and_fake_smoke_disable_dotenv_from_code(
     assert _local_env_file() is None
 
 
+def test_provider_profile_selects_legacy_or_token_plan_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("app.core.config._running_under_pytest", lambda: False)
+    monkeypatch.delenv("SOCIALPILOT_DISABLE_DOTENV", raising=False)
+
+    monkeypatch.setenv("SOCIALPILOT_PROVIDER_PROFILE", "legacy")
+    assert _local_env_file() == ".env"
+
+    monkeypatch.setenv("SOCIALPILOT_PROVIDER_PROFILE", "token-plan")
+    assert _local_env_file() == ".env.token-plan"
+
+    monkeypatch.setenv("SOCIALPILOT_PROVIDER_PROFILE", "invalid")
+    with pytest.raises(ValueError, match="SOCIALPILOT_PROVIDER_PROFILE"):
+        _local_env_file()
+
+
 def test_expired_token_refreshes_before_upload(
     client: TestClient, db_session: Session, tmp_path: Path
 ) -> None:

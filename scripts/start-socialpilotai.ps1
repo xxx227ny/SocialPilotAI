@@ -3,6 +3,8 @@ param(
     [string]$RuntimeRoot = (Join-Path $env:LOCALAPPDATA "SocialPilotAI"),
     [switch]$NoBrowser,
     [switch]$DisableDotenv,
+    [ValidateSet("auto", "token-plan", "legacy")]
+    [string]$ProviderProfile = "token-plan",
     [ValidateRange(10, 300)]
     [int]$StartupTimeoutSeconds = 90
 )
@@ -379,6 +381,7 @@ $sqlitePath = $databasePath.Replace("\", "/")
 # The standalone process loads backend/.env internally. Explicit process values
 # select the persistent runtime and keep startup free of development seed data.
 $env:SOCIALPILOT_DISABLE_DOTENV = if ($DisableDotenv) { "1" } else { "0" }
+$env:SOCIALPILOT_PROVIDER_PROFILE = $ProviderProfile
 $env:APP_ENVIRONMENT = "standalone"
 $env:DATABASE_URL = "sqlite:///$sqlitePath"
 $env:VIDEO_ARTIFACT_STORAGE_ROOT = $artifactPath
