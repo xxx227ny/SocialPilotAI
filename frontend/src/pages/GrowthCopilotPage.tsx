@@ -107,8 +107,11 @@ function GrowthCopilotWorkspace() {
       <OperationalProductSelector
         title="选择商品并查看投放闭环"
         description="每个商品独立管理广告数据、优化方案、沙箱执行与监控记录。"
+        storageKey="socialpilot.growthOptimization.selectedProduct"
       >
-        {(product) => <GrowthCopilotPanel productId={product.id} />}
+        {(product) => (
+          <GrowthCopilotPanel productId={product.id} key={product.id} />
+        )}
       </OperationalProductSelector>
     </div>
   );

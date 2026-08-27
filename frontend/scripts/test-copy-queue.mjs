@@ -134,6 +134,9 @@ try {
   assert.match(taskConfig, /选择完整四平台矩阵/);
   assert.match(copyPage, /四平台文案矩阵/);
   assert.match(copyPage, /搜索发现/);
+  assert.match(copyPage, /socialpilot\.copyMatrix\.selectedProduct/);
+  assert.match(copyPage, /socialpilot\.copyMatrix\.platformDrafts/);
+  assert.match(copyPage, /restoredPlatformDrafts/);
   assert.match(copyTypes, /"Pinterest"/);
 
   const api = read("src", "api", "copies.ts");

@@ -14,13 +14,27 @@ import type { Product } from "../types/product";
 
 type ListState = "loading" | "refreshing" | "ready" | "error";
 type DetailState = "idle" | "loading" | "ready" | "error";
+const PRODUCT_CENTER_SELECTION_KEY = "socialpilot.productCenter.selectedProduct";
+
+function restoredProductCenterSelection() {
+  try {
+    const stored = Number(
+      window.localStorage.getItem(PRODUCT_CENTER_SELECTION_KEY),
+    );
+    return Number.isInteger(stored) && stored > 0 ? stored : null;
+  } catch {
+    return null;
+  }
+}
 
 export function ProductCenterPage() {
   const { isPresentation } = usePresentationMode();
   const [products, setProducts] = useState<Product[]>([]);
   const [listState, setListState] = useState<ListState>("loading");
   const [listError, setListError] = useState("");
-  const [selectedProductId, setSelectedProductId] = useState<number | null>(null);
+  const [selectedProductId, setSelectedProductId] = useState<number | null>(
+    restoredProductCenterSelection,
+  );
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [detailState, setDetailState] = useState<DetailState>("idle");
   const [detailError, setDetailError] = useState("");
@@ -57,6 +71,31 @@ export function ProductCenterPage() {
   useEffect(() => {
     void loadProducts();
   }, [loadProducts]);
+
+  useEffect(() => {
+    if (
+      listState === "ready" &&
+      selectedProductId !== null &&
+      !products.some((product) => product.id === selectedProductId)
+    ) {
+      setSelectedProductId(null);
+    }
+  }, [listState, products, selectedProductId]);
+
+  useEffect(() => {
+    try {
+      if (selectedProductId === null) {
+        window.localStorage.removeItem(PRODUCT_CENTER_SELECTION_KEY);
+      } else {
+        window.localStorage.setItem(
+          PRODUCT_CENTER_SELECTION_KEY,
+          String(selectedProductId),
+        );
+      }
+    } catch {
+      // 商品中心在受限浏览器中仍可正常使用，只是不保留选择。
+    }
+  }, [selectedProductId]);
 
   useEffect(() => {
     if (selectedProductId === null) {

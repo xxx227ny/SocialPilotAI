@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { MarketingTaskConfig } from "../components/product/MarketingTaskConfig";
 import { OperationalProductSelector } from "../components/product/OperationalProductSelector";
@@ -13,6 +13,39 @@ const platformDetails: Record<PlatformCopy["platform"], { number: string; traits
   Facebook: { number: "03", traits: ["功能价值", "购买理由"], approach: "功能价值表达", logic: ["信息完整", "购买决策"] },
   Pinterest: { number: "04", traits: ["Evergreen", "搜索发现", "收藏意图"], approach: "灵感发现表达", logic: ["关键词覆盖", "实用灵感", "长期流量"] },
 };
+
+const COPY_MATRIX_PRODUCT_KEY = "socialpilot.copyMatrix.selectedProduct";
+const COPY_MATRIX_PLATFORM_DRAFTS_KEY = "socialpilot.copyMatrix.platformDrafts";
+const COPY_PLATFORMS: PlatformCopy["platform"][] = [
+  "TikTok",
+  "Instagram",
+  "Facebook",
+  "Pinterest",
+];
+
+function restoredPlatformDrafts() {
+  try {
+    const parsed = JSON.parse(
+      window.localStorage.getItem(COPY_MATRIX_PLATFORM_DRAFTS_KEY) ?? "{}",
+    ) as Record<string, unknown>;
+    return Object.fromEntries(
+      Object.entries(parsed).flatMap(([productId, platforms]) => {
+        const id = Number(productId);
+        if (!Number.isInteger(id) || id <= 0 || !Array.isArray(platforms)) {
+          return [];
+        }
+        const valid = platforms.filter(
+          (platform): platform is PlatformCopy["platform"] =>
+            typeof platform === "string" &&
+            COPY_PLATFORMS.includes(platform as PlatformCopy["platform"]),
+        );
+        return [[id, [...new Set(valid)]]];
+      }),
+    );
+  } catch {
+    return {};
+  }
+}
 
 export function CopyMatrixPage() {
   const { snapshot, loading, error } = useDemoSnapshot();
@@ -85,7 +118,18 @@ export function CopyMatrixPage() {
 function CopyMatrixWorkspace() {
   const [platformDrafts, setPlatformDrafts] = useState<
     Record<number, PlatformCopy["platform"][]>
-  >({});
+  >(restoredPlatformDrafts);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        COPY_MATRIX_PLATFORM_DRAFTS_KEY,
+        JSON.stringify(platformDrafts),
+      );
+    } catch {
+      // 文案工作台在受限浏览器中仍可使用，只是不保留平台草稿。
+    }
+  }, [platformDrafts]);
 
   return (
     <div className="competition-page copy-workspace-page">
@@ -103,6 +147,7 @@ function CopyMatrixWorkspace() {
       <OperationalProductSelector
         title="选择商品并生成平台文案"
         description="这里只处理营销策略和社媒文案，不混入视频、投流或发布功能。"
+        storageKey={COPY_MATRIX_PRODUCT_KEY}
       >
         {(product, updateProduct) => (
           <MarketingTaskConfig

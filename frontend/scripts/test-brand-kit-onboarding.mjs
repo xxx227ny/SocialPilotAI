@@ -173,6 +173,8 @@ try {
   assert.match(panel, /claims_constraints/);
   assert.match(page, /!isPresentation && \(/);
   assert.match(page, /<BrandKitOnboardingPanel/);
+  assert.match(page, /socialpilot\.productCenter\.selectedProduct/);
+  assert.match(page, /restoredProductCenterSelection/);
   assert.match(marketing, /onTaskChanged\?\.\(task\)/);
   assert.match(api, /apiClient\.post<BrandKit>/);
   assert.match(api, /apiClient\.post<BrandKitVersionCreateResult>/);

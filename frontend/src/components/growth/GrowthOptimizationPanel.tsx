@@ -70,6 +70,29 @@ const DEFAULT_AUTOMATION: GrowthAutomationControlUpdate = {
   confirm_auto_sandbox: false,
 };
 
+function restoredPolicy(productId: number): GrowthOptimizationPolicy {
+  try {
+    const parsed = JSON.parse(
+      window.localStorage.getItem(
+        `socialpilot.growthOptimization.policy.${productId}`,
+      ) ?? "null",
+    ) as Partial<GrowthOptimizationPolicy> | null;
+    if (
+      parsed &&
+      Number.isFinite(parsed.total_budget) &&
+      Number.isFinite(parsed.target_roas) &&
+      Number.isFinite(parsed.minimum_platform_share) &&
+      Number.isFinite(parsed.performance_tilt_share) &&
+      Number.isFinite(parsed.maximum_bid_adjustment_pct)
+    ) {
+      return { ...DEFAULT_POLICY, ...parsed };
+    }
+  } catch {
+    // Fall back to the safe defaults when stored data is unavailable or invalid.
+  }
+  return DEFAULT_POLICY;
+}
+
 export function GrowthOptimizationPanel({
   productId,
   context,
@@ -79,7 +102,7 @@ export function GrowthOptimizationPanel({
   replanCycleId,
   replanResolved,
 }: GrowthOptimizationPanelProps) {
-  const [policy, setPolicy] = useState(DEFAULT_POLICY);
+  const [policy, setPolicy] = useState(() => restoredPolicy(productId));
   const [runs, setRuns] = useState<GrowthOptimizationRun[]>([]);
   const [executions, setExecutions] = useState<GrowthOptimizationExecution[]>([]);
   const [automation, setAutomation] = useState<GrowthAutomationControl | null>(null);
@@ -95,6 +118,17 @@ export function GrowthOptimizationPanel({
   const [message, setMessage] = useState("");
   const [autoRefresh, setAutoRefresh] = useState(false);
   const operation = useRef(0);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        `socialpilot.growthOptimization.policy.${productId}`,
+        JSON.stringify(policy),
+      );
+    } catch {
+      // 投流工作台仍可使用，只是不保留未提交的预算草稿。
+    }
+  }, [policy, productId]);
 
   useEffect(() => {
     const request = ++operation.current;

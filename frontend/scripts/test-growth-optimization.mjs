@@ -63,6 +63,9 @@ try {
   assert.match(panel, /按精确方案编号激活/);
   assert.match(page, /!isPresentation/);
   assert.match(page, /<GrowthCopilotPanel productId=\{product\.id\}/);
+  assert.match(page, /socialpilot\.growthOptimization\.selectedProduct/);
+  assert.match(panel, /socialpilot\.growthOptimization\.policy\.\$\{productId\}/);
+  assert.match(panel, /restoredPolicy/);
   assert.match(page, /AI 投流策略优化/);
   assert.match(parent, /preserveRecommendationIfUnchanged/);
   assert.match(parent, /contextDigestRef\.current !== result\.context_digest/);
