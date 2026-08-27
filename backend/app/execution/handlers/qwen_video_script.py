@@ -169,9 +169,10 @@ class QwenVideoScriptGenerateV1Handler:
                     safe_error_details=details,
                     provider_submission_state=outcome,
                 )
-            except AppError:
+            except AppError as error:
                 return HandlerResult.failed(
                     "QWEN_SCRIPT_INVALID_RESPONSE",
+                    safe_error_details={"validation_reason": error.message},
                     provider_submission_state="RESPONSE_RECEIVED",
                 )
             try:

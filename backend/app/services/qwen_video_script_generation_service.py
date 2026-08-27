@@ -52,10 +52,12 @@ def validate_timed_four_act_contract(
         raise AppError("Qwen subtitles must match narration", 422)
     if english and any(not 6 <= len(scene.narration.split()) <= 8 for scene in scenes):
         raise AppError("Qwen narration failed the per-scene word budget", 422)
-    if not english and any(
-        not 4 <= _spoken_units(scene.narration) <= 12 for scene in scenes
-    ):
-        raise AppError("Qwen narration failed the per-scene speech budget", 422)
+    if not english:
+        scene_units = tuple(_spoken_units(scene.narration) for scene in scenes)
+        if any(not 4 <= units <= 20 for units in scene_units):
+            raise AppError("Qwen narration failed the per-scene speech budget", 422)
+        if sum(scene_units) > 68:
+            raise AppError("Qwen narration failed the total speech budget", 422)
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,8 +97,8 @@ class QwenVideoScriptGenerationService:
             "For every scene, subtitle_draft must exactly equal narration. "
             "English narration in each scene must contain 6-8 words, so all four "
             "scenes contain exactly 24-32 words total at a natural speaking rate. "
-            "For Chinese narration, each scene must contain 4-12 spoken Chinese "
-            "characters or Latin words, with no more than 48 spoken units total. "
+            "For Chinese narration, each scene must contain 4-16 spoken Chinese "
+            "characters or Latin words, with no more than 60 spoken units total. "
             "Use equivalent brevity in other languages. Count the spoken units before "
             "returning the JSON. Never omit a scene from the spoken narration. "
             "Do not return source identities, digests, review state, activation, or "
