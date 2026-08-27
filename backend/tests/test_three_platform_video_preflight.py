@@ -1,3 +1,4 @@
+import hashlib
 from decimal import Decimal
 
 from fastapi.testclient import TestClient
@@ -160,6 +161,33 @@ def create_three_platform_sources(
         selections.append({"variant_id": variant.id, "script_version_id": version.id})
     session.commit()
     return product, asset, selections
+
+
+def test_product_video_sources_expose_authoritative_narration_digest(
+    client: TestClient, db_session: Session
+) -> None:
+    product, _, _ = create_three_platform_sources(db_session)
+    settings = Settings(_env_file=None, enable_real_product_video=True)
+    app.dependency_overrides[get_settings] = lambda: settings
+
+    response = client.get(f"/api/v1/products/{product.id}/real-product-video/sources")
+
+    assert response.status_code == 200
+    sources = response.json()
+    assert len(sources) == 3
+    for source in sources:
+        narration = source["full_narration"]
+        assert (
+            source["narration_digest"]
+            == hashlib.sha256(narration.encode("utf-8")).hexdigest()
+        )
+        reconstructed = "\n".join(
+            scene["narration"].strip() for scene in source["scenes"]
+        )
+        assert (
+            source["narration_digest"]
+            != hashlib.sha256(reconstructed.encode("utf-8")).hexdigest()
+        )
 
 
 def test_three_platform_preflight_is_exact_honest_and_zero_write(

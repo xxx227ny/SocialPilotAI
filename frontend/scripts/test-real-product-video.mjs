@@ -284,6 +284,10 @@ try {
     "known_downstream_cost",
     "脚本生成后的成片调用次数或费用与确认值不一致",
     "socialpilot.scriptBatch.",
+    "source.narration_digest",
+    "real-product-video:${source.script_version_id}",
+    ":wanx-v1",
+    ":voiceover-v1",
   ]) {
     assert.ok(panel.includes(required));
     safety++;
@@ -296,6 +300,7 @@ try {
   assert.ok(productCenter.includes("productImageContentUrl"));
   assert.ok(feature.includes("VITE_ENABLE_REAL_PRODUCT_VIDEO"));
   assert.ok(!panel.toLowerCase().includes("latest"));
+  assert.ok(!panel.includes('new TextEncoder().encode(narration)'));
   assert.ok(!panel.includes("uploadProductImage"));
   assert.match(
     enhancementApi,

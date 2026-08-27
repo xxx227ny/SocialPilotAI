@@ -1,3 +1,4 @@
+import hashlib
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
@@ -81,6 +82,10 @@ def list_product_video_sources(
                 platform=variant.platform,
                 language=variant.language,
                 content_digest=version.content_digest,
+                full_narration=version.full_narration,
+                narration_digest=hashlib.sha256(
+                    version.full_narration.encode("utf-8")
+                ).hexdigest(),
                 scenes=[
                     ProductVideoSceneRead(
                         id=scene.id,

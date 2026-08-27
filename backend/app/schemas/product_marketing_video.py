@@ -121,6 +121,8 @@ class ProductVideoSourceRead(BaseModel):
     platform: str
     language: str
     content_digest: str
+    full_narration: str
+    narration_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     scenes: list[ProductVideoSceneRead]
 
 

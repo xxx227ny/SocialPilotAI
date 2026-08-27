@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.core.exceptions import AppError
-from app.models import ExecutionJob, Product, VideoScriptVersion
+from app.models import ExecutionJob, Product, ProductAsset, VideoScriptVersion
 from app.schemas.execution import ExecutionJobRead
 from app.schemas.product_marketing_video import (
     JobSubmitRead,
@@ -87,6 +87,27 @@ class WanxProductImageService:
                 raise AppError("Wanx image idempotency conflict", 409)
             return JobSubmitRead(
                 job=ExecutionJobRead.model_validate(existing), reused=True
+            )
+        completed = (
+            self.session.query(ExecutionJob)
+            .filter_by(
+                job_type=WANX_PRODUCT_IMAGE_GENERATE_V1,
+                source_type="video_storyboard_scene_version",
+                source_id=scene.id,
+                input_digest=digest,
+                status="SUCCEEDED",
+                result_entity_type="product_asset",
+            )
+            .order_by(ExecutionJob.id.desc())
+            .first()
+        )
+        if (
+            completed is not None
+            and completed.result_entity_id is not None
+            and self.session.get(ProductAsset, completed.result_entity_id) is not None
+        ):
+            return JobSubmitRead(
+                job=ExecutionJobRead.model_validate(completed), reused=True
             )
         job = ExecutionJob(
             job_type=WANX_PRODUCT_IMAGE_GENERATE_V1,

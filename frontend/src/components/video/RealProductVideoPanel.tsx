@@ -192,7 +192,9 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
             scene_sequence: scene.sequence,
             reference_product_asset_id: referenceAsset.id,
             reference_product_asset_sha256: referenceAsset.sha256,
-            idempotency_key: crypto.randomUUID(),
+            idempotency_key:
+              `real-product-video:${source.script_version_id}:` +
+              `${referenceAsset.id}:${scene.sequence}:wanx-v1`,
             cost_confirmed: true,
           },
           active.signal,
@@ -286,24 +288,18 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
         active.signal,
       );
       setPhase("VOICEOVER");
-      const narration = source.scenes.map((scene) => scene.narration.trim()).join("\n");
-      const digestBytes = await crypto.subtle.digest(
-        "SHA-256",
-        new TextEncoder().encode(narration),
-      );
-      const narrationDigest = Array.from(new Uint8Array(digestBytes), (byte) =>
-        byte.toString(16).padStart(2, "0"),
-      ).join("");
       const voiceSubmit = await submitVoiceoverJob(
         product.id,
         {
           composition_id: compositionArtifact.composition_id,
           script_version_id: source.script_version_id,
-          narration_digest: narrationDigest,
+          narration_digest: source.narration_digest,
           language: source.language,
           voice: "longanlingxin",
           speaking_rate: 1,
-          idempotency_key: crypto.randomUUID(),
+          idempotency_key:
+            `real-product-video:${source.script_version_id}:` +
+            `${compositionArtifact.composition_id}:voiceover-v1`,
         },
         active.signal,
       );
@@ -532,22 +528,12 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
         active.signal,
       );
       setPhase("VOICEOVER");
-      const narration = selectedSource.scenes
-        .map((scene) => scene.narration.trim())
-        .join("\n");
-      const digestBytes = await crypto.subtle.digest(
-        "SHA-256",
-        new TextEncoder().encode(narration),
-      );
-      const narrationDigest = Array.from(new Uint8Array(digestBytes), (byte) =>
-        byte.toString(16).padStart(2, "0"),
-      ).join("");
       const voiceSubmit = await submitVoiceoverJob(
         product.id,
         {
           composition_id: compositionArtifact.composition_id,
           script_version_id: selectedSource.script_version_id,
-          narration_digest: narrationDigest,
+          narration_digest: selectedSource.narration_digest,
           language: selectedSource.language,
           voice: "longanlingxin",
           speaking_rate: 1,

@@ -251,6 +251,18 @@ def test_wanx_job_freezes_and_resolves_exact_product_reference(
         in submitted.job.input_payload["prompt"]
     )
     assert service.reference_content(product.id, asset.id, digest) == content
+    stored_job = db_session.get(ExecutionJob, submitted.job.id)
+    assert stored_job is not None
+    stored_job.status = "SUCCEEDED"
+    stored_job.result_entity_type = "product_asset"
+    stored_job.result_entity_id = asset.id
+    db_session.commit()
+    recovered = service.enqueue(
+        product.id,
+        request.model_copy(update={"idempotency_key": "new-browser-attempt"}),
+    )
+    assert recovered.reused is True
+    assert recovered.job.id == submitted.job.id
     with pytest.raises(AppError, match="reference product asset"):
         service.enqueue(
             product.id,

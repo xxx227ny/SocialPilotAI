@@ -17,6 +17,8 @@ export interface ProductVideoSource {
   platform: "youtube" | "tiktok" | "instagram";
   language: string;
   content_digest: string;
+  full_narration: string;
+  narration_digest: string;
   scenes: ProductVideoScene[];
 }
 
