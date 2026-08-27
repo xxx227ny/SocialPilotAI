@@ -237,6 +237,7 @@ def test_product_reference_submit_uses_exact_image_and_whole_timeline(
     task = db_session.get(VideoRenderTask, job.result_entity_id if job else None)
     assert job is not None and task is not None
     assert task.duration_seconds == 15
+    assert task.provider_name == "wanx"
     assert task.source_product_asset_id == asset.id
     assert task.source_product_asset_sha256 == digest
     assert "not a slideshow" in task.render_prompt

@@ -233,6 +233,8 @@ class WanxVideoRenderRefreshV1Handler:
                         self.settings,
                         output_fetcher=self.output_fetcher,
                         artifact_storage=self.artifact_storage,
+                        provider_name="wanx",
+                        provider_label="Wanx",
                     ).refresh(task.id)
                 )
             except AppError:

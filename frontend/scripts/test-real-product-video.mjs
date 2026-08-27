@@ -145,6 +145,18 @@ try {
   );
   assert.equal(
     state.productionBatchRecoverable(
+      { status: "FAILED" },
+      [
+        {
+          status: "FAILED",
+          safe_error_code: "PRODUCTION_WANX_VIDEO_RESULT_INVALID",
+        },
+      ],
+    ),
+    true,
+  );
+  assert.equal(
+    state.productionBatchRecoverable(
       { status: "PARTIAL_FAILED" },
       [
         { status: "SUCCEEDED" },
@@ -237,7 +249,7 @@ try {
     "longanlingxin",
     "千问云配音",
     "万象商品视觉",
-    "HappyHorse参考图生视频",
+    "万象商品视觉与动态视频",
     "生成单平台完整云成片",
     "下载HappyHorse MP4",
     "批量生成三平台完整成片",
@@ -257,6 +269,11 @@ try {
     "resumeProductVideoProductionBatch",
     "cancelProductVideoProductionBatch",
     "socialpilot.productionBatch.",
+    "socialpilot.videoSource.",
+    "socialpilot.videoReference.",
+    "socialpilot.videoStrategy.",
+    "socialpilot.videoCopyMatrix.",
+    "socialpilot.videoResult.",
     "恢复已有生产批次",
     "已有生产批次编号",
     "按批次编号加载已有成片",
@@ -304,6 +321,11 @@ try {
   assert.ok(!panel.includes('new TextEncoder().encode(narration)'));
   assert.ok(!panel.includes("uploadProductImage"));
   assert.ok(!panel.includes("submitProductImageJob"));
+  assert.match(
+    panel,
+    /production\.batch\.status === "PAUSED" \|\|\s*productionBatchRecoverable\(production\.batch, production\.items\)/,
+  );
+  safety++;
   assert.match(
     enhancementApi,
     /preflight_expires_at:\s*preflight\.expires_at/,

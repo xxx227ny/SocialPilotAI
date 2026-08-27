@@ -13,6 +13,7 @@ from app.core.config import Settings, get_settings
 from app.main import app
 from app.models import (
     ExecutionJob,
+    MarketingStrategy,
     ProductAsset,
     ProductVideoProductionBatch,
     ProductVideoProductionItem,
@@ -180,6 +181,118 @@ def test_legacy_provider_profile_unlocks_wanx_i2v_batch_creation(
     assert {
         item["stage_state_json"]["dynamic_video_provider"] for item in body["items"]
     } == {"wanx_i2v"}
+
+
+def test_resume_repairs_legacy_guarded_wanx_task_without_resubmission(
+    client: TestClient, db_session: Session, tmp_path
+) -> None:
+    product, asset, selections = create_three_platform_sources(db_session)
+    settings = _settings(tmp_path).model_copy(
+        update={"enable_happyhorse_product_video": False}
+    )
+    app.dependency_overrides[get_settings] = lambda: settings
+    payload = {
+        "reference_product_asset_id": asset.id,
+        "reference_product_asset_sha256": asset.sha256,
+        "selections": selections,
+    }
+    checked = client.post(
+        f"/api/v1/products/{product.id}/real-product-video/three-platform-preflight",
+        json=payload,
+    ).json()
+    created = client.post(
+        f"/api/v1/products/{product.id}/real-product-video/production-batches",
+        json={
+            **payload,
+            "input_digest": checked["input_digest"],
+            "idempotency_key": "production-batch-legacy-guarded-wanx",
+            "cost_confirmed": True,
+        },
+    ).json()
+    batch = db_session.get(ProductVideoProductionBatch, created["batch"]["id"])
+    item = db_session.get(ProductVideoProductionItem, created["items"][0]["id"])
+    strategy = (
+        db_session.query(MarketingStrategy).filter_by(product_id=product.id).one()
+    )
+    project = VideoProject(
+        product_id=product.id,
+        marketing_strategy_id=strategy.id,
+        platform="TikTok",
+        title="Frozen product demo",
+        concept="Exact legacy recovery",
+        duration_seconds=15,
+        aspect_ratio="9:16",
+        scenes=[],
+        cta="Learn more",
+        status="planned",
+    )
+    db_session.add(project)
+    db_session.flush()
+    task = VideoRenderTask(
+        video_project_id=project.id,
+        scene_sequence=1,
+        status="PENDING",
+        provider_name="_contextvisual",
+        provider_task_id="existing-wanx-provider-task",
+        render_prompt="Frozen exact product motion",
+        duration_seconds=15,
+        aspect_ratio="9:16",
+        resolution="720P",
+        idempotency_key="legacy-context-provider-task",
+        source_product_asset_id=asset.id,
+        source_product_asset_sha256=asset.sha256,
+    )
+    db_session.add(task)
+    db_session.flush()
+    job = ExecutionJob(
+        job_type="wanx.video_render.submit.v1",
+        source_type="video_project",
+        source_id=project.id,
+        input_digest="a" * 64,
+        idempotency_key="legacy-context-provider-submit-job",
+        input_payload={},
+        estimated_cost=Decimal("2.25"),
+        currency="CNY",
+        cost_confirmed=True,
+        status="SUCCEEDED",
+        attempt_count=1,
+        max_attempts=1,
+        provider_name="wanx",
+        result_entity_type="video_render_task",
+        result_entity_id=task.id,
+        completed_at=item.created_at,
+    )
+    db_session.add(job)
+    db_session.flush()
+    item.video_project_id = project.id
+    item.status = "FAILED"
+    item.stage = "GENERATING_VIDEO"
+    item.safe_error_code = "PRODUCTION_WANX_VIDEO_RESULT_INVALID"
+    item.completed_at = item.created_at
+    item.stage_state_json = {
+        **item.stage_state_json,
+        "dynamic_video_submit_job_id": job.id,
+    }
+    batch.status = "FAILED"
+    batch.completed_at = batch.created_at
+    db_session.commit()
+    job_count = db_session.query(ExecutionJob).count()
+
+    resumed = client.post(
+        f"/api/v1/products/{product.id}/real-product-video/"
+        f"production-batches/{batch.id}/resume"
+    )
+
+    assert resumed.status_code == 200
+    body = resumed.json()
+    recovered = next(value for value in body["items"] if value["id"] == item.id)
+    assert body["batch"]["status"] == "RUNNING"
+    assert recovered["status"] == "RUNNING"
+    assert recovered["safe_error_code"] is None
+    assert recovered["cloud_render_task_id"] == task.id
+    db_session.refresh(task)
+    assert task.provider_name == "wanx"
+    assert db_session.query(ExecutionJob).count() == job_count
 
 
 def test_production_batch_rejects_tampering_and_cross_product_recovery(

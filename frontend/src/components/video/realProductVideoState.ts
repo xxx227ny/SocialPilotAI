@@ -36,6 +36,8 @@ const STAGE_LABELS: Record<ProductVideoProductionItem["stage"], string> = {
 const ERROR_MESSAGES: Record<string, string> = {
   PRODUCTION_WANX_IMAGE_FAILED: "万象商品图生成失败，可保留其他平台结果后重试。",
   PRODUCTION_WANX_SUBMIT_UNKNOWN: "万象提交状态不确定，系统已停止自动重试以避免重复扣费。",
+  PRODUCTION_WANX_VIDEO_RESULT_INVALID:
+    "旧版任务的万象身份记录不一致；原云端任务仍保留，可点击“重试失败平台”安全恢复，不会重新提交视频。",
   PRODUCTION_HAPPYHORSE_SUBMIT_FAILED: "商品动态视频提交失败。",
   PRODUCTION_HAPPYHORSE_SUBMIT_UNKNOWN:
     "商品动态视频提交状态不确定，系统已停止自动重试以避免重复扣费。",
@@ -83,13 +85,14 @@ export function productionBatchRecoverable(
   items: ProductVideoProductionItem[],
 ): boolean {
   return (
-    batch.status === "PARTIAL_FAILED" &&
+    ["PARTIAL_FAILED", "FAILED"].includes(batch.status) &&
     items.some(
       (item) =>
         item.status === "FAILED" &&
         [
           "PRODUCTION_HAPPYHORSE_REFRESH_FAILED",
           "PRODUCTION_HAPPYHORSE_REFRESH_RETRYABLE",
+          "PRODUCTION_WANX_VIDEO_RESULT_INVALID",
           "PRODUCTION_VOICEOVER_FAILED",
           "PRODUCTION_VOICEOVER_SUBMIT_UNKNOWN",
         ].includes(item.safe_error_code ?? ""),

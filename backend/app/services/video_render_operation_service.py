@@ -237,6 +237,8 @@ class VideoProjectRenderExecutionService:
             self.settings,
             output_fetcher=self.output_fetcher,
             artifact_storage=self.artifact_storage,
+            provider_name="wanx",
+            provider_label="Wanx",
         )
 
     def _require_execution_enabled(self) -> None:

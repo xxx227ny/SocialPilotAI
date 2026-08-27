@@ -123,7 +123,33 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
     operation.current.stop();
     setSources([]);
     setSourceId(0);
-    setResult(null);
+    const storedResult = window.localStorage.getItem(
+      `socialpilot.videoResult.${product.id}`,
+    );
+    try {
+      const parsed = storedResult
+        ? (JSON.parse(storedResult) as { video?: unknown; subtitle?: unknown })
+        : null;
+      if (
+        parsed &&
+        Number.isInteger(parsed.video) &&
+        Number(parsed.video) > 0 &&
+        Number.isInteger(parsed.subtitle) &&
+        Number(parsed.subtitle) > 0
+      ) {
+        setResult({
+          video: Number(parsed.video),
+          subtitle: Number(parsed.subtitle),
+        });
+        setPhase("SUCCEEDED");
+      } else {
+        setResult(null);
+        setPhase("IDLE");
+      }
+    } catch {
+      setResult(null);
+      setPhase("IDLE");
+    }
     setCloudVideoArtifactId(null);
     setProduction(null);
     setOneClickRequest(null);
@@ -132,27 +158,53 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
     setScriptBatchId(
       window.localStorage.getItem(`socialpilot.scriptBatch.${product.id}`) ?? "",
     );
+    setStrategyId(
+      Number(
+        window.localStorage.getItem(`socialpilot.videoStrategy.${product.id}`),
+      ) || 0,
+    );
+    const storedCopyMatrixId = Number(
+      window.localStorage.getItem(`socialpilot.videoCopyMatrix.${product.id}`),
+    );
+    setCopyMatrixId(storedCopyMatrixId > 0 ? storedCopyMatrixId : null);
     setProductionBatchId(
       window.localStorage.getItem(`socialpilot.productionBatch.${product.id}`) ??
         "",
     );
-    setReferenceAssetId(referenceAssets[0]?.id ?? 0);
     if (!realProductVideoEnabled || isPresentation) return;
     const active = operation.current.begin();
     listProductVideoSources(product.id, active.signal)
       .then((items) => {
         if (operation.current.current(active.id)) {
           setSources(items);
-          setSourceId(items[0]?.variant_id ?? 0);
+          const storedSourceId = Number(
+            window.localStorage.getItem(`socialpilot.videoSource.${product.id}`),
+          );
+          setSourceId(
+            items.some((item) => item.variant_id === storedSourceId)
+              ? storedSourceId
+              : (items[0]?.variant_id ?? 0),
+          );
         }
       })
       .catch((error) => {
         if (operation.current.current(active.id)) {
           setMessage(getApiErrorMessage(error, "可用Variant读取失败。"));
         }
-      });
+    });
     return () => operation.current.stop();
-  }, [isPresentation, product.id, referenceAssets]);
+  }, [isPresentation, product.id]);
+
+  useEffect(() => {
+    const storedReferenceId = Number(
+      window.localStorage.getItem(`socialpilot.videoReference.${product.id}`),
+    );
+    setReferenceAssetId(
+      referenceAssets.some((asset) => asset.id === storedReferenceId)
+        ? storedReferenceId
+        : (referenceAssets[0]?.id ?? 0),
+    );
+  }, [product.id, referenceAssets]);
 
   useEffect(() => {
     if (!realProductVideoEnabled || isPresentation) return;
@@ -165,9 +217,20 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
     getProductVideoProductionBatch(product.id, batchId, controller.signal)
       .then((value) => {
         setProduction(value);
+        setProductionBatchId(String(value.batch.id));
+        if (value.batch.status === "SUCCEEDED") {
+          setPhase("SUCCEEDED");
+          setMessage("已恢复上次三平台成片和下载结果。");
+        } else if (productionBatchTerminal(value.batch, value.items)) {
+          setPhase("FAILED");
+          setMessage("已恢复上次生产批次；可查看失败原因或恢复原任务。");
+        } else {
+          setPhase("GENERATING_IMAGES");
+          setMessage("已恢复正在进行的三平台生产批次，可继续推进。");
+        }
       })
       .catch(() => {
-        window.localStorage.removeItem(`socialpilot.productionBatch.${product.id}`);
+        setMessage("上次生产批次暂时读取失败，编号已保留，可稍后重新加载。");
       });
     return () => controller.abort();
   }, [isPresentation, product.id]);
@@ -324,7 +387,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
         active.signal,
       );
       if (operation.current.current(active.id)) {
-        setResult({ video: artifact.id, subtitle: artifact.subtitle_artifact_id });
+        saveFinalResult(artifact.id, artifact.subtitle_artifact_id);
         setPhase("SUCCEEDED");
         setMessage("15秒万象动态商品视频已生成，旁白来自千问云配音。");
       }
@@ -635,7 +698,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
     try {
       const output = await generateCloudFinal(source, active);
       if (operation.current.current(active.id)) {
-        setResult({ video: output.video, subtitle: output.subtitle });
+        saveFinalResult(output.video, output.subtitle);
         setPhase("SUCCEEDED");
         setMessage("HappyHorse画面、千问配音和字幕混音成片已生成。");
       }
@@ -838,6 +901,15 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
     setProduction(value);
   }
 
+  function saveFinalResult(video: number, subtitle: number) {
+    const value = { video, subtitle };
+    setResult(value);
+    window.localStorage.setItem(
+      `socialpilot.videoResult.${product.id}`,
+      JSON.stringify(value),
+    );
+  }
+
   async function waitForProduction(
     signal: AbortSignal,
     items: ProductVideoProductionItem[] = [],
@@ -963,9 +1035,10 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
     }
     const active = operation.current.begin();
     try {
-        const resumed =
-          ["PAUSED", "PARTIAL_FAILED"].includes(production.batch.status)
-            ? await resumeProductVideoProductionBatch(
+      const resumed =
+        production.batch.status === "PAUSED" ||
+        productionBatchRecoverable(production.batch, production.items)
+          ? await resumeProductVideoProductionBatch(
               product.id,
               production.batch.id,
               hasUncertainVoiceover,
@@ -1051,11 +1124,21 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
   return (
     <section className="video-composition-panel">
       <h4>真实商品素材15秒视频</h4>
-      <p>千问脚本 · 万象商品视觉 · HappyHorse参考图生视频 · 千问云配音</p>
+      <p>千问脚本 · 万象商品视觉与动态视频 · 千问云配音</p>
       <p>旁白若超过15秒会安全停止；请缩短文案后重新生成，不会裁断语音。</p>
       <label>
         视频变体与已激活脚本
-        <select value={sourceId} onChange={(event) => setSourceId(Number(event.target.value))}>
+        <select
+          value={sourceId}
+          onChange={(event) => {
+            const value = Number(event.target.value);
+            setSourceId(value);
+            window.localStorage.setItem(
+              `socialpilot.videoSource.${product.id}`,
+              String(value),
+            );
+          }}
+        >
           <option value={0}>选择精确视频变体</option>
           {sources.map((item) => (
             <option key={item.variant_id} value={item.variant_id}>
@@ -1068,7 +1151,14 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
         商品主参考图（所有分镜冻结复用）
         <select
           value={referenceAssetId}
-          onChange={(event) => setReferenceAssetId(Number(event.target.value))}
+          onChange={(event) => {
+            const value = Number(event.target.value);
+            setReferenceAssetId(value);
+            window.localStorage.setItem(
+              `socialpilot.videoReference.${product.id}`,
+              String(value),
+            );
+          }}
         >
           <option value={0}>选择商品主参考图</option>
           {referenceAssets.map((asset) => (
@@ -1092,6 +1182,10 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
             value={scriptBatchId}
             onChange={(event) => {
               setScriptBatchId(event.target.value);
+              window.localStorage.setItem(
+                `socialpilot.scriptBatch.${product.id}`,
+                event.target.value,
+              );
               setOneClickPreflight(null);
               setOneClickCostConfirmed(false);
             }}
@@ -1104,7 +1198,12 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
             min="1"
             value={strategyId || ""}
             onChange={(event) => {
-              setStrategyId(Number(event.target.value) || 0);
+              const value = Number(event.target.value) || 0;
+              setStrategyId(value);
+              window.localStorage.setItem(
+                `socialpilot.videoStrategy.${product.id}`,
+                String(value),
+              );
               setOneClickPreflight(null);
               setOneClickCostConfirmed(false);
             }}
@@ -1117,7 +1216,18 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
             min="1"
             value={copyMatrixId ?? ""}
             onChange={(event) => {
-              setCopyMatrixId(Number(event.target.value) || null);
+              const value = Number(event.target.value) || null;
+              setCopyMatrixId(value);
+              if (value) {
+                window.localStorage.setItem(
+                  `socialpilot.videoCopyMatrix.${product.id}`,
+                  String(value),
+                );
+              } else {
+                window.localStorage.removeItem(
+                  `socialpilot.videoCopyMatrix.${product.id}`,
+                );
+              }
               setOneClickPreflight(null);
               setOneClickCostConfirmed(false);
             }}

@@ -246,7 +246,7 @@ class ProductVideoProductionBatchService:
             batch.status = "WAITING"
             self._sync_batch_status(batch)
             self.session.commit()
-        elif batch.status == "PARTIAL_FAILED":
+        elif batch.status in {"PARTIAL_FAILED", "FAILED"}:
             recovered = False
             for item in batch.items:
                 voiceover_job_id = item.stage_state_json.get("voiceover_job_id")
@@ -294,6 +294,17 @@ class ProductVideoProductionBatchService:
                 )
                 if (
                     item.status == "FAILED"
+                    and item.safe_error_code == "PRODUCTION_WANX_VIDEO_RESULT_INVALID"
+                    and item.stage == "GENERATING_VIDEO"
+                    and self._prepare_legacy_wanx_submit_recovery(item)
+                ):
+                    item.status = "RUNNING"
+                    item.safe_error_code = None
+                    item.completed_at = None
+                    recovered = True
+                    continue
+                if (
+                    item.status == "FAILED"
                     and item.safe_error_code
                     in {
                         "PRODUCTION_HAPPYHORSE_REFRESH_FAILED",
@@ -315,6 +326,41 @@ class ProductVideoProductionBatchService:
                 self._sync_batch_status(batch)
                 self.session.commit()
         return self._create_read(self._required(product_id, batch_id), reused=True)
+
+    def _prepare_legacy_wanx_submit_recovery(
+        self, item: ProductVideoProductionItem
+    ) -> bool:
+        """Repair tasks created before the guarded provider name was frozen."""
+        raw_job_id = item.stage_state_json.get("dynamic_video_submit_job_id")
+        if not isinstance(raw_job_id, int):
+            return False
+        job = self.session.get(ExecutionJob, raw_job_id)
+        if (
+            job is None
+            or job.job_type != "wanx.video_render.submit.v1"
+            or job.status != "SUCCEEDED"
+            or job.provider_name != "wanx"
+            or job.result_entity_type != "video_render_task"
+            or not isinstance(job.result_entity_id, int)
+        ):
+            return False
+        task = self.session.get(VideoRenderTask, job.result_entity_id)
+        if (
+            task is None
+            or task.video_project_id != item.video_project_id
+            or task.provider_name not in {"wanx", "_contextvisual"}
+            or task.status not in {"SUBMITTED", "PENDING", "RUNNING"}
+            or not task.provider_task_id
+        ):
+            return False
+        task.provider_name = "wanx"
+        item.cloud_render_task_id = task.id
+        item.stage_state_json = {
+            **item.stage_state_json,
+            "dynamic_video_refresh_count": 0,
+            "dynamic_video_refresh_job_id": None,
+        }
+        return True
 
     def cancel(
         self, product_id: int, batch_id: int
