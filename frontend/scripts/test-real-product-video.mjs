@@ -312,6 +312,23 @@ try {
   }
   assert.ok(page.includes("<RealProductVideoPanel product={product}"));
   assert.ok(page.includes("一键商品视频"));
+  assert.ok(page.includes("socialpilot.videoWorkspace.view"));
+  assert.ok(page.includes("socialpilot.videoWorkspace.productionProduct"));
+  assert.ok(page.includes("storageKey={VIDEO_PRODUCTION_PRODUCT_KEY}"));
+  safety += 3;
+  const selector = await fs.readFile(
+    path.join(root, "src/components/product/OperationalProductSelector.tsx"),
+    "utf8",
+  );
+  assert.ok(selector.includes("window.localStorage.getItem(storageKey)"));
+  assert.ok(
+    selector.includes(
+      "window.localStorage.setItem(storageKey, String(selectedId))",
+    ),
+  );
+  assert.ok(selector.includes("!items.some((item) => item.id === selectedId)"));
+  assert.ok(selector.includes("}, [selectedId, storageKey]);"));
+  safety += 4;
   assert.ok(!productCenter.includes("RealProductVideoPanel"));
   assert.ok(productCenter.includes("uploadProductImage"));
   assert.ok(productCenter.includes("上传真实商品素材"));

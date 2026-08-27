@@ -140,12 +140,37 @@ export function ContentStudioPage() {
 
 type VideoWorkspaceView = "production" | "batch" | "advanced";
 
+const VIDEO_WORKSPACE_VIEW_KEY = "socialpilot.videoWorkspace.view";
+const VIDEO_PRODUCTION_PRODUCT_KEY = "socialpilot.videoWorkspace.productionProduct";
+const VIDEO_ADVANCED_PRODUCT_KEY = "socialpilot.videoWorkspace.advancedProduct";
+
+function restoredVideoWorkspaceView(): VideoWorkspaceView {
+  try {
+    const stored = window.localStorage.getItem(VIDEO_WORKSPACE_VIEW_KEY);
+    return stored === "batch" || stored === "advanced" ? stored : "production";
+  } catch {
+    return "production";
+  }
+}
+
 function VideoProductionWorkspace({
   showBatchVideoJobs,
 }: {
   showBatchVideoJobs: boolean;
 }) {
-  const [view, setView] = useState<VideoWorkspaceView>("production");
+  const [view, setView] = useState<VideoWorkspaceView>(restoredVideoWorkspaceView);
+
+  useEffect(() => {
+    if (view === "batch" && !showBatchVideoJobs) {
+      setView("production");
+      return;
+    }
+    try {
+      window.localStorage.setItem(VIDEO_WORKSPACE_VIEW_KEY, view);
+    } catch {
+      // Navigation remains usable when browser storage is unavailable.
+    }
+  }, [showBatchVideoJobs, view]);
 
   return (
     <div className="competition-page video-workspace-page">
@@ -191,6 +216,7 @@ function VideoProductionWorkspace({
         <OperationalProductSelector
           title="真实商品视频生产"
           description="选择商品后运行三平台一键生产，并查看每个平台的进度、失败原因和成片。"
+          storageKey={VIDEO_PRODUCTION_PRODUCT_KEY}
         >
           {(product) => <RealProductVideoPanel product={product} />}
         </OperationalProductSelector>
@@ -215,6 +241,7 @@ function AdvancedVideoWorkspace() {
     <OperationalProductSelector
       title="高级制作与交付"
       description="用于单场景蓝图、渲染、合成、社交发布和演示快照；普通一键生产无需进入这里。"
+      storageKey={VIDEO_ADVANCED_PRODUCT_KEY}
     >
       {(product) => (
         <div className="advanced-video-workspace">

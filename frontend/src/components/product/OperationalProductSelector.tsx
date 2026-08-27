@@ -7,17 +7,27 @@ import type { Product } from "../../types/product";
 export function OperationalProductSelector({
   title,
   description,
+  storageKey,
   children,
 }: {
   title: string;
   description: string;
+  storageKey?: string;
   children: (
     product: Product,
     updateProduct: (product: Product) => void,
   ) => React.ReactNode;
 }) {
   const [products, setProducts] = useState<Product[]>([]);
-  const [selectedId, setSelectedId] = useState(0);
+  const [selectedId, setSelectedId] = useState(() => {
+    if (!storageKey) return 0;
+    try {
+      const stored = Number(window.localStorage.getItem(storageKey));
+      return Number.isInteger(stored) && stored > 0 ? stored : 0;
+    } catch {
+      return 0;
+    }
+  });
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [message, setMessage] = useState("正在读取商品……");
   const requestId = useRef(0);
@@ -28,6 +38,16 @@ export function OperationalProductSelector({
       .then((items) => {
         if (!active) return;
         setProducts(items);
+        if (selectedId > 0 && !items.some((item) => item.id === selectedId)) {
+          setSelectedId(0);
+          if (storageKey) {
+            try {
+              window.localStorage.removeItem(storageKey);
+            } catch {
+              // Storage may be unavailable in a restricted browser session.
+            }
+          }
+        }
         setMessage(items.length > 0 ? "请选择要操作的商品。" : "尚未创建商品，请先前往商品中心。 ");
       })
       .catch((error) => {
@@ -38,7 +58,20 @@ export function OperationalProductSelector({
     return () => {
       active = false;
     };
-  }, []);
+  }, [storageKey]);
+
+  useEffect(() => {
+    if (!storageKey) return;
+    try {
+      if (selectedId > 0) {
+        window.localStorage.setItem(storageKey, String(selectedId));
+      } else {
+        window.localStorage.removeItem(storageKey);
+      }
+    } catch {
+      // The selector still works when browser storage is unavailable.
+    }
+  }, [selectedId, storageKey]);
 
   useEffect(() => {
     const currentRequest = ++requestId.current;
