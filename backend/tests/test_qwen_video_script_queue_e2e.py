@@ -176,6 +176,10 @@ def test_four_act_contract_enforces_timeline_subtitles_and_word_budgets() -> Non
         scene.subtitle_draft = scene.narration
     validate_timed_four_act_contract(chinese, english=False)
 
+    chinese.scenes[1].narration = "持续蒸汽快速抚平日常衣物褶皱并展示水箱拆装操作"
+    chinese.scenes[1].subtitle_draft = chinese.scenes[1].narration
+    validate_timed_four_act_contract(chinese, english=False)
+
     chinese.scenes[
         0
     ].narration = "这段旁白明显超过单镜头安全语音时长预算因此必须立即拒绝"
@@ -183,8 +187,8 @@ def test_four_act_contract_enforces_timeline_subtitles_and_word_budgets() -> Non
     with pytest.raises(AppError, match="per-scene speech budget"):
         validate_timed_four_act_contract(chinese, english=False)
 
-    for scene in chinese.scenes:
-        scene.narration = "便携动力解决需求操作简单快速完成日常清洁"
+    for scene, units in zip(chinese.scenes, (16, 24, 20, 16), strict=True):
+        scene.narration = "好" * units
         scene.subtitle_draft = scene.narration
     with pytest.raises(AppError, match="total speech budget"):
         validate_timed_four_act_contract(chinese, english=False)
@@ -343,7 +347,8 @@ def test_worker_is_unique_provider_boundary_and_creates_immutable_unreviewed_ver
     assert "scene 3 visibly proves the remaining benefits" in fake.prompts[0]
     assert "scene 4 gives the CTA from 12000 to 15000 ms" in fake.prompts[0]
     assert "English narration in each scene must contain 6-8 words" in fake.prompts[0]
-    assert "no more than 60 spoken units total" in fake.prompts[0]
+    assert "4-22 in scene 2" in fake.prompts[0]
+    assert "60 spoken Chinese characters or Latin words total" in fake.prompts[0]
     assert "Count the spoken units before returning the JSON" in fake.prompts[0]
     assert execution_worker.run_once().status == WorkerRunStatus.NO_JOB
     with factory() as session:
