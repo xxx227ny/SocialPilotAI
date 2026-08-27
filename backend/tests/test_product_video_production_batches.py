@@ -27,6 +27,9 @@ from app.models import (
     VideoRenderArtifact,
     VideoRenderTask,
 )
+from app.services.product_video_production_batch_service import (
+    ProductVideoProductionBatchService,
+)
 from app.services.video_artifact_storage import LocalVideoArtifactStorage
 from tests.test_three_platform_video_preflight import create_three_platform_sources
 
@@ -774,7 +777,44 @@ def test_advance_enqueues_wanx_jobs_once_and_recovers_exact_assets(
         job.input_payload["voice"] == _settings(tmp_path).qwen_tts_voice
         for job in voiceover_jobs
     )
+    assert all(job.input_payload["speaking_rate"] == 1.08 for job in voiceover_jobs)
     assert db_session.query(ExecutionJob).count() == 19
+
+    timeline_item = db_session.get(
+        ProductVideoProductionItem, voiceover_items[-1]["id"]
+    )
+    timeline_job = db_session.get(
+        ExecutionJob, timeline_item.stage_state_json["voiceover_job_id"]
+    )
+    timeline_job.status = "FAILED"
+    timeline_job.safe_error_code = "VOICEOVER_EXCEEDS_TIMELINE"
+    timeline_job.safe_error_details = {
+        "natural_duration_ms": 15200,
+        "target_duration_ms": 15000,
+    }
+    ProductVideoProductionBatchService(
+        db_session, _settings(tmp_path)
+    )._recover_voiceover(
+        db_session.get(ProductVideoProductionBatch, batch_id),
+        timeline_item,
+        timeline_job.id,
+    )
+    assert timeline_item.safe_error_code == "PRODUCTION_VOICEOVER_EXCEEDS_TIMELINE"
+    assert timeline_item.stage_state_json["voiceover_timeline_error"] == {
+        "natural_duration_ms": 15200,
+        "target_duration_ms": 15000,
+    }
+    timeline_job.status = "QUEUED"
+    timeline_job.safe_error_code = None
+    timeline_job.safe_error_details = None
+    timeline_item.status = "RUNNING"
+    timeline_item.safe_error_code = None
+    timeline_item.completed_at = None
+    timeline_item.stage_state_json = {
+        key: value
+        for key, value in timeline_item.stage_state_json.items()
+        if key != "voiceover_timeline_error"
+    }
 
     repeated_voiceover = client.post(endpoint)
     assert repeated_voiceover.status_code == 200

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 
 from pydantic import ValidationError
@@ -11,6 +12,13 @@ from app.providers import TextGenerationProvider
 from app.schemas.video_script_version import QwenScriptProviderOutput
 
 TIMED_FOUR_ACT_SCENE_COUNT = 4
+_CJK_CHARACTER = re.compile(r"[\u3400-\u9fff]")
+_LATIN_WORD = re.compile(r"[A-Za-z0-9]+(?:['’-][A-Za-z0-9]+)*")
+
+
+def _spoken_units(value: str) -> int:
+    """Estimate spoken density for mixed Chinese and Latin narration."""
+    return len(_CJK_CHARACTER.findall(value)) + len(_LATIN_WORD.findall(value))
 
 
 def select_timed_narration(
@@ -44,6 +52,10 @@ def validate_timed_four_act_contract(
         raise AppError("Qwen subtitles must match narration", 422)
     if english and any(not 6 <= len(scene.narration.split()) <= 8 for scene in scenes):
         raise AppError("Qwen narration failed the per-scene word budget", 422)
+    if not english and any(
+        not 4 <= _spoken_units(scene.narration) <= 12 for scene in scenes
+    ):
+        raise AppError("Qwen narration failed the per-scene speech budget", 422)
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,11 +92,13 @@ class QwenVideoScriptGenerationService:
             "visibly demonstrable scene and by that scene's narration. Include a "
             "clear hook, active product operation, benefit proof, and final CTA. "
             "Do not invent capabilities or claims absent from the frozen input. "
-            "For every scene, subtitle_draft must exactly equal narration. Keep all "
+            "For every scene, subtitle_draft must exactly equal narration. "
             "English narration in each scene must contain 6-8 words, so all four "
             "scenes contain exactly 24-32 words total at a natural speaking rate. "
-            "Use equivalent brevity in other languages. Count words before returning "
-            "the JSON. Never omit a scene from the spoken narration. "
+            "For Chinese narration, each scene must contain 4-12 spoken Chinese "
+            "characters or Latin words, with no more than 48 spoken units total. "
+            "Use equivalent brevity in other languages. Count the spoken units before "
+            "returning the JSON. Never omit a scene from the spoken narration. "
             "Do not return source identities, digests, review state, activation, or "
             "top-level narration/subtitles. Frozen input: " + encoded_snapshot
         )

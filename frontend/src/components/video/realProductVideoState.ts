@@ -50,6 +50,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   PRODUCTION_COMPOSITION_FAILED: "视频标准化合成失败。",
   PRODUCTION_VOICEOVER_FAILED:
     "千问配音生成失败；若为明确限流，可稍后点击“重试失败平台”，只重试当前平台配音。",
+  PRODUCTION_VOICEOVER_EXCEEDS_TIMELINE:
+    "旁白超过15秒时间线。系统已停止成片以避免截断语音；请缩短脚本后重新生成该平台。",
   PRODUCTION_VOICEOVER_SUBMIT_UNKNOWN:
     "千问配音提交状态不确定，系统已停止自动重试以避免重复扣费。",
   PRODUCTION_ENHANCEMENT_FAILED: "最终字幕与音频合成失败。",

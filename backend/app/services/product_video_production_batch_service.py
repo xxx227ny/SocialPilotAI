@@ -98,6 +98,7 @@ MAX_VOICEOVER_EXPLICIT_RETRIES = 1
 MAX_VOICEOVER_CONFIG_RETRIES = 1
 MAX_VOICEOVER_MANUAL_RATE_LIMIT_RETRIES = 3
 MAX_VOICEOVER_UNCERTAIN_REPLACEMENTS = 1
+PRODUCTION_VOICEOVER_SPEAKING_RATE = 1.08
 
 
 class ProductVideoProductionBatchService:
@@ -1163,7 +1164,9 @@ class ProductVideoProductionBatchService:
                 script_version_id=version.id,
                 language=version.language,
                 voice=self.settings.qwen_tts_voice,
-                speaking_rate=1.0,
+                # A small provider-native rate margin absorbs normal TTS timing
+                # variance without clipping words or noticeably rushing narration.
+                speaking_rate=PRODUCTION_VOICEOVER_SPEAKING_RATE,
                 narration_digest=narration_digest,
                 idempotency_key=(
                     f"production:{batch.id}:item:{item.id}:qwen-voiceover{retry_suffix}"
@@ -1207,6 +1210,19 @@ class ProductVideoProductionBatchService:
                 item.stage_state_json = state
                 return
         if job.status in {"FAILED", "CANCELLED"}:
+            if job.safe_error_code == "VOICEOVER_EXCEEDS_TIMELINE":
+                state = dict(item.stage_state_json)
+                state["voiceover_timeline_error"] = {
+                    "natural_duration_ms": (job.safe_error_details or {}).get(
+                        "natural_duration_ms"
+                    ),
+                    "target_duration_ms": (job.safe_error_details or {}).get(
+                        "target_duration_ms"
+                    ),
+                }
+                item.stage_state_json = state
+                self._fail_item(item, "PRODUCTION_VOICEOVER_EXCEEDS_TIMELINE")
+                return
             self._fail_item(item, "PRODUCTION_VOICEOVER_FAILED")
             return
         if job.status != "SUCCEEDED":

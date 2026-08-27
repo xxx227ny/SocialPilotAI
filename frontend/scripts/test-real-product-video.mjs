@@ -109,6 +109,10 @@ try {
     state.productionFailureMessage("PRODUCTION_WANX_SUBMIT_UNKNOWN"),
     /避免重复扣费/,
   );
+  assert.match(
+    state.productionFailureMessage("PRODUCTION_VOICEOVER_EXCEEDS_TIMELINE"),
+    /旁白超过15秒时间线/,
+  );
   behavior++;
   assert.equal(
     state.productionBatchTerminal(
