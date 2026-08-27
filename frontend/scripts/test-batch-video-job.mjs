@@ -245,6 +245,9 @@ try {
   assert.ok(batchApiSource.includes("/qwen-scripts"));
   assert.ok(!batchStateSource.toLowerCase().includes("qwen"));
   assert.ok(panel.includes("qwenEnabled={qwenScriptEnabled}"));
+  assert.ok(panel.includes("socialpilot.scriptBatch."));
+  assert.ok(panel.includes("高级手工编辑"));
+  assert.ok(panel.includes("普通用户无需逐个平台填写脚本"));
   assert.ok(
     panel.includes(
       "scriptVariantId !== null && <VideoScriptVersionPanel",
@@ -277,7 +280,7 @@ try {
       "confirmAndCreateQwenJob(qwenApi,variant.id",
     ),
   );
-  staticAssertions += 13;
+  staticAssertions += 16;
 
   let presentationQwenRequests = 0;
   if (state.shouldMountBatchVideoFlow(true, true)) {

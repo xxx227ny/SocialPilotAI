@@ -119,6 +119,8 @@ try {
   assert.match(component, /复制整套文案/);
   assert.match(component, /复制此平台/);
   assert.match(component, /导出 JSON/);
+  assert.match(component, /socialpilot\.videoStrategy\./);
+  assert.match(component, /socialpilot\.videoCopyMatrix\./);
   assert.match(component, /导出 CSV/);
   assert.match(component, /document\.body\.appendChild\(link\)/);
   assert.match(component, /window\.setTimeout\(\(\) => URL\.revokeObjectURL\(url\), 1_000\)/);

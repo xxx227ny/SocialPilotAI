@@ -67,6 +67,18 @@ export function BatchVideoJobPanel({ scriptVersionsEnabled = false, qwenScriptEn
     };
   }, []);
 
+  useEffect(() => {
+    if (!result) return;
+    const exactProductIds = [
+      ...new Set(result.variants.map((item) => item.product_id)),
+    ];
+    if (exactProductIds.length !== 1) return;
+    window.localStorage.setItem(
+      `socialpilot.scriptBatch.${exactProductIds[0]}`,
+      String(result.batch.id),
+    );
+  }, [result]);
+
   const total = expandedVariantCount(productIds, platforms, variantsPerPlatform);
   const request = (): BatchVideoRequest => ({
     product_ids: productIds,
@@ -196,7 +208,7 @@ export function BatchVideoJobPanel({ scriptVersionsEnabled = false, qwenScriptEn
       <p><strong>{total}</strong> 个独立变体 · 15秒 · 9:16 · zh-CN</p>
       <div className="batch-video-panel__actions"><button disabled={total === 0} onClick={() => void submit()}>Preflight并创建</button><input aria-label="精确Batch ID" value={batchIdInput} onChange={(event) => setBatchIdInput(event.target.value)} /><button onClick={() => void refresh()}>按ID恢复</button></div>
       {message && <p role="status">{message}</p>}
-      {result && <><div className="batch-video-panel__actions"><button onClick={() => void control("pause")}>暂停</button><button onClick={() => void control("resume")}>恢复</button><button onClick={() => void control("cancel")}>取消</button></div><table><thead><tr><th>ID</th><th>商品</th><th>平台</th><th>变体</th><th>状态</th><th>脚本</th></tr></thead><tbody>{result.variants.map((variant) => <tr key={variant.id}><td>{variant.id}</td><td>{variant.product_id}</td><td>{variant.platform}</td><td>{variant.variant_index}</td><td>{variant.status}</td><td>{scriptVersionsEnabled && variant.status === "READY_FOR_SCRIPT" && <button onClick={()=>setScriptVariantId(variant.id)}>编辑脚本</button>}</td></tr>)}</tbody></table>{scriptVariantId !== null && <VideoScriptVersionPanel variant={result.variants.find(item=>item.id===scriptVariantId)!} onClose={()=>setScriptVariantId(null)} qwenEnabled={qwenScriptEnabled}/>}</>}
+      {result && <><div className="batch-video-panel__actions"><button onClick={() => void control("pause")}>暂停</button><button onClick={() => void control("resume")}>恢复</button><button onClick={() => void control("cancel")}>取消</button></div><p>普通用户无需逐个平台填写脚本；请前往“一键商品视频”，系统会自动生成并激活三平台脚本。下方入口仅用于高级手工调整。</p><table><thead><tr><th>ID</th><th>商品</th><th>平台</th><th>变体</th><th>状态</th><th>高级操作</th></tr></thead><tbody>{result.variants.map((variant) => <tr key={variant.id}><td>{variant.id}</td><td>{variant.product_id}</td><td>{variant.platform}</td><td>{variant.variant_index}</td><td>{variant.status}</td><td>{scriptVersionsEnabled && variant.status === "READY_FOR_SCRIPT" && <button onClick={()=>setScriptVariantId(variant.id)}>高级手工编辑</button>}</td></tr>)}</tbody></table>{scriptVariantId !== null && <VideoScriptVersionPanel variant={result.variants.find(item=>item.id===scriptVariantId)!} onClose={()=>setScriptVariantId(null)} qwenEnabled={qwenScriptEnabled}/>}</>}
     </section>
   );
 }

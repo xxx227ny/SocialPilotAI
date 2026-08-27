@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { getApiErrorMessage } from "../../api/client";
+import { getApiErrorMessage, hasApiErrorMessage } from "../../api/client";
 import {
   createOrRecoverBatchQwenScripts,
   listBatchVideoVariants,
@@ -63,6 +63,7 @@ import {
   buildThreePlatformPreflightPayload,
   buildBatchQwenScriptRequest,
   pollExactJob,
+  preflightBatchScriptsWithCopyFallback,
   productionBatchTerminal,
   productionBatchRecoverable,
   productionPollDelayMs,
@@ -757,13 +758,22 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
       if (!request) {
         throw new Error("该Batch没有当前商品的三个READY平台Variant。");
       }
-      const checked = await preflightBatchQwenScripts(
-        batchId,
+      const fallback = await preflightBatchScriptsWithCopyFallback(
         request,
-        active.signal,
+        (current) =>
+          preflightBatchQwenScripts(batchId, current, active.signal),
+        (error) =>
+          hasApiErrorMessage(error, "Target-platform copy is unavailable"),
       );
+      const checked = fallback.checked;
+      if (fallback.ignoredIncompatibleCopyMatrix) {
+        setCopyMatrixId(null);
+        window.localStorage.removeItem(
+          `socialpilot.videoCopyMatrix.${product.id}`,
+        );
+      }
       if (!operation.current.current(active.id)) return;
-      setOneClickRequest(request);
+      setOneClickRequest(fallback.request);
       setOneClickPreflight(checked);
       window.localStorage.setItem(
         `socialpilot.scriptBatch.${product.id}`,
@@ -771,18 +781,15 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
       );
       setMessage(
         checked.ready_for_execution
-          ? "完整链路Preflight通过，请确认模型调用次数和费用。"
+          ? fallback.ignoredIncompatibleCopyMatrix
+            ? "文案矩阵不含 YouTube 文案，系统已自动改用商品资料与营销策略生成三平台脚本。完整链路检查已通过，请确认调用次数和费用。"
+            : "完整链路Preflight通过，请确认模型调用次数和费用。"
           : oneClickBlockedMessage(checked),
       );
     } catch (error) {
       if (!operation.current.current(active.id)) return;
       setPhase("FAILED");
-      const detail = getApiErrorMessage(error, "一键完整生产前置检查失败。");
-      setMessage(
-        detail === "Target-platform copy is unavailable"
-          ? "所选文案矩阵缺少 YouTube 文案。请清空“可选文案矩阵编号”后重新检查，系统将使用商品与营销策略生成三平台脚本。"
-          : detail,
-      );
+      setMessage(getApiErrorMessage(error, "一键完整生产前置检查失败。"));
     }
   }
 
@@ -1234,7 +1241,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
           />
         </label>
         <p>
-          文案矩阵必须同时包含三个视频平台的文案；如果没有 YouTube 文案，请将此项留空。
+          文案矩阵为可选项；若其中没有 YouTube 文案，系统会自动使用商品资料与营销策略生成三平台脚本。
         </p>
         <button
           type="button"

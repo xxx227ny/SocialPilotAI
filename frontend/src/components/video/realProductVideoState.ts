@@ -1,5 +1,6 @@
 import type { ExecutionJob } from "../../types/execution";
 import type {
+  BatchQwenScriptPreflight,
   BatchQwenScriptRequest,
   BatchVideoVariant,
 } from "../../types/batchVideo";
@@ -151,6 +152,34 @@ export function buildBatchQwenScriptRequest(
     strategy_id: strategyId,
     copy_matrix_id: copyMatrixId,
   };
+}
+
+export async function preflightBatchScriptsWithCopyFallback(
+  request: BatchQwenScriptRequest,
+  execute: (
+    current: BatchQwenScriptRequest,
+  ) => Promise<BatchQwenScriptPreflight>,
+  copyUnavailable: (error: unknown) => boolean,
+): Promise<{
+  request: BatchQwenScriptRequest;
+  checked: BatchQwenScriptPreflight;
+  ignoredIncompatibleCopyMatrix: boolean;
+}> {
+  try {
+    return {
+      request,
+      checked: await execute(request),
+      ignoredIncompatibleCopyMatrix: false,
+    };
+  } catch (error) {
+    if (!request.copy_matrix_id || !copyUnavailable(error)) throw error;
+    const fallbackRequest = { ...request, copy_matrix_id: null };
+    return {
+      request: fallbackRequest,
+      checked: await execute(fallbackRequest),
+      ignoredIncompatibleCopyMatrix: true,
+    };
+  }
 }
 
 export function buildThreePlatformPreflightPayload(

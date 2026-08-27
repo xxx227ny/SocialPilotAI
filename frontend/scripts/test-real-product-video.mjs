@@ -209,6 +209,23 @@ try {
   assert.equal(state.buildBatchQwenScriptRequest([], 3, 21, null), null);
   behavior++;
 
+  const copyFallbackCalls = [];
+  const fallbackChecked = { ready_for_execution: true };
+  const copyFallback = await state.preflightBatchScriptsWithCopyFallback(
+    oneClickRequest,
+    async (request) => {
+      copyFallbackCalls.push(request.copy_matrix_id);
+      if (request.copy_matrix_id) throw new Error("copy unavailable");
+      return fallbackChecked;
+    },
+    () => true,
+  );
+  assert.deepEqual(copyFallbackCalls, [31, null]);
+  assert.equal(copyFallback.request.copy_matrix_id, null);
+  assert.equal(copyFallback.checked, fallbackChecked);
+  assert.equal(copyFallback.ignoredIncompatibleCopyMatrix, true);
+  behavior++;
+
   const panel = await fs.readFile(
     path.join(root, "src/components/video/RealProductVideoPanel.tsx"),
     "utf8",
@@ -291,8 +308,12 @@ try {
     "检查脚本到成片的完整调用与费用",
     "确认并一键生成三平台完整成片",
     "buildBatchQwenScriptRequest",
+    "preflightBatchScriptsWithCopyFallback",
     "preflightBatchQwenScripts",
     "createOrRecoverBatchQwenScripts",
+    "hasApiErrorMessage",
+    "Target-platform copy is unavailable",
+    "系统已自动改用商品资料与营销策略生成三平台脚本",
     "model-cost-confirmation",
     "oneClickBlockedMessage",
     "will_auto_activate_exact_results",

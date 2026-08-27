@@ -88,6 +88,18 @@ export function CopyPreflightPanel({
     strategyId: strategy.id,
   };
 
+  useEffect(() => {
+    window.localStorage.setItem(
+      `socialpilot.videoStrategy.${product.id}`,
+      String(strategy.id),
+    );
+    if (!matrix) return;
+    window.localStorage.setItem(
+      `socialpilot.videoCopyMatrix.${product.id}`,
+      String(matrix.id),
+    );
+  }, [matrix, product.id, strategy.id]);
+
   const isCurrent = useCallback(
     (
       taskId: number,

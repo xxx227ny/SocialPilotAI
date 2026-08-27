@@ -208,3 +208,11 @@ export function getApiErrorMessage(error: unknown, fallback: string): string {
   }
   return fallback;
 }
+
+export function hasApiErrorMessage(error: unknown, message: string): boolean {
+  if (!axios.isAxiosError(error)) return false;
+  const data = error.response?.data as
+    | { error?: { message?: unknown } }
+    | undefined;
+  return data?.error?.message === message;
+}
