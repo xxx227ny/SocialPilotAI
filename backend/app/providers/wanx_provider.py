@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from typing import Any
 from urllib.parse import quote
 
@@ -69,6 +70,7 @@ class WanxProvider(VisualGenerationProvider):
 
         self.api_key = api_key
         self.model = app_settings.wanx_model
+        self.i2v_model = app_settings.wanx_i2v_model
         self.endpoint = (
             configuration.wanx_endpoint
             if app_settings.require_live_provider_coherence
@@ -83,18 +85,35 @@ class WanxProvider(VisualGenerationProvider):
 
     async def submit(self, request: VisualGenerationRequest) -> VisualTaskSubmission:
         self._validate_request(request)
+        input_payload: dict[str, object] = {"prompt": request.prompt.strip()}
+        parameters: dict[str, object] = {
+            "duration": request.duration_seconds,
+            "resolution": request.resolution,
+        }
+        model = self.model
+        if request.reference_images:
+            reference = request.reference_images[0]
+            encoded = base64.b64encode(reference.content).decode("ascii")
+            input_payload["img_url"] = f"data:{reference.content_type};base64,{encoded}"
+            model = self.i2v_model
+            parameters.update(
+                {
+                    "prompt_extend": True,
+                    "shot_type": "multi",
+                    "audio": False,
+                    "watermark": False,
+                }
+            )
+        else:
+            parameters["ratio"] = request.aspect_ratio
         payload = await self._request(
             "POST",
             "/services/aigc/video-generation/video-synthesis",
             enable_async=True,
             json={
-                "model": self.model,
-                "input": {"prompt": request.prompt.strip()},
-                "parameters": {
-                    "duration": request.duration_seconds,
-                    "ratio": request.aspect_ratio,
-                    "resolution": request.resolution,
-                },
+                "model": model,
+                "input": input_payload,
+                "parameters": parameters,
             },
         )
         output = self._require_output(payload)
@@ -249,6 +268,18 @@ class WanxProvider(VisualGenerationProvider):
             raise ProviderModelError("Wanx aspect ratio is not supported")
         if request.resolution not in WANX_RESOLUTIONS:
             raise ProviderModelError("Wanx resolution is not supported")
+        if len(request.reference_images) > 1:
+            raise ProviderModelError("Wanx image-to-video accepts one first frame")
+        if request.reference_images:
+            reference = request.reference_images[0]
+            if not reference.content or len(reference.content) > 20_000_000:
+                raise ProviderModelError("Wanx reference image size is invalid")
+            if reference.content_type not in {
+                "image/png",
+                "image/jpeg",
+                "image/webp",
+            }:
+                raise ProviderModelError("Wanx reference image type is invalid")
 
     @staticmethod
     def _require_output(payload: dict[str, Any]) -> dict[str, Any]:

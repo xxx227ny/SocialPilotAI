@@ -101,6 +101,8 @@ class Settings(BaseSettings):
     instagram_media_probe_timeout: float = Field(default=10, gt=0, le=60)
     wanx_api_key: SecretStr | None = None
     wanx_model: str = "wan2.7-t2v"
+    wanx_i2v_model: str = "wan2.6-i2v-flash"
+    wanx_i2v_estimated_cost: Decimal = Field(default=Decimal("2.25"), ge=0)
     wanx_region: str = "cn-beijing"
     wanx_workspace_id: str | None = None
     wanx_endpoint: str | None = None

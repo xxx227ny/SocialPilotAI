@@ -76,6 +76,46 @@ def test_submit_maps_request_and_response() -> None:
     assert result.status == "PENDING"
 
 
+def test_submit_maps_reference_image_to_real_i2v_request() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        assert body["model"] == "wan2.6-i2v-flash"
+        assert body["input"]["prompt"] == "Show the feeder dispensing food."
+        assert body["input"]["img_url"] == "data:image/png;base64,iVBORw0KGgo="
+        assert body["parameters"] == {
+            "duration": 15,
+            "resolution": "720P",
+            "prompt_extend": True,
+            "shot_type": "multi",
+            "audio": False,
+            "watermark": False,
+        }
+        return httpx.Response(
+            200,
+            json={"output": {"task_id": "i2v-1", "task_status": "PENDING"}},
+        )
+
+    from app.providers.visual_base import VisualReferenceImage
+
+    result = asyncio.run(
+        provider_with_handler(handler).submit(
+            VisualGenerationRequest(
+                prompt="Show the feeder dispensing food.",
+                duration_seconds=15,
+                aspect_ratio="9:16",
+                resolution="720P",
+                reference_images=(
+                    VisualReferenceImage(
+                        content=b"\x89PNG\r\n\x1a\n",
+                        content_type="image/png",
+                    ),
+                ),
+            )
+        )
+    )
+    assert result.provider_task_id == "i2v-1"
+
+
 def test_fetch_maps_succeeded_result() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "GET"
@@ -106,9 +146,7 @@ def test_fetch_maps_succeeded_result() -> None:
     assert snapshot.provider_task_id == "task123"
     assert snapshot.provider_request_id == "request456"
     assert snapshot.status == "SUCCEEDED"
-    assert snapshot.provider_output_url == (
-        "https://provider.example/video.mp4"
-    )
+    assert snapshot.provider_output_url == ("https://provider.example/video.mp4")
     assert snapshot.metadata["usage"] == {
         "duration": 10,
         "ratio": "9:16",
@@ -170,9 +208,7 @@ def test_fetch_returns_failed_provider_status() -> None:
 
 def test_timeout_uses_safe_provider_error() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
-        raise httpx.ReadTimeout(
-            f"upstream timeout with {TEST_KEY}", request=request
-        )
+        raise httpx.ReadTimeout(f"upstream timeout with {TEST_KEY}", request=request)
 
     provider = provider_with_handler(handler)
 

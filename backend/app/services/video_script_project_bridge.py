@@ -96,11 +96,14 @@ class VideoScriptProjectBridge:
         input_digest = _digest(material)
         existing = (
             self.session.query(VideoProject)
-            .filter_by(source_script_version_id=version.id)
+            .filter_by(source_input_digest=input_digest)
             .one_or_none()
         )
         if existing is not None:
-            if existing.source_script_content_digest != version.content_digest:
+            if (
+                existing.source_script_version_id != version.id
+                or existing.source_script_content_digest != version.content_digest
+            ):
                 raise AppError("ScriptVersion bridge digest conflict", 409)
             return ProductVideoPrepareRead(
                 video_project_id=existing.id,
@@ -139,6 +142,7 @@ class VideoScriptProjectBridge:
             status="planned",
             source_script_version_id=version.id,
             source_script_content_digest=version.content_digest,
+            source_input_digest=input_digest,
         )
         if any((scene.end_ms - scene.start_ms) % 1000 for scene in scenes):
             raise AppError(

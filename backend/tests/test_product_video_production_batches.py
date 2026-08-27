@@ -140,6 +140,48 @@ def test_create_recover_and_control_persistent_three_platform_batch(
     assert {item["status"] for item in cancelled["items"]} == {"CANCELLED"}
 
 
+def test_legacy_provider_profile_unlocks_wanx_i2v_batch_creation(
+    client: TestClient, db_session: Session, tmp_path
+) -> None:
+    product, asset, selections = create_three_platform_sources(db_session)
+    settings = _settings(tmp_path).model_copy(
+        update={"enable_happyhorse_product_video": False}
+    )
+    app.dependency_overrides[get_settings] = lambda: settings
+    payload = {
+        "reference_product_asset_id": asset.id,
+        "reference_product_asset_sha256": asset.sha256,
+        "selections": selections,
+    }
+
+    checked_response = client.post(
+        f"/api/v1/products/{product.id}/real-product-video/three-platform-preflight",
+        json=payload,
+    )
+    assert checked_response.status_code == 200
+    checked = checked_response.json()
+    assert checked["ready"] is True
+    assert checked["dynamic_video_provider"] == "wanx_i2v"
+    assert checked["dynamic_video_generation_calls"] == 3
+    assert checked["happyhorse_generation_calls"] == 0
+
+    created = client.post(
+        f"/api/v1/products/{product.id}/real-product-video/production-batches",
+        json={
+            **payload,
+            "input_digest": checked["input_digest"],
+            "idempotency_key": "production-batch-wanx-i2v-1",
+            "cost_confirmed": True,
+        },
+    )
+    assert created.status_code == 201
+    body = created.json()
+    assert body["batch"]["status"] == "WAITING"
+    assert {
+        item["stage_state_json"]["dynamic_video_provider"] for item in body["items"]
+    } == {"wanx_i2v"}
+
+
 def test_production_batch_rejects_tampering_and_cross_product_recovery(
     client: TestClient, db_session: Session, tmp_path
 ) -> None:

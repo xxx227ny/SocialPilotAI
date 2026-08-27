@@ -23,10 +23,15 @@ import {
   refreshHappyHorseVideo,
   resumeProductVideoProductionBatch,
   submitHappyHorseVideo,
-  submitProductImageJob,
   submitWanxProductImageJob,
   submitVoiceoverJob,
 } from "../../api/productMarketingVideo";
+import {
+  executeVideoProjectRender,
+  getVideoRenderJob,
+  getVideoRenderPreflight,
+  refreshWorkspaceVideoRenderTask,
+} from "../../api/videos";
 import {
   getCompositionArtifact,
   preflightVideoComposition,
@@ -182,41 +187,13 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
     setResult(null);
     setMessage("");
     try {
-      setPhase("GENERATING_IMAGES");
-      const images: UploadedProductImage[] = [];
-      for (const scene of source.scenes) {
-        const submitted = await submitWanxProductImageJob(
-          product.id,
-          {
-            script_version_id: source.script_version_id,
-            scene_sequence: scene.sequence,
-            reference_product_asset_id: referenceAsset.id,
-            reference_product_asset_sha256: referenceAsset.sha256,
-            idempotency_key:
-              `real-product-video:${source.script_version_id}:` +
-              `${referenceAsset.id}:${scene.sequence}:wanx-v1`,
-            cost_confirmed: true,
-          },
-          active.signal,
-        );
-        const job = await pollExactJob(
-          submitted.job,
-          getExactMarketingJob,
-          active.signal,
-        );
-        const assetId = requireSuccessfulResult(job, "product_asset");
-        images.push(await getProductImageAsset(product.id, assetId, active.signal));
-      }
       setPhase("PREPARING_SHOTS");
-      const shots = source.scenes.map((scene, index) => {
-        const image = images[index % images.length];
-        return {
+      const shots = source.scenes.map((scene, index) => ({
           scene_id: scene.id,
-          product_asset_id: image.id,
-          product_asset_sha256: image.sha256,
+          product_asset_id: referenceAsset.id,
+          product_asset_sha256: referenceAsset.sha256,
           motion: MOTIONS[index % MOTIONS.length],
-        };
-      });
+      }));
       const platform = {
         tiktok: "TIKTOK",
         youtube: "YOUTUBE_SHORTS",
@@ -232,37 +209,23 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
         },
         active.signal,
       );
-      const rendered: Array<{ task: number; artifact: number }> = [];
-      for (const [index, scene] of source.scenes.entries()) {
-        const submitted = await submitProductImageJob(
-          product.id,
-          {
-            video_project_id: prepared.video_project_id,
-            scene_sequence: scene.sequence,
-            product_asset_id: shots[index].product_asset_id,
-            product_asset_sha256: shots[index].product_asset_sha256,
-            motion: shots[index].motion,
-            input_digest: prepared.input_digest,
-          },
-          active.signal,
-        );
-        const job = await pollExactJob(submitted.job, getExactMarketingJob, active.signal);
-        rendered.push({
-          task: job.source_id,
-          artifact: requireSuccessfulResult(job, "video_render_artifact"),
-        });
-      }
+      setPhase("CLOUD_VIDEO");
+      const dynamic = await generateWanxDynamicVideo(
+        prepared.video_project_id,
+        { id: referenceAsset.id, sha256: referenceAsset.sha256 },
+        active,
+      );
       setPhase("COMPOSING");
-      const compositionInput = source.scenes.map((scene, index) => ({
-        sequence: scene.sequence,
-        start_ms: scene.start_ms,
-        end_ms: scene.end_ms,
+      const compositionInput = [{
+        sequence: 1,
+        start_ms: 0,
+        end_ms: 15000,
         trim_start_ms: 0,
-        trim_end_ms: scene.end_ms - scene.start_ms,
+        trim_end_ms: 15000,
         transition_type: "cut" as const,
-        render_task_id: rendered[index].task,
-        artifact_id: rendered[index].artifact,
-      }));
+        render_task_id: dynamic.taskId,
+        artifact_id: dynamic.artifactId,
+      }];
       const compositionPreflight = await preflightVideoComposition(
         product.id,
         prepared.video_project_id,
@@ -363,11 +326,71 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
       if (operation.current.current(active.id)) {
         setResult({ video: artifact.id, subtitle: artifact.subtitle_artifact_id });
         setPhase("SUCCEEDED");
-        setMessage("15秒真实商品视频已生成，旁白来自千问云配音。");
+        setMessage("15秒万象动态商品视频已生成，旁白来自千问云配音。");
       }
     } catch (error) {
       fail(active.id, error, "真实商品视频生成失败。");
     }
+  }
+
+  async function generateWanxDynamicVideo(
+    videoProjectId: number,
+    reference: { id: number; sha256: string },
+    active: { id: number; signal: AbortSignal },
+  ) {
+    const preflight = await getVideoRenderPreflight(videoProjectId, active.signal);
+    if (!preflight.ready_for_execution) {
+      throw new Error(`万象视频生成条件未满足：${preflight.missing_requirements.join("、")}`);
+    }
+    const submitted = await executeVideoProjectRender(
+      videoProjectId,
+      {
+        product_id: preflight.product_id,
+        marketing_strategy_id: preflight.marketing_strategy_id,
+        copy_matrix_id: preflight.copy_matrix_id,
+        input_digest: preflight.input_digest,
+        preflight_digest: preflight.preflight_digest,
+        preflight_expires_at: preflight.expires_at,
+        cost_confirmed: true,
+        render_mode: "product_reference",
+        reference_product_asset_id: reference.id,
+        reference_product_asset_sha256: reference.sha256,
+      },
+      active.signal,
+    );
+    const submitJob = await pollExactJob(
+      submitted.job,
+      getVideoRenderJob,
+      active.signal,
+    );
+    const taskId = requireSuccessfulResult(submitJob, "video_render_task");
+    for (let attempt = 0; attempt < 90; attempt += 1) {
+      await waitForProduction(active.signal);
+      const refreshed = await refreshWorkspaceVideoRenderTask(
+        taskId,
+        {
+          video_project_id: videoProjectId,
+          refresh_request_id: `product-i2v:${taskId}:${crypto.randomUUID()}`,
+        },
+        active.signal,
+      );
+      const refreshJob = await pollExactJob(
+        refreshed.job,
+        getVideoRenderJob,
+        active.signal,
+      );
+      if (
+        refreshJob.status === "SUCCEEDED" &&
+        refreshJob.result_entity_type === "video_render_artifact" &&
+        refreshJob.result_entity_id
+      ) {
+        return { taskId, artifactId: refreshJob.result_entity_id };
+      }
+      if (refreshJob.status !== "SUCCEEDED") {
+        requireSuccessfulResult(refreshJob, "video_render_artifact");
+      }
+    }
+    throw new Error("万象动态视频生成等待超时，任务已保留，可稍后恢复。");
   }
 
   async function generateCloudFinal(
@@ -776,8 +799,10 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
         !videoChecked.ready ||
         videoChecked.wanx_image_generation_calls !==
           current.wanx_image_generation_calls ||
-        videoChecked.happyhorse_generation_calls !==
-          current.happyhorse_generation_calls ||
+        videoChecked.dynamic_video_generation_calls !==
+          current.dynamic_video_generation_calls ||
+        videoChecked.dynamic_video_provider !==
+          current.dynamic_video_provider ||
         videoChecked.qwen_tts_generation_calls !==
           current.qwen_tts_generation_calls ||
         videoChecked.known_estimated_cost !== current.known_downstream_cost
@@ -1116,8 +1141,9 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
           <div className="preflight-summary">
             <p>
               千问脚本 {oneClickPreflight.estimated_provider_calls} 次 · 万象图片
-              {oneClickPreflight.wanx_image_generation_calls} 次 · HappyHorse视频
-              {oneClickPreflight.happyhorse_generation_calls} 次 · 千问TTS
+              {oneClickPreflight.wanx_image_generation_calls} 次 · 动态视频（
+              {oneClickPreflight.dynamic_video_model}）
+              {oneClickPreflight.dynamic_video_generation_calls} 次 · 千问TTS
               {oneClickPreflight.qwen_tts_generation_calls} 次
             </p>
             <p>
@@ -1164,13 +1190,17 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
           </div>
         )}
       </fieldset>
-      <p>万象将按每个分镜自动生成一致的商品广告视觉；阶段：{phaseLabel(phase)}</p>
+      <p>万象将根据商品主参考图生成真实动态商品演示；阶段：{phaseLabel(phase)}</p>
       <button
         type="button"
-        disabled={!source || !referenceAsset || !["IDLE", "FAILED"].includes(phase)}
+        disabled={
+          !source ||
+          !referenceAsset ||
+          !["IDLE", "FAILED", "SUCCEEDED"].includes(phase)
+        }
         onClick={() => void generate()}
       >
-        生成15秒视频
+        生成15秒动态商品视频
       </button>
       <button
         type="button"
@@ -1198,7 +1228,8 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
         <div className="preflight-summary">
           <p>
             万象图片生成 {batchPreflight.wanx_image_generation_calls} 次 ·
-            HappyHorse视频生成 {batchPreflight.happyhorse_generation_calls} 次 ·
+            动态视频（{batchPreflight.dynamic_video_model}）生成
+            {batchPreflight.dynamic_video_generation_calls} 次 ·
             千问TTS {batchPreflight.qwen_tts_generation_calls} 次
           </p>
           <p>

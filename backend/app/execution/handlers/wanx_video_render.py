@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
+from pathlib import Path
 from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -10,12 +11,15 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings
 from app.core.exceptions import AppError
 from app.execution.contracts import ExecutionContext, HandlerResult
+from app.models import ProductAsset
 from app.providers.visual_base import (
     VisualGenerationProvider,
     VisualGenerationRequest,
+    VisualReferenceImage,
     VisualTaskSnapshot,
     VisualTaskSubmission,
 )
+from app.services.product_asset_storage import ProductAssetStorage
 from app.services.video_artifact_storage import (
     ProviderOutputFetcher,
     VideoArtifactStorage,
@@ -50,6 +54,11 @@ class WanxVideoRenderSubmitV1Input(BaseModel):
     frozen_input_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     preflight_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     preflight_expires_at: datetime
+    render_mode: str = Field(pattern=r"^(scene|product_reference)$")
+    reference_product_asset_id: int | None = Field(default=None, gt=0)
+    reference_product_asset_sha256: str | None = Field(
+        default=None, pattern=r"^[0-9a-f]{64}$"
+    )
 
     @field_validator("preflight_expires_at")
     @classmethod
@@ -129,6 +138,7 @@ class WanxVideoRenderSubmitV1Handler:
                 return HandlerResult.failed("VIDEO_RENDER_PREFLIGHT_NOT_READY")
             guarded = _ContextVisualProvider(context, self.provider)
             try:
+                reference_image = self._reference_image(session, data)
                 result = asyncio.run(
                     VideoProjectRenderExecutionService(
                         session,
@@ -136,7 +146,15 @@ class WanxVideoRenderSubmitV1Handler:
                         self.settings,
                         self.output_fetcher,
                         self.artifact_storage,
-                    ).execute(data.video_project_id)
+                    ).execute(
+                        data.video_project_id,
+                        reference_image=reference_image,
+                        reference_product_asset_id=(data.reference_product_asset_id),
+                        reference_product_asset_sha256=(
+                            data.reference_product_asset_sha256
+                        ),
+                        whole_timeline=data.render_mode == "product_reference",
+                    )
                 )
             except AppError:
                 if context.provider_state()[1]:
@@ -147,6 +165,32 @@ class WanxVideoRenderSubmitV1Handler:
                 result_entity_type="video_render_task",
                 result_entity_id=result.task.id,
             )
+
+    def _reference_image(
+        self,
+        session: Session,
+        data: WanxVideoRenderSubmitV1Input,
+    ) -> VisualReferenceImage | None:
+        if data.render_mode == "scene":
+            return None
+        asset = session.get(ProductAsset, data.reference_product_asset_id)
+        if (
+            asset is None
+            or asset.product_id != data.product_id
+            or asset.sha256 != data.reference_product_asset_sha256
+            or not asset.storage_identity
+            or asset.content_type not in {"image/png", "image/jpeg", "image/webp"}
+        ):
+            raise AppError("Product reference image was not found", 404)
+        storage = ProductAssetStorage(
+            Path(self.settings.product_asset_storage_root or ""),
+            self.settings.product_asset_max_bytes,
+        )
+        path = storage.resolve(asset.storage_identity, asset.sha256)
+        return VisualReferenceImage(
+            content=path.read_bytes(),
+            content_type=asset.content_type,
+        )
 
 
 class WanxVideoRenderRefreshV1Handler:

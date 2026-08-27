@@ -125,6 +125,7 @@ def business_snapshot(path: Path) -> str:
                 record.pop("brand_organic_toggle", None)
                 record.pop("source_script_version_id", None)
                 record.pop("source_script_content_digest", None)
+                record.pop("source_input_digest", None)
                 record.pop("source_product_asset_id", None)
                 record.pop("source_product_asset_sha256", None)
                 payload[table_name].append(record)
@@ -953,7 +954,7 @@ def test_stage3f_head_contains_product_media_bridge_columns(tmp_path: Path) -> N
         ).fetchone()[0]
     finally:
         connection.close()
-    assert HEAD_REVISION == "0021_product_video_production_batches"
+    assert HEAD_REVISION == "0022_video_project_input_identity"
     assert {
         "content_type",
         "size_bytes",
@@ -969,6 +970,27 @@ def test_stage3f_head_contains_product_media_bridge_columns(tmp_path: Path) -> N
     assert {"source_product_asset_id", "source_product_asset_sha256"} <= render_columns
     assert "natural_duration_ms" in audio_columns
     assert "ck_composition_audio_natural_duration" in audio_schema
+
+
+def test_0021_runtime_is_recognized_and_safely_upgraded_to_0022(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "product-video-0021.db"
+    backups = tmp_path / "backups"
+    migration_service._run_alembic(  # noqa: SLF001
+        database, "upgrade", "0021_product_video_production_batches"
+    )
+
+    before = get_database_migration_status(database)
+    assert before.state == "product_video_production_runtime"
+    assert before.revision == "0021_product_video_production_batches"
+    assert before.upgrade_required is True
+
+    result = upgrade_sqlite_database(database, backups)
+    assert result.previous_revision == "0021_product_video_production_batches"
+    assert result.current_revision == HEAD_REVISION
+    assert result.backup_manifest_path is not None
+    assert get_database_migration_status(database).state == "head"
 
 
 def test_0015_database_is_safely_upgraded_to_growth_automation_head(

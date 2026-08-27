@@ -75,12 +75,16 @@ export interface ThreePlatformVideoPreflight {
     scene_count: number;
     wanx_image_generation_calls: number;
     happyhorse_generation_calls: number;
+    dynamic_video_generation_calls: number;
     qwen_tts_generation_calls: number;
     known_estimated_cost: string;
     currency: "CNY";
   }>;
   wanx_image_generation_calls: number;
   happyhorse_generation_calls: number;
+  dynamic_video_generation_calls: number;
+  dynamic_video_provider: "happyhorse" | "wanx_i2v";
+  dynamic_video_model: string;
   qwen_tts_generation_calls: number;
   qwen_script_generation_calls: 0;
   known_estimated_cost: string;

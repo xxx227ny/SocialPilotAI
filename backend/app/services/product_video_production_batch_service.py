@@ -55,6 +55,10 @@ from app.schemas.video_composition_enhancement import (
     VideoCompositionEnhancementPreflightRequest,
     VideoCompositionEnhancementSubmitRequest,
 )
+from app.schemas.video_render import (
+    VideoRenderRefreshJobRequest,
+    VideoRenderSubmitJobRequest,
+)
 from app.schemas.video_render_artifact import VideoRenderArtifactCreate
 from app.services.happyhorse_product_video_service import (
     HappyHorseProductVideoService,
@@ -74,6 +78,8 @@ from app.services.video_composition_enhancement_preflight import (
 )
 from app.services.video_composition_job_service import VideoCompositionJobService
 from app.services.video_composition_preflight import VideoCompositionPreflightService
+from app.services.video_render_job_service import VideoRenderJobService
+from app.services.video_render_preflight import VideoRenderPreflightService
 from app.services.video_script_project_bridge import VideoScriptProjectBridge
 from app.services.voiceover_generation_service import (
     VOICEOVER_GENERATE_V1,
@@ -158,6 +164,8 @@ class ProductVideoProductionBatchService:
                             "happyhorse_generation_calls": (
                                 platform.happyhorse_generation_calls
                             ),
+                            "dynamic_video_provider": (checked.dynamic_video_provider),
+                            "dynamic_video_model": checked.dynamic_video_model,
                             "qwen_tts_generation_calls": (
                                 platform.qwen_tts_generation_calls
                             ),
@@ -480,6 +488,51 @@ class ProductVideoProductionBatchService:
             self._fail_item(item, "PRODUCTION_VIDEO_PROJECT_IDENTITY_INVALID")
             return
 
+        dynamic_provider = item.stage_state_json.get(
+            "dynamic_video_provider", "happyhorse"
+        )
+        if dynamic_provider == "wanx_i2v":
+            checked = VideoRenderPreflightService(self.session, self.settings).run(
+                project.id
+            )
+            if not checked.ready_for_execution:
+                self._fail_item(item, "PRODUCTION_WANX_VIDEO_NOT_READY")
+                return
+            reference = self.session.get(ProductAsset, batch.reference_product_asset_id)
+            if (
+                reference is None
+                or reference.product_id != batch.product_id
+                or reference.sha256 != batch.reference_product_asset_sha256
+            ):
+                self._fail_item(item, "PRODUCTION_REFERENCE_IDENTITY_INVALID")
+                return
+            submitted = VideoRenderJobService(
+                self.session, self.settings
+            ).enqueue_submit(
+                project.id,
+                VideoRenderSubmitJobRequest(
+                    product_id=batch.product_id,
+                    marketing_strategy_id=checked.marketing_strategy_id,
+                    copy_matrix_id=checked.copy_matrix_id,
+                    input_digest=checked.input_digest,
+                    preflight_digest=checked.preflight_digest,
+                    preflight_expires_at=checked.expires_at,
+                    cost_confirmed=True,
+                    render_mode="product_reference",
+                    reference_product_asset_id=reference.id,
+                    reference_product_asset_sha256=reference.sha256,
+                ),
+            )
+            item.video_project_id = project.id
+            item.stage_state_json = {
+                **item.stage_state_json,
+                "dynamic_video_submit_job_id": submitted.job.id,
+                "dynamic_video_refresh_count": 0,
+                "dynamic_video_refresh_job_id": None,
+            }
+            item.stage = "GENERATING_VIDEO"
+            return
+
         references: list[HappyHorseReferenceImage] = []
         seen_asset_ids: set[int] = set()
         for asset in assets:
@@ -522,6 +575,9 @@ class ProductVideoProductionBatchService:
         item.stage = "GENERATING_VIDEO"
 
     def _refresh_happyhorse_submit(self, item: ProductVideoProductionItem) -> None:
+        if item.stage_state_json.get("dynamic_video_provider") == "wanx_i2v":
+            self._refresh_wanx_video_submit(item)
+            return
         if item.cloud_render_task_id is not None:
             self._advance_happyhorse_refresh(item)
             return
@@ -558,6 +614,112 @@ class ProductVideoProductionBatchService:
             **item.stage_state_json,
             "happyhorse_refresh_count": 0,
             "happyhorse_refresh_job_id": None,
+        }
+
+    def _refresh_wanx_video_submit(self, item: ProductVideoProductionItem) -> None:
+        if item.cloud_render_task_id is not None:
+            self._advance_wanx_video_refresh(item)
+            return
+        job_id = item.stage_state_json.get("dynamic_video_submit_job_id")
+        job = (
+            self.session.get(ExecutionJob, job_id) if isinstance(job_id, int) else None
+        )
+        if job is None:
+            self._fail_item(item, "PRODUCTION_WANX_VIDEO_JOB_INVALID")
+            return
+        if job.status == "SUBMIT_UNKNOWN":
+            self._fail_item(item, "PRODUCTION_WANX_VIDEO_SUBMIT_UNKNOWN")
+            return
+        if job.status in {"FAILED", "CANCELLED"}:
+            self._fail_item(item, "PRODUCTION_WANX_VIDEO_SUBMIT_FAILED")
+            return
+        if job.status != "SUCCEEDED":
+            return
+        task = (
+            self.session.get(VideoRenderTask, job.result_entity_id)
+            if job.result_entity_type == "video_render_task"
+            and job.result_entity_id is not None
+            else None
+        )
+        if (
+            task is None
+            or task.video_project_id != item.video_project_id
+            or task.provider_name != "wanx"
+        ):
+            self._fail_item(item, "PRODUCTION_WANX_VIDEO_RESULT_INVALID")
+            return
+        item.cloud_render_task_id = task.id
+        item.stage_state_json = {
+            **item.stage_state_json,
+            "dynamic_video_refresh_count": 0,
+            "dynamic_video_refresh_job_id": None,
+        }
+
+    def _advance_wanx_video_refresh(self, item: ProductVideoProductionItem) -> None:
+        task = self.session.get(VideoRenderTask, item.cloud_render_task_id)
+        if (
+            task is None
+            or task.video_project_id != item.video_project_id
+            or task.provider_name != "wanx"
+        ):
+            self._fail_item(item, "PRODUCTION_WANX_VIDEO_TASK_INVALID")
+            return
+        raw_job_id = item.stage_state_json.get("dynamic_video_refresh_job_id")
+        if isinstance(raw_job_id, int):
+            job = self.session.get(ExecutionJob, raw_job_id)
+            if job is None:
+                self._fail_item(item, "PRODUCTION_WANX_VIDEO_REFRESH_JOB_INVALID")
+                return
+            if job.status in {"SUBMIT_UNKNOWN", "FAILED", "CANCELLED"}:
+                self._fail_item(item, "PRODUCTION_WANX_VIDEO_REFRESH_FAILED")
+                return
+            if job.status != "SUCCEEDED":
+                return
+            if job.result_entity_type == "video_render_artifact":
+                artifact = self.session.get(VideoRenderArtifact, job.result_entity_id)
+                if (
+                    artifact is None
+                    or artifact.video_render_task_id != task.id
+                    or not artifact.storage_path
+                ):
+                    self._fail_item(item, "PRODUCTION_WANX_VIDEO_ARTIFACT_INVALID")
+                    return
+                item.cloud_render_artifact_id = artifact.id
+                item.stage = "COMPOSING"
+                return
+            if (
+                job.result_entity_type != "video_render_task"
+                or job.result_entity_id != task.id
+            ):
+                self._fail_item(item, "PRODUCTION_WANX_VIDEO_REFRESH_RESULT_INVALID")
+                return
+            item.stage_state_json = {
+                **item.stage_state_json,
+                "dynamic_video_refresh_job_id": None,
+            }
+            return
+        refresh_count = item.stage_state_json.get("dynamic_video_refresh_count", 0)
+        if not isinstance(refresh_count, int) or refresh_count < 0:
+            self._fail_item(item, "PRODUCTION_WANX_VIDEO_REFRESH_STATE_INVALID")
+            return
+        if refresh_count >= MAX_HAPPYHORSE_REFRESHES:
+            self._fail_item(item, "PRODUCTION_WANX_VIDEO_REFRESH_LIMIT")
+            return
+        next_count = refresh_count + 1
+        submitted = VideoRenderJobService(self.session, self.settings).enqueue_refresh(
+            task.id,
+            VideoRenderRefreshJobRequest(
+                video_project_id=item.video_project_id or 0,
+                refresh_request_id=(
+                    f"production:{item.production_batch_id}:item:{item.id}:"
+                    f"wanx-refresh:{next_count}"
+                ),
+            ),
+        )
+        item.stage_state_json = {
+            **item.stage_state_json,
+            "dynamic_video_refresh_count": next_count,
+            "dynamic_video_refresh_job_id": submitted.job.id,
         }
 
     def _advance_happyhorse_refresh(self, item: ProductVideoProductionItem) -> None:

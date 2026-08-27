@@ -141,6 +141,9 @@ class BatchQwenScriptPreflightRead(BatchQwenScriptRequest):
     estimated_cost_max: Decimal
     wanx_image_generation_calls: int
     happyhorse_generation_calls: int
+    dynamic_video_generation_calls: int
+    dynamic_video_provider: Literal["happyhorse", "wanx_i2v"]
+    dynamic_video_model: str
     qwen_tts_generation_calls: int
     known_downstream_cost: Decimal
     total_known_cost_min: Decimal

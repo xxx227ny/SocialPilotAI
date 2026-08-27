@@ -27,8 +27,8 @@ class VideoProject(Base):
     __tablename__ = "video_projects"
     __table_args__ = (
         UniqueConstraint(
-            "source_script_version_id",
-            name="uq_video_projects_source_script_version",
+            "source_input_digest",
+            name="uq_video_projects_source_input_digest",
         ),
     )
 
@@ -65,6 +65,7 @@ class VideoProject(Base):
         index=True,
     )
     source_script_content_digest: Mapped[str | None] = mapped_column(String(64))
+    source_input_digest: Mapped[str | None] = mapped_column(String(64), index=True)
 
     product: Mapped[Product] = relationship(back_populates="video_projects")
     marketing_strategy: Mapped[MarketingStrategy] = relationship(

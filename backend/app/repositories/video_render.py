@@ -16,9 +16,7 @@ class VideoRenderTaskRepository:
             select(VideoRenderTask).where(VideoRenderTask.idempotency_key == key)
         )
 
-    def get_by_provider_task_id(
-        self, provider_task_id: str
-    ) -> VideoRenderTask | None:
+    def get_by_provider_task_id(self, provider_task_id: str) -> VideoRenderTask | None:
         return self.session.scalar(
             select(VideoRenderTask).where(
                 VideoRenderTask.provider_task_id == provider_task_id
@@ -49,6 +47,8 @@ class VideoRenderTaskRepository:
         aspect_ratio: str,
         resolution: str,
         idempotency_key: str,
+        source_product_asset_id: int | None = None,
+        source_product_asset_sha256: str | None = None,
     ) -> VideoRenderTask:
         task = VideoRenderTask(
             video_project_id=video_project_id,
@@ -61,6 +61,8 @@ class VideoRenderTaskRepository:
             aspect_ratio=aspect_ratio,
             resolution=resolution,
             idempotency_key=idempotency_key,
+            source_product_asset_id=source_product_asset_id,
+            source_product_asset_sha256=source_product_asset_sha256,
             error_code=None,
             error_message=None,
         )

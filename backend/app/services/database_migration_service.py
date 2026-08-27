@@ -36,7 +36,9 @@ GROWTH_SANDBOX_REVISION = "0016_growth_sandbox_executions"
 GROWTH_AUTOMATION_REVISION = "0017_growth_automation_controls"
 GROWTH_MONITORING_REVISION = "0018_growth_automation_cycles"
 GROWTH_REPLAN_REVISION = "0019_growth_replan_resolutions"
-HEAD_REVISION = "0021_product_video_production_batches"
+VIDEO_PROJECT_COPY_OPTIONAL_REVISION = "0020_video_project_copy_optional"
+PRODUCT_VIDEO_PRODUCTION_REVISION = "0021_product_video_production_batches"
+HEAD_REVISION = "0022_video_project_input_identity"
 UNVERSIONED = "unversioned"
 MANIFEST_VERSION = 1
 ALEMBIC_INI = Path(__file__).resolve().parents[2] / "alembic.ini"
@@ -263,6 +265,8 @@ def expected_schema_fingerprint(revision: str) -> str:
         GROWTH_AUTOMATION_REVISION,
         GROWTH_MONITORING_REVISION,
         GROWTH_REPLAN_REVISION,
+        VIDEO_PROJECT_COPY_OPTIONAL_REVISION,
+        PRODUCT_VIDEO_PRODUCTION_REVISION,
         HEAD_REVISION,
     }:
         raise ValueError(f"Unknown expected revision: {revision}")
@@ -646,6 +650,8 @@ def get_database_migration_status(database_path: Path) -> DatabaseMigrationStatu
             GROWTH_AUTOMATION_REVISION,
             GROWTH_MONITORING_REVISION,
             GROWTH_REPLAN_REVISION,
+            VIDEO_PROJECT_COPY_OPTIONAL_REVISION,
+            PRODUCT_VIDEO_PRODUCTION_REVISION,
             HEAD_REVISION,
         }:
             raise IncompatibleSchemaError("Unsupported Alembic revision")
@@ -679,6 +685,8 @@ def get_database_migration_status(database_path: Path) -> DatabaseMigrationStatu
             GROWTH_AUTOMATION_REVISION: "growth_automation_runtime",
             GROWTH_MONITORING_REVISION: "growth_monitoring_runtime",
             GROWTH_REPLAN_REVISION: "growth_replan_runtime",
+            VIDEO_PROJECT_COPY_OPTIONAL_REVISION: "video_project_copy_optional_runtime",
+            PRODUCT_VIDEO_PRODUCTION_REVISION: "product_video_production_runtime",
         }
         return DatabaseMigrationStatus(
             state=state_by_revision[revision],
@@ -761,6 +769,8 @@ def _upgrade_sqlite_database_unlocked(
                     GROWTH_AUTOMATION_REVISION,
                     GROWTH_MONITORING_REVISION,
                     GROWTH_REPLAN_REVISION,
+                    VIDEO_PROJECT_COPY_OPTIONAL_REVISION,
+                    PRODUCT_VIDEO_PRODUCTION_REVISION,
                     HEAD_REVISION,
                 }:
                     raise IncompatibleSchemaError(

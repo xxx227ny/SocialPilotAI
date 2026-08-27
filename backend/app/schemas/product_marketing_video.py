@@ -170,7 +170,8 @@ class PlatformVideoProductionEstimate(BaseModel):
     script_version_id: int
     scene_count: int
     wanx_image_generation_calls: int
-    happyhorse_generation_calls: int = 1
+    happyhorse_generation_calls: int = 0
+    dynamic_video_generation_calls: int = 1
     qwen_tts_generation_calls: int = 1
     known_estimated_cost: Decimal
     currency: str = "CNY"
@@ -181,6 +182,9 @@ class ThreePlatformVideoPreflightRead(ThreePlatformVideoPreflightRequest):
     platforms: list[PlatformVideoProductionEstimate]
     wanx_image_generation_calls: int
     happyhorse_generation_calls: int
+    dynamic_video_generation_calls: int
+    dynamic_video_provider: Literal["happyhorse", "wanx_i2v"]
+    dynamic_video_model: str
     qwen_tts_generation_calls: int
     qwen_script_generation_calls: int = 0
     known_estimated_cost: Decimal

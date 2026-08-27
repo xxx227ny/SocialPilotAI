@@ -11,7 +11,11 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings
 from app.core.exceptions import AppError
 from app.models import VideoProject, VideoRenderArtifact, VideoRenderTask
-from app.providers.visual_base import VisualGenerationProvider
+from app.providers.visual_base import (
+    VisualGenerationProvider,
+    VisualGenerationRequest,
+    VisualReferenceImage,
+)
 from app.repositories.video_render import VideoRenderTaskRepository
 from app.repositories.video_render_artifact_repository import (
     VideoRenderArtifactRepository,
@@ -72,33 +76,48 @@ class VideoProjectRenderExecutionService:
         self.output_fetcher = output_fetcher
         self.artifact_storage = artifact_storage
         self.project_service = VideoProjectQueryService(session)
-        self.preflight_service = VideoRenderPreflightService(
-            session, app_settings
-        )
+        self.preflight_service = VideoRenderPreflightService(session, app_settings)
         self.render_service = VideoRenderService(session)
         self.render_repository = VideoRenderTaskRepository(session)
         self.artifact_repository = VideoRenderArtifactRepository(session)
-        self.recovery_service = VideoRenderRecoveryService(
-            session, artifact_storage
-        )
+        self.recovery_service = VideoRenderRecoveryService(session, artifact_storage)
 
     async def execute(
-        self, video_project_id: int
+        self,
+        video_project_id: int,
+        *,
+        reference_image: VisualReferenceImage | None = None,
+        reference_product_asset_id: int | None = None,
+        reference_product_asset_sha256: str | None = None,
+        whole_timeline: bool = False,
     ) -> VideoRenderOperationRead:
         self._require_execution_enabled()
         project = self.project_service.get(video_project_id)
         preflight = self.preflight_service.run(project.id)
         self._require_ready(preflight)
 
-        idempotency_key = self._idempotency_key(project)
-        task, reused = self.render_service.create_render_task_with_reuse(
-            project.id,
-            VideoRenderTaskCreate(
-                scene_sequence=WORKSPACE_RENDER_SCENE_SEQUENCE,
-                resolution=WORKSPACE_RENDER_RESOLUTION,
-                idempotency_key=idempotency_key,
-            ),
-        )
+        if whole_timeline:
+            if (
+                reference_image is None
+                or reference_product_asset_id is None
+                or reference_product_asset_sha256 is None
+            ):
+                raise AppError("Product-reference video input is incomplete", 422)
+            task, reused = self._create_product_reference_task(
+                project,
+                reference_product_asset_id,
+                reference_product_asset_sha256,
+            )
+        else:
+            idempotency_key = self._idempotency_key(project)
+            task, reused = self.render_service.create_render_task_with_reuse(
+                project.id,
+                VideoRenderTaskCreate(
+                    scene_sequence=WORKSPACE_RENDER_SCENE_SEQUENCE,
+                    resolution=WORKSPACE_RENDER_RESOLUTION,
+                    idempotency_key=idempotency_key,
+                ),
+            )
         if task.status != "CREATED" or task.provider_task_id is not None:
             artifact = self.artifact_repository.get_by_task_id(task.id)
             return self.recovery_service.build_operation(
@@ -110,13 +129,20 @@ class VideoProjectRenderExecutionService:
             )
 
         try:
-            result = await self._execution_service().submit(task.id)
+            request = None
+            if whole_timeline and reference_image is not None:
+                request = VisualGenerationRequest(
+                    prompt=task.render_prompt,
+                    duration_seconds=task.duration_seconds,
+                    aspect_ratio=task.aspect_ratio,
+                    resolution=task.resolution,
+                    reference_images=(reference_image,),
+                )
+            result = await self._execution_service().submit(task.id, request)
         except AppError as exc:
             if exc.status_code == 409:
                 recovered = self.render_service.get_render_task(task.id)
-                artifact = self.artifact_repository.get_by_task_id(
-                    recovered.id
-                )
+                artifact = self.artifact_repository.get_by_task_id(recovered.id)
                 return self.recovery_service.build_operation(
                     project,
                     recovered,
@@ -133,6 +159,76 @@ class VideoProjectRenderExecutionService:
             reused=reused,
             external_call=result.external_call,
         )
+
+    def _create_product_reference_task(
+        self,
+        project: VideoProject,
+        reference_product_asset_id: int,
+        reference_product_asset_sha256: str,
+    ) -> tuple[VideoRenderTask, bool]:
+        stable_input = {
+            "contract": "product-reference-i2v-v1",
+            "video_project_id": project.id,
+            "provider": WORKSPACE_RENDER_PROVIDER,
+            "model": self.settings.wanx_i2v_model,
+            "duration_seconds": project.duration_seconds,
+            "aspect_ratio": project.aspect_ratio,
+            "resolution": WORKSPACE_RENDER_RESOLUTION,
+            "reference_product_asset_id": reference_product_asset_id,
+            "reference_product_asset_sha256": reference_product_asset_sha256,
+            "scenes": project.scenes,
+        }
+        digest = hashlib.sha256(
+            json.dumps(
+                stable_input,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
+        key = f"product-reference-i2v-v1:{digest}"
+        existing = self.render_repository.get_by_idempotency_key(key)
+        if existing is not None:
+            if (
+                existing.video_project_id != project.id
+                or existing.source_product_asset_id != reference_product_asset_id
+                or existing.source_product_asset_sha256
+                != reference_product_asset_sha256
+            ):
+                raise AppError("Video render identity mismatch", 409)
+            return existing, True
+        scene_lines = []
+        for scene in project.scenes:
+            scene_lines.append(
+                "{start}-{end}s: {visual}; physical action: {action}".format(
+                    start=scene.get("start_ms", 0) / 1000,
+                    end=scene.get("end_ms", 0) / 1000,
+                    visual=scene.get("visual_description", ""),
+                    action=scene.get("action_description", scene.get("action", "")),
+                )
+            )
+        prompt = (
+            "Create a realistic vertical product demonstration video using the exact "
+            "product in the reference image. Show the physical product operating and "
+            "demonstrate its benefits with natural hands, environment interaction, "
+            "continuous camera motion and coherent multi-shot transitions. Preserve "
+            "the product shape, materials, colors and branding. This must be real "
+            "motion, not a slideshow, still-image pan, zoom animation, or floating "
+            "product cutout. No subtitles, captions, logos, watermarks or audio. "
+            "Timeline: " + " | ".join(scene_lines)
+        )
+        task = self.render_repository.create(
+            video_project_id=project.id,
+            scene_sequence=WORKSPACE_RENDER_SCENE_SEQUENCE,
+            render_prompt=prompt,
+            duration_seconds=project.duration_seconds,
+            aspect_ratio=project.aspect_ratio,
+            resolution=WORKSPACE_RENDER_RESOLUTION,
+            idempotency_key=key,
+            source_product_asset_id=reference_product_asset_id,
+            source_product_asset_sha256=reference_product_asset_sha256,
+        )
+        return task, False
 
     def _execution_service(self) -> VideoRenderExecutionService:
         return VideoRenderExecutionService(
@@ -154,9 +250,7 @@ class VideoProjectRenderExecutionService:
     def _require_ready(preflight: object) -> None:
         input_ready = getattr(preflight, "input_ready", False)
         provider_configured = getattr(preflight, "provider_configured", False)
-        storage_configured = getattr(
-            preflight, "artifact_storage_configured", False
-        )
+        storage_configured = getattr(preflight, "artifact_storage_configured", False)
         contract_ready = getattr(preflight, "contract_ready", False)
         ready = getattr(preflight, "ready_for_execution", False)
         if not input_ready:
@@ -449,8 +543,7 @@ def build_recovery_decision(
             explicit_refresh_allowed=True,
             resubmit_forbidden=True,
             user_message=(
-                "任务正在处理中；只允许用户显式刷新一次Provider状态，"
-                "不会后台轮询。"
+                "任务正在处理中；只允许用户显式刷新一次Provider状态，不会后台轮询。"
             ),
             **common,
         )
@@ -460,9 +553,7 @@ def build_recovery_decision(
             continue_original_submit_allowed=False,
             explicit_refresh_allowed=False,
             resubmit_forbidden=True,
-            user_message=(
-                "刷新结果尚不确定；禁止并发刷新，只能重新读取本地状态。"
-            ),
+            user_message=("刷新结果尚不确定；禁止并发刷新，只能重新读取本地状态。"),
             **common,
         )
     if status in {"FAILED", "CANCELED"}:
@@ -472,8 +563,7 @@ def build_recovery_decision(
             explicit_refresh_allowed=False,
             resubmit_forbidden=True,
             user_message=(
-                "任务已进入失败或取消终态；本阶段不会重新提交旧任务"
-                "或自动创建替代任务。"
+                "任务已进入失败或取消终态；本阶段不会重新提交旧任务或自动创建替代任务。"
             ),
             **common,
         )
@@ -495,9 +585,7 @@ def build_recovery_decision(
             continue_original_submit_allowed=False,
             explicit_refresh_allowed=False,
             resubmit_forbidden=True,
-            user_message=(
-                "任务已成功，稳定本地Artifact可用于播放和下载。"
-            ),
+            user_message=("任务已成功，稳定本地Artifact可用于播放和下载。"),
             **common,
         )
     return VideoRenderRecoveryDecisionRead(
@@ -521,12 +609,8 @@ def build_safe_artifact(
         id=artifact.id,
         video_render_task_id=artifact.video_render_task_id,
         provider=artifact.video_render_task.provider_name or "unknown",
-        content_url=(
-            f"/api/v1/video-render-artifacts/{artifact.id}/content"
-        ),
-        download_url=(
-            f"/api/v1/video-render-artifacts/{artifact.id}/download"
-        ),
+        content_url=(f"/api/v1/video-render-artifacts/{artifact.id}/content"),
+        download_url=(f"/api/v1/video-render-artifacts/{artifact.id}/download"),
         content_type=resolved.content_type,
         size_bytes=resolved.size_bytes,
         sha256=resolved.sha256,

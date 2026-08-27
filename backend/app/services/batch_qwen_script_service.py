@@ -10,6 +10,10 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings
 from app.core.exceptions import AppError
 from app.models import BatchVideoJob, BatchVideoVariant, VideoScriptVersion
+from app.providers.happyhorse_provider import (
+    HAPPYHORSE_MODEL,
+    TOKEN_PLAN_VIDEO_ENDPOINT,
+)
 from app.schemas.batch_video import (
     BatchQwenScriptCreateRead,
     BatchQwenScriptCreateRequest,
@@ -106,9 +110,22 @@ class BatchQwenScriptService:
             Decimal("0.00"),
         )
         wanx_calls = len(items) * TIMED_FOUR_ACT_SCENE_COUNT
+        if (
+            self.settings.enable_happyhorse_product_video
+            and self.settings.happyhorse_endpoint.rstrip("/")
+            == TOKEN_PLAN_VIDEO_ENDPOINT
+            and self.settings.happyhorse_model == HAPPYHORSE_MODEL
+        ):
+            dynamic_provider = "happyhorse"
+            dynamic_model = self.settings.happyhorse_model
+            dynamic_cost = self.settings.happyhorse_estimated_cost
+        else:
+            dynamic_provider = "wanx_i2v"
+            dynamic_model = self.settings.wanx_i2v_model
+            dynamic_cost = self.settings.wanx_i2v_estimated_cost
         downstream_cost = (
             self.settings.wanx_image_estimated_cost * wanx_calls
-            + self.settings.happyhorse_estimated_cost * len(items)
+            + dynamic_cost * len(items)
         )
         return BatchQwenScriptPreflightRead(
             **data.model_dump(),
@@ -121,7 +138,12 @@ class BatchQwenScriptService:
             estimated_cost_min=qwen_cost_min,
             estimated_cost_max=qwen_cost_max,
             wanx_image_generation_calls=wanx_calls,
-            happyhorse_generation_calls=len(items),
+            happyhorse_generation_calls=(
+                len(items) if dynamic_provider == "happyhorse" else 0
+            ),
+            dynamic_video_generation_calls=len(items),
+            dynamic_video_provider=dynamic_provider,
+            dynamic_video_model=dynamic_model,
             qwen_tts_generation_calls=len(items),
             known_downstream_cost=downstream_cost,
             total_known_cost_min=qwen_cost_min + downstream_cost,

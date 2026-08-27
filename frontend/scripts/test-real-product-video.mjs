@@ -231,7 +231,6 @@ try {
     "refreshHappyHorseVideo",
     "getProductImageAsset",
     "prepareProductVideo",
-    "submitProductImageJob",
     "preflightVideoComposition",
     "submitVoiceoverJob",
     "preflightCompositionEnhancement",
@@ -285,8 +284,10 @@ try {
     "脚本生成后的成片调用次数或费用与确认值不一致",
     "socialpilot.scriptBatch.",
     "source.narration_digest",
-    "real-product-video:${source.script_version_id}",
-    ":wanx-v1",
+    "generateWanxDynamicVideo",
+    'render_mode: "product_reference"',
+    "reference_product_asset_sha256",
+    "生成15秒动态商品视频",
     ":voiceover-v1",
   ]) {
     assert.ok(panel.includes(required));
@@ -302,6 +303,7 @@ try {
   assert.ok(!panel.toLowerCase().includes("latest"));
   assert.ok(!panel.includes('new TextEncoder().encode(narration)'));
   assert.ok(!panel.includes("uploadProductImage"));
+  assert.ok(!panel.includes("submitProductImageJob"));
   assert.match(
     enhancementApi,
     /preflight_expires_at:\s*preflight\.expires_at/,

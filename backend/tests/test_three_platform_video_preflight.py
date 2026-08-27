@@ -267,7 +267,11 @@ def test_three_platform_preflight_reports_missing_execution_requirements(
 
     assert response.status_code == 200
     assert response.json()["ready"] is False
-    assert "happyhorse_execution_disabled" in response.json()["missing_requirements"]
+    assert response.json()["dynamic_video_provider"] == "wanx_i2v"
+    assert "video_render_execution_disabled" in response.json()["missing_requirements"]
+    assert (
+        "happyhorse_execution_disabled" not in response.json()["missing_requirements"]
+    )
     assert "qwen_credentials" in response.json()["missing_requirements"]
     assert "wanx_credentials" in response.json()["missing_requirements"]
 

@@ -49,18 +49,28 @@ class VideoRenderJobService:
     def enqueue_submit(
         self, video_project_id: int, data: VideoRenderSubmitJobRequest
     ) -> ExecutionJobCreateRead:
-        idempotency_key = self._key(
-            WANX_VIDEO_RENDER_SUBMIT_V1, data.input_digest
+        identity = ":".join(
+            (
+                data.input_digest,
+                data.render_mode,
+                str(data.reference_product_asset_id or 0),
+                data.reference_product_asset_sha256 or "none",
+            )
         )
+        idempotency_key = self._key(WANX_VIDEO_RENDER_SUBMIT_V1, identity)
         existing = self._existing(idempotency_key)
         if existing is not None:
             payload = existing.input_payload
             if (
                 existing.source_id != video_project_id
                 or payload.get("product_id") != data.product_id
-                or payload.get("marketing_strategy_id")
-                != data.marketing_strategy_id
+                or payload.get("marketing_strategy_id") != data.marketing_strategy_id
                 or payload.get("copy_matrix_id") != data.copy_matrix_id
+                or payload.get("render_mode") != data.render_mode
+                or payload.get("reference_product_asset_id")
+                != data.reference_product_asset_id
+                or payload.get("reference_product_asset_sha256")
+                != data.reference_product_asset_sha256
             ):
                 raise AppError("Video render Job identity mismatch", 409)
             return ExecutionJobCreateRead(
@@ -70,9 +80,9 @@ class VideoRenderJobService:
         expires_at = data.preflight_expires_at.astimezone(UTC)
         if expires_at <= self.now().astimezone(UTC) + _EXPIRY_CLOCK_SKEW:
             raise AppError("Video render Preflight has expired", 409)
-        current = VideoRenderPreflightService(
-            self.session, self.settings
-        ).run(video_project_id, expires_at=expires_at)
+        current = VideoRenderPreflightService(self.session, self.settings).run(
+            video_project_id, expires_at=expires_at
+        )
         if (
             current.video_project_id != video_project_id
             or current.product_id != data.product_id
@@ -95,6 +105,9 @@ class VideoRenderJobService:
             frozen_input_digest=data.input_digest,
             preflight_digest=data.preflight_digest,
             preflight_expires_at=expires_at,
+            render_mode=data.render_mode,
+            reference_product_asset_id=data.reference_product_asset_id,
+            reference_product_asset_sha256=(data.reference_product_asset_sha256),
         )
         return ExecutionQueueService(self.session).create(
             ExecutionJobCreate(
@@ -105,8 +118,12 @@ class VideoRenderJobService:
                 idempotency_key=idempotency_key,
                 input_payload=payload.model_dump(mode="json"),
                 concurrency_key=f"wanx-video-render-project-{video_project_id}",
-                estimated_cost=Decimal("0"),
-                currency="USD",
+                estimated_cost=(
+                    self.settings.wanx_i2v_estimated_cost
+                    if data.render_mode == "product_reference"
+                    else Decimal("0")
+                ),
+                currency="CNY" if data.render_mode == "product_reference" else "USD",
                 cost_confirmed=data.cost_confirmed,
                 max_attempts=1,
             )
@@ -130,9 +147,7 @@ class VideoRenderJobService:
             )
         if task.status not in {"SUBMITTED", "PENDING", "RUNNING"}:
             raise AppError("Video render task cannot be refreshed", 409)
-        digest = compute_video_render_task_digest(
-            self.session, task, self.settings
-        )
+        digest = compute_video_render_task_digest(self.session, task, self.settings)
         payload = WanxVideoRenderRefreshV1Input(
             video_project_id=data.video_project_id,
             video_render_task_id=task.id,
@@ -162,7 +177,5 @@ class VideoRenderJobService:
 
     def _existing(self, idempotency_key: str) -> ExecutionJob | None:
         return self.session.scalar(
-            select(ExecutionJob).where(
-                ExecutionJob.idempotency_key == idempotency_key
-            )
+            select(ExecutionJob).where(ExecutionJob.idempotency_key == idempotency_key)
         )

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.schemas.video_render_artifact import VideoRenderArtifactSchema
 
@@ -180,6 +180,11 @@ class VideoRenderSubmitJobRequest(BaseModel):
     preflight_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     preflight_expires_at: datetime
     cost_confirmed: Literal[True]
+    render_mode: Literal["scene", "product_reference"] = "scene"
+    reference_product_asset_id: int | None = Field(default=None, gt=0)
+    reference_product_asset_sha256: str | None = Field(
+        default=None, pattern=r"^[0-9a-f]{64}$"
+    )
 
     @field_validator("preflight_expires_at")
     @classmethod
@@ -187,6 +192,18 @@ class VideoRenderSubmitJobRequest(BaseModel):
         if value.tzinfo is None:
             raise ValueError("preflight_expires_at must include a timezone")
         return value
+
+    @model_validator(mode="after")
+    def validate_reference_identity(self) -> "VideoRenderSubmitJobRequest":
+        has_id = self.reference_product_asset_id is not None
+        has_sha = self.reference_product_asset_sha256 is not None
+        if has_id != has_sha:
+            raise ValueError("Reference asset id and digest must be supplied together")
+        if self.render_mode == "product_reference" and not has_id:
+            raise ValueError("Product-reference rendering requires an exact asset")
+        if self.render_mode == "scene" and has_id:
+            raise ValueError("Scene rendering cannot include a product reference asset")
+        return self
 
 
 class VideoRenderRefreshJobRequest(BaseModel):

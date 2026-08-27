@@ -202,6 +202,9 @@ export interface VideoRenderSubmitJobRequest {
   preflight_digest: string;
   preflight_expires_at: string;
   cost_confirmed: true;
+  render_mode?: "scene" | "product_reference";
+  reference_product_asset_id?: number;
+  reference_product_asset_sha256?: string;
 }
 
 export interface VideoRenderRefreshJobRequest {

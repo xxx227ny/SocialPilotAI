@@ -85,13 +85,13 @@ class ThreePlatformVideoPreflightService:
         if set(selected) != set(PLATFORM_ORDER):
             raise AppError("Three-platform selections must cover each platform", 422)
 
+        dynamic_provider, dynamic_model, dynamic_cost = self._dynamic_provider()
         platforms: list[PlatformVideoProductionEstimate] = []
         for platform in PLATFORM_ORDER:
             variant, version = selected[platform]
             scene_count = len(version.scenes)
             known_cost = (
-                self.settings.wanx_image_estimated_cost * scene_count
-                + self.settings.happyhorse_estimated_cost
+                self.settings.wanx_image_estimated_cost * scene_count + dynamic_cost
             )
             platforms.append(
                 PlatformVideoProductionEstimate(
@@ -100,6 +100,9 @@ class ThreePlatformVideoPreflightService:
                     script_version_id=version.id,
                     scene_count=scene_count,
                     wanx_image_generation_calls=scene_count,
+                    happyhorse_generation_calls=(
+                        1 if dynamic_provider == "happyhorse" else 0
+                    ),
                     known_estimated_cost=known_cost,
                 )
             )
@@ -112,7 +115,8 @@ class ThreePlatformVideoPreflightService:
             "reference_product_asset_sha256": reference.sha256,
             "platforms": [item.model_dump(mode="json") for item in platforms],
             "wanx_image_model": self.settings.wanx_image_model,
-            "happyhorse_model": self.settings.happyhorse_model,
+            "dynamic_video_provider": dynamic_provider,
+            "dynamic_video_model": dynamic_model,
             "qwen_tts_model": self.settings.qwen_tts_model,
             "unpriced_cost_components": ["qwen_tts"],
         }
@@ -125,7 +129,10 @@ class ThreePlatformVideoPreflightService:
             input_digest=digest,
             platforms=platforms,
             wanx_image_generation_calls=wanx_calls,
-            happyhorse_generation_calls=3,
+            happyhorse_generation_calls=(3 if dynamic_provider == "happyhorse" else 0),
+            dynamic_video_generation_calls=3,
+            dynamic_video_provider=dynamic_provider,
+            dynamic_video_model=dynamic_model,
             qwen_tts_generation_calls=3,
             known_estimated_cost=sum(
                 (item.known_estimated_cost for item in platforms), Decimal("0")
@@ -137,11 +144,9 @@ class ThreePlatformVideoPreflightService:
 
     def _missing_requirements(self) -> list[str]:
         missing: list[str] = []
+        dynamic_provider, _, _ = self._dynamic_provider()
         flags = {
             "real_product_video_disabled": self.settings.enable_real_product_video,
-            "happyhorse_execution_disabled": (
-                self.settings.enable_happyhorse_product_video
-            ),
             "video_render_execution_disabled": (
                 self.settings.enable_video_render_execution
             ),
@@ -155,12 +160,36 @@ class ThreePlatformVideoPreflightService:
             missing.append("qwen_credentials")
         if not effective_wanx_api_key(self.settings):
             missing.append("wanx_credentials")
-        if self.settings.happyhorse_endpoint.rstrip("/") != TOKEN_PLAN_VIDEO_ENDPOINT:
-            missing.append("happyhorse_endpoint")
-        if self.settings.happyhorse_model != HAPPYHORSE_MODEL:
-            missing.append("happyhorse_model")
+        if dynamic_provider == "happyhorse":
+            if not self.settings.enable_happyhorse_product_video:
+                missing.append("happyhorse_execution_disabled")
+            if (
+                self.settings.happyhorse_endpoint.rstrip("/")
+                != TOKEN_PLAN_VIDEO_ENDPOINT
+            ):
+                missing.append("happyhorse_endpoint")
+            if self.settings.happyhorse_model != HAPPYHORSE_MODEL:
+                missing.append("happyhorse_model")
         if not (self.settings.product_asset_storage_root or "").strip():
             missing.append("product_asset_storage")
         if not (self.settings.video_artifact_storage_root or "").strip():
             missing.append("video_artifact_storage")
         return missing
+
+    def _dynamic_provider(self) -> tuple[str, str, Decimal]:
+        if (
+            self.settings.enable_happyhorse_product_video
+            and self.settings.happyhorse_endpoint.rstrip("/")
+            == TOKEN_PLAN_VIDEO_ENDPOINT
+            and self.settings.happyhorse_model == HAPPYHORSE_MODEL
+        ):
+            return (
+                "happyhorse",
+                self.settings.happyhorse_model,
+                self.settings.happyhorse_estimated_cost,
+            )
+        return (
+            "wanx_i2v",
+            self.settings.wanx_i2v_model,
+            self.settings.wanx_i2v_estimated_cost,
+        )

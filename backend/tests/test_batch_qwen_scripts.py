@@ -68,11 +68,14 @@ def test_batch_qwen_preflight_enqueue_recover_and_activate_exact_versions(
     assert checked["estimated_cost_min"] == "0.06"
     assert checked["estimated_cost_max"] == "0.24"
     assert checked["wanx_image_generation_calls"] == 12
-    assert checked["happyhorse_generation_calls"] == 3
+    assert checked["happyhorse_generation_calls"] == 0
+    assert checked["dynamic_video_generation_calls"] == 3
+    assert checked["dynamic_video_provider"] == "wanx_i2v"
+    assert checked["dynamic_video_model"] == "wan2.6-i2v-flash"
     assert checked["qwen_tts_generation_calls"] == 3
-    assert checked["known_downstream_cost"] == "4.20"
-    assert checked["total_known_cost_min"] == "4.26"
-    assert checked["total_known_cost_max"] == "4.44"
+    assert checked["known_downstream_cost"] == "7.95"
+    assert checked["total_known_cost_min"] == "8.01"
+    assert checked["total_known_cost_max"] == "8.19"
     assert checked["cost_estimate_complete"] is False
     assert checked["unpriced_cost_components"] == ["qwen_tts"]
     assert checked["will_auto_activate_exact_results"] is True

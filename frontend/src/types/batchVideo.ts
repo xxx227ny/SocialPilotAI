@@ -98,6 +98,9 @@ export interface BatchQwenScriptPreflight extends BatchQwenScriptRequest {
   estimated_cost_max: string;
   wanx_image_generation_calls: number;
   happyhorse_generation_calls: number;
+  dynamic_video_generation_calls: number;
+  dynamic_video_provider: "happyhorse" | "wanx_i2v";
+  dynamic_video_model: string;
   qwen_tts_generation_calls: number;
   known_downstream_cost: string;
   total_known_cost_min: string;
