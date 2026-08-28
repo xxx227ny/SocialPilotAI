@@ -231,6 +231,8 @@ try {
     assert.ok(panel.includes(expected));
     staticAssertions += 1;
   }
+  assert.ok(panel.includes("useState(1)"));
+  staticAssertions += 1;
   assert.ok(page.includes("shouldMountBatchVideoFlow"));
   assert.ok(featureSource.includes("VITE_ENABLE_BATCH_VIDEO_JOBS"));
   assert.ok(!featureSource.includes("VITE_ENABLE_BATCH_VIDEO_JOBS ??"));
