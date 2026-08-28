@@ -1,5 +1,9 @@
+from __future__ import annotations
+
+import logging
 from pathlib import Path
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppError
@@ -7,6 +11,8 @@ from app.models import Product, ProductAsset
 from app.repositories.product import ProductRepository
 from app.schemas.product import ProductAssetCreate, ProductCreate, ProductUpdate
 from app.services.product_asset_storage import ProductAssetStorage
+
+logger = logging.getLogger(__name__)
 
 
 class ProductService:
@@ -77,3 +83,85 @@ class ProductService:
             if created_file and normalized.path.exists():
                 normalized.path.unlink()
             raise
+
+    def delete_asset(
+        self,
+        product_id: int,
+        asset_id: int,
+        *,
+        storage_root: Path,
+        max_bytes: int,
+    ) -> None:
+        self.get(product_id)
+        asset = self.repository.get_asset(product_id, asset_id)
+        if asset is None:
+            raise AppError("Product asset not found", 404)
+        if self.repository.referencing_tables("product_assets", asset.id):
+            raise AppError(
+                "该素材已被视频任务或成片引用，不能删除；请保留历史记录。",
+                409,
+            )
+        stored_path = self._verified_stored_path(asset, storage_root, max_bytes)
+        try:
+            self.repository.delete_asset(asset)
+        except IntegrityError as exc:
+            self.repository.session.rollback()
+            raise AppError(
+                "该素材已被其他任务引用，不能删除；请刷新后重试。", 409
+            ) from exc
+        self._remove_stored_paths([(asset.id, stored_path)])
+
+    def delete_product(
+        self,
+        product_id: int,
+        *,
+        storage_root: Path,
+        max_bytes: int,
+    ) -> None:
+        product = self.get(product_id)
+        references = self.repository.referencing_tables(
+            "products", product.id, excluded_tables={"product_assets"}
+        )
+        if references:
+            raise AppError(
+                "该商品已有营销、脚本、视频、发布或投流记录，不能删除；请保留历史记录。",
+                409,
+            )
+        stored_paths = [
+            (asset.id, self._verified_stored_path(asset, storage_root, max_bytes))
+            for asset in product.assets
+        ]
+        try:
+            self.repository.delete_product(product)
+        except IntegrityError as exc:
+            self.repository.session.rollback()
+            raise AppError(
+                "该商品已被其他业务记录引用，不能删除；请刷新后重试。", 409
+            ) from exc
+        self._remove_stored_paths(stored_paths)
+
+    @staticmethod
+    def _verified_stored_path(
+        asset: ProductAsset, storage_root: Path, max_bytes: int
+    ) -> Path | None:
+        if not asset.storage_identity or not asset.sha256:
+            return None
+        storage = ProductAssetStorage(storage_root, max_bytes)
+        try:
+            return storage.resolve(asset.storage_identity, asset.sha256)
+        except AppError as error:
+            if error.status_code == 404:
+                return None
+            raise
+
+    @staticmethod
+    def _remove_stored_paths(paths: list[tuple[int, Path | None]]) -> None:
+        for asset_id, path in paths:
+            if path is None:
+                continue
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                logger.warning(
+                    "Product asset file cleanup failed for asset %s", asset_id
+                )

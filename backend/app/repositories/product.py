@@ -1,4 +1,6 @@
-from sqlalchemy import select
+from __future__ import annotations
+
+from sqlalchemy import MetaData, Table, inspect, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models import Product, ProductAsset
@@ -66,3 +68,42 @@ class ProductRepository:
         self.session.commit()
         self.session.refresh(asset)
         return asset
+
+    def referencing_tables(
+        self,
+        referred_table: str,
+        record_id: int,
+        *,
+        excluded_tables: set[str] | None = None,
+    ) -> list[str]:
+        excluded = excluded_tables or set()
+        bind = self.session.get_bind()
+        schema = inspect(bind)
+        references: list[str] = []
+        metadata = MetaData()
+        for table_name in sorted(schema.get_table_names()):
+            if table_name in excluded:
+                continue
+            for foreign_key in schema.get_foreign_keys(table_name):
+                if foreign_key.get("referred_table") != referred_table:
+                    continue
+                local_columns = foreign_key.get("constrained_columns") or []
+                remote_columns = foreign_key.get("referred_columns") or []
+                if len(local_columns) != 1 or remote_columns != ["id"]:
+                    continue
+                table = Table(table_name, metadata, autoload_with=bind)
+                column = table.c[local_columns[0]]
+                if self.session.execute(
+                    select(column).where(column == record_id).limit(1)
+                ).first():
+                    references.append(table_name)
+                    break
+        return references
+
+    def delete_asset(self, asset: ProductAsset) -> None:
+        self.session.delete(asset)
+        self.session.commit()
+
+    def delete_product(self, product: Product) -> None:
+        self.session.delete(product)
+        self.session.commit()

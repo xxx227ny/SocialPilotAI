@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { getApiErrorMessage } from "../api/client";
 import {
+  deleteProduct,
+  deleteProductImage,
   getProduct,
   listProducts,
   productImageContentUrl,
@@ -158,6 +160,16 @@ export function ProductCenterPage() {
     );
   }
 
+  function handleProductDeleted(productId: number) {
+    setProducts((current) => current.filter((item) => item.id !== productId));
+    setSelectedProductId(null);
+    setSelectedProduct(null);
+    setDetailState("idle");
+    setDetailError("");
+    setNewlyCreatedId((current) => (current === productId ? null : current));
+    void loadProducts();
+  }
+
   return (
     <div className="product-center">
       <header className="page-heading">
@@ -289,6 +301,7 @@ export function ProductCenterPage() {
                   product={selectedProduct}
                   allowUpload={!isPresentation}
                   onProductUpdated={handleProductUpdated}
+                  onProductDeleted={handleProductDeleted}
                 />
               ) : null}
             </div>
@@ -330,22 +343,30 @@ function ProductDetail({
   product,
   allowUpload,
   onProductUpdated,
+  onProductDeleted,
 }: {
   product: Product;
   allowUpload: boolean;
   onProductUpdated: (product: Product) => void;
+  onProductDeleted: (productId: number) => void;
 }) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState("");
   const [uploadError, setUploadError] = useState("");
+  const [deletingAssetId, setDeletingAssetId] = useState<number | null>(null);
+  const [deletingProduct, setDeletingProduct] = useState(false);
+  const [deleteMessage, setDeleteMessage] = useState("");
+  const [deleteError, setDeleteError] = useState("");
   const uploadRequestId = useRef(0);
   const uploadController = useRef<AbortController | null>(null);
+  const deleteController = useRef<AbortController | null>(null);
 
   useEffect(
     () => () => {
       uploadRequestId.current += 1;
       uploadController.current?.abort();
+      deleteController.current?.abort();
     },
     [],
   );
@@ -381,6 +402,69 @@ function ProductDetail({
       );
     } finally {
       if (requestId === uploadRequestId.current) setUploading(false);
+    }
+  }
+
+  async function handleDeleteAsset(assetId: number, fileName: string) {
+    if (deletingAssetId !== null || deletingProduct) return;
+    if (
+      !window.confirm(
+        `确认删除素材 #${assetId}「${fileName}」？如果素材已用于视频或成片，系统会安全拒绝。`,
+      )
+    ) {
+      return;
+    }
+    deleteController.current?.abort();
+    const controller = new AbortController();
+    deleteController.current = controller;
+    setDeletingAssetId(assetId);
+    setDeleteMessage("");
+    setDeleteError("");
+    try {
+      await deleteProductImage(product.id, assetId, controller.signal);
+      const refreshed = await getProduct(product.id, controller.signal);
+      if (controller.signal.aborted) return;
+      onProductUpdated(refreshed);
+      setDeleteMessage(`素材 #${assetId} 已删除。`);
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      setDeleteError(
+        getApiErrorMessage(error, "素材删除失败，请刷新后重试。"),
+      );
+    } finally {
+      if (!controller.signal.aborted) setDeletingAssetId(null);
+    }
+  }
+
+  async function handleDeleteProduct() {
+    if (deletingProduct || deletingAssetId !== null) return;
+    if (
+      !window.confirm(
+        `确认删除整个商品资料「${product.name}」？未被历史任务引用的商品素材也会一并删除。此操作不可撤销。`,
+      )
+    ) {
+      return;
+    }
+    deleteController.current?.abort();
+    const controller = new AbortController();
+    deleteController.current = controller;
+    setDeletingProduct(true);
+    setDeleteMessage("");
+    setDeleteError("");
+    try {
+      await deleteProduct(product.id, controller.signal);
+      if (controller.signal.aborted) return;
+      onProductDeleted(product.id);
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      setDeleteError(
+        getApiErrorMessage(
+          error,
+          "商品删除失败；若已有脚本、视频或投流记录，系统会保护历史数据。",
+        ),
+      );
+    } finally {
+      if (!controller.signal.aborted) setDeletingProduct(false);
     }
   }
 
@@ -500,12 +584,53 @@ function ProductDetail({
                       : ""}
                     {asset.size_bytes ? formatFileSize(asset.size_bytes) : asset.file_type.toUpperCase()}
                   </small>
+                  {allowUpload && (
+                    <button
+                      className="product-asset-delete-button"
+                      type="button"
+                      disabled={deletingAssetId !== null || deletingProduct}
+                      onClick={() =>
+                        void handleDeleteAsset(asset.id, asset.file_name)
+                      }
+                    >
+                      {deletingAssetId === asset.id ? "删除中…" : "删除素材"}
+                    </button>
+                  )}
                 </div>
               </article>
             ))}
           </div>
         )}
       </section>
+
+      {allowUpload && (
+        <section className="product-danger-zone">
+          <div>
+            <h4>删除商品资料</h4>
+            <p>
+              仅未被历史任务引用的商品可以删除；已有脚本、视频、发布或投流记录时，系统会拒绝删除以保护证据。
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={deletingProduct || deletingAssetId !== null}
+            onClick={() => void handleDeleteProduct()}
+          >
+            {deletingProduct ? "删除中…" : "删除整个商品资料"}
+          </button>
+        </section>
+      )}
+
+      {deleteMessage && (
+        <p className="product-asset-upload__success" role="status">
+          {deleteMessage}
+        </p>
+      )}
+      {deleteError && (
+        <p className="product-asset-upload__error" role="alert">
+          {deleteError}
+        </p>
+      )}
 
       <p className="product-detail-card__workflow-note">
         文案生成请前往“文案矩阵”，商品视频生产请前往“视频工厂”。

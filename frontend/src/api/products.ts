@@ -36,6 +36,23 @@ export async function updateProduct(
   return response.data;
 }
 
+export async function deleteProduct(
+  productId: number,
+  signal?: AbortSignal,
+): Promise<void> {
+  await apiClient.delete(`/products/${productId}`, { signal });
+}
+
+export async function deleteProductImage(
+  productId: number,
+  assetId: number,
+  signal?: AbortSignal,
+): Promise<void> {
+  await apiClient.delete(`/products/${productId}/image-assets/${assetId}`, {
+    signal,
+  });
+}
+
 export async function uploadProductImage(
   productId: number,
   file: File,

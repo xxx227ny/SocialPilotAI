@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, UploadFile, status
+from fastapi import APIRouter, Depends, File, Response, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -42,6 +42,16 @@ def get_product(product_id: int, db: DbSession) -> ProductRead:
 @router.patch("/{product_id}", response_model=ProductRead)
 def update_product(product_id: int, data: ProductUpdate, db: DbSession) -> ProductRead:
     return ProductService(db).update(product_id, data)
+
+
+@router.delete("/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_product(product_id: int, db: DbSession, settings: SettingsDep) -> Response:
+    ProductService(db).delete_product(
+        product_id,
+        storage_root=Path(settings.product_asset_storage_root or ""),
+        max_bytes=settings.product_asset_max_bytes,
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post(
@@ -127,6 +137,25 @@ def get_product_image_metadata(
     if asset is None or not asset.sha256:
         raise AppError("Product asset not found", 404)
     return ProductAssetUploadRead.model_validate(asset)
+
+
+@router.delete(
+    "/{product_id}/image-assets/{asset_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_product_image(
+    product_id: int,
+    asset_id: int,
+    db: DbSession,
+    settings: SettingsDep,
+) -> Response:
+    ProductService(db).delete_asset(
+        product_id,
+        asset_id,
+        storage_root=Path(settings.product_asset_storage_root or ""),
+        max_bytes=settings.product_asset_max_bytes,
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.head("/{product_id}/image-assets/{asset_id}/content")

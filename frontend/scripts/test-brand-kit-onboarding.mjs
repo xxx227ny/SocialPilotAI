@@ -146,6 +146,7 @@ try {
   );
   const page = read("src", "pages", "ProductCenterPage.tsx");
   const api = read("src", "api", "brandKits.ts");
+  const productsApi = read("src", "api", "products.ts");
   const marketing = read(
     "src",
     "components",
@@ -175,6 +176,16 @@ try {
   assert.match(page, /<BrandKitOnboardingPanel/);
   assert.match(page, /socialpilot\.productCenter\.selectedProduct/);
   assert.match(page, /restoredProductCenterSelection/);
+  assert.match(page, /删除素材/);
+  assert.match(page, /删除整个商品资料/);
+  assert.match(page, /window\.confirm/);
+  assert.match(page, /deleteProductImage/);
+  assert.match(page, /deleteProduct/);
+  assert.match(productsApi, /apiClient\.delete\(`\/products\/\$\{productId\}`/);
+  assert.match(
+    productsApi,
+    /apiClient\.delete\(`\/products\/\$\{productId\}\/image-assets\/\$\{assetId\}`/,
+  );
   assert.match(marketing, /onTaskChanged\?\.\(task\)/);
   assert.match(api, /apiClient\.post<BrandKit>/);
   assert.match(api, /apiClient\.post<BrandKitVersionCreateResult>/);

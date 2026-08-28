@@ -235,3 +235,86 @@ def test_product_image_rejects_spoofed_mime_without_database_write(
     assert response.status_code == 422
     assert client.get(f"/api/v1/products/{product['id']}").json()["assets"] == []
     app.dependency_overrides.pop(get_settings, None)
+
+
+def test_delete_unused_uploaded_asset_removes_record_and_file(
+    client: TestClient, product_payload: dict[str, object], tmp_path
+) -> None:
+    storage_root = tmp_path / "images"
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        enable_real_product_video=True,
+        product_asset_storage_root=str(storage_root),
+    )
+    product = create_product(client, product_payload)
+    uploaded = client.post(
+        f"/api/v1/products/{product['id']}/image-assets",
+        files={"file": ("product.png", png_bytes(), "image/png")},
+    ).json()
+    assert len(list(storage_root.rglob("*.png"))) == 1
+
+    response = client.delete(
+        f"/api/v1/products/{product['id']}/image-assets/{uploaded['id']}"
+    )
+
+    assert response.status_code == 204
+    assert client.get(f"/api/v1/products/{product['id']}").json()["assets"] == []
+    assert list(storage_root.rglob("*.png")) == []
+    app.dependency_overrides.pop(get_settings, None)
+
+
+def test_delete_unused_product_removes_its_uploaded_assets(
+    client: TestClient, product_payload: dict[str, object], tmp_path
+) -> None:
+    storage_root = tmp_path / "images"
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        enable_real_product_video=True,
+        product_asset_storage_root=str(storage_root),
+    )
+    product = create_product(client, product_payload)
+    client.post(
+        f"/api/v1/products/{product['id']}/image-assets",
+        files={"file": ("product.png", png_bytes(), "image/png")},
+    )
+
+    response = client.delete(f"/api/v1/products/{product['id']}")
+
+    assert response.status_code == 204
+    assert client.get(f"/api/v1/products/{product['id']}").status_code == 404
+    assert list(storage_root.rglob("*.png")) == []
+    app.dependency_overrides.pop(get_settings, None)
+
+
+def test_delete_product_with_business_history_is_safely_rejected(
+    client: TestClient, product_payload: dict[str, object]
+) -> None:
+    product = create_product(client, product_payload)
+    task = client.post(
+        "/api/v1/marketing-tasks",
+        json={
+            "product_id": product["id"],
+            "audience": "Busy professionals",
+            "language": "English",
+            "platforms": ["TikTok"],
+            "tone": "Practical",
+            "objective": "Increase qualified traffic",
+        },
+    )
+    assert task.status_code == 201
+
+    response = client.delete(f"/api/v1/products/{product['id']}")
+
+    assert response.status_code == 409
+    assert "不能删除" in response.json()["error"]["message"]
+    assert client.get(f"/api/v1/products/{product['id']}").status_code == 200
+
+
+def test_delete_unknown_product_or_asset_is_safe(
+    client: TestClient, product_payload: dict[str, object]
+) -> None:
+    product = create_product(client, product_payload)
+
+    assert client.delete("/api/v1/products/999").status_code == 404
+    assert (
+        client.delete(f"/api/v1/products/{product['id']}/image-assets/999").status_code
+        == 404
+    )
