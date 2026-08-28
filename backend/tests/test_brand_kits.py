@@ -115,9 +115,7 @@ def test_term_conflicts_are_rejected_without_partial_kit(client: TestClient) -> 
 
 def test_version_is_immutable_and_undeletable(db_session: Session) -> None:
     service = BrandKitService(db_session)
-    kit = service.create(
-        BrandKitCreate(name="Immutable", version=version_payload())
-    )
+    kit = service.create(BrandKitCreate(name="Immutable", version=version_payload()))
     version = kit.versions[0]
     version.positioning = "Mutation"
     with pytest.raises(ValueError, match="immutable"):
@@ -155,9 +153,7 @@ def test_product_explicit_binding_unbinding_and_cross_kit_rejection(
         f"/api/v1/products/{product_id}/brand-kit-version",
         json={"brand_kit_id": first["id"], "brand_kit_version_id": version_id},
     )
-    unbound = client.delete(
-        f"/api/v1/products/{product_id}/brand-kit-version"
-    )
+    unbound = client.delete(f"/api/v1/products/{product_id}/brand-kit-version")
 
     assert missing.status_code == 404
     assert crossed.status_code == 409
@@ -167,18 +163,91 @@ def test_product_explicit_binding_unbinding_and_cross_kit_rejection(
     assert unbound.json()["brand_kit_version_id"] is None
 
 
+def test_unused_brand_kit_version_and_entire_kit_can_be_deleted(
+    client: TestClient,
+) -> None:
+    kit = create_kit(client, name="Disposable")
+    kit_id = int(kit["id"])
+    first_version_id = int(kit["versions"][0]["id"])
+    second = client.post(
+        f"/api/v1/brand-kits/{kit_id}/versions",
+        json=version_payload(positioning="Disposable second version"),
+    )
+    assert second.status_code == 200
+    second_version_id = int(second.json()["version"]["id"])
+
+    deleted_version = client.delete(
+        f"/api/v1/brand-kits/{kit_id}/versions/{second_version_id}"
+    )
+    assert deleted_version.status_code == 204
+    assert (
+        client.get(
+            f"/api/v1/brand-kits/{kit_id}/versions/{second_version_id}"
+        ).status_code
+        == 404
+    )
+    assert (
+        client.get(f"/api/v1/brand-kits/{kit_id}").json()["versions"][0]["id"]
+        == first_version_id
+    )
+
+    deleted_kit = client.delete(f"/api/v1/brand-kits/{kit_id}")
+    assert deleted_kit.status_code == 204
+    assert client.get(f"/api/v1/brand-kits/{kit_id}").status_code == 404
+
+
+def test_last_or_referenced_brand_kit_version_cannot_be_deleted(
+    client: TestClient, product_payload: dict[str, object]
+) -> None:
+    kit = create_kit(client, name="Protected")
+    kit_id = int(kit["id"])
+    first_version_id = int(kit["versions"][0]["id"])
+
+    last_version = client.delete(
+        f"/api/v1/brand-kits/{kit_id}/versions/{first_version_id}"
+    )
+    assert last_version.status_code == 409
+    assert "至少一个" in last_version.json()["error"]["message"]
+
+    second = client.post(
+        f"/api/v1/brand-kits/{kit_id}/versions",
+        json=version_payload(positioning="Protected second version"),
+    ).json()["version"]
+    product_id = create_product(client, product_payload)
+    bound = client.put(
+        f"/api/v1/products/{product_id}/brand-kit-version",
+        json={
+            "brand_kit_id": kit_id,
+            "brand_kit_version_id": int(second["id"]),
+        },
+    )
+    assert bound.status_code == 200
+
+    referenced_version = client.delete(
+        f"/api/v1/brand-kits/{kit_id}/versions/{int(second['id'])}"
+    )
+    referenced_kit = client.delete(f"/api/v1/brand-kits/{kit_id}")
+    assert referenced_version.status_code == 409
+    assert "已被" in referenced_version.json()["error"]["message"]
+    assert referenced_kit.status_code == 409
+    assert "已被" in referenced_kit.json()["error"]["message"]
+
+
 def _concurrent_factory(tmp_path: Path) -> tuple[object, sessionmaker, int]:
     database = tmp_path / "brand-kit-concurrency.db"
     engine = create_engine(
         f"sqlite:///{database.as_posix()}", connect_args={"check_same_thread": False}
     )
     from app.db.base import Base
+
     Base.metadata.create_all(engine)
     factory = sessionmaker(engine, expire_on_commit=False)
     with factory() as session:
-        kit_id = BrandKitService(session).create(
-            BrandKitCreate(name="Concurrent", version=version_payload())
-        ).id
+        kit_id = (
+            BrandKitService(session)
+            .create(BrandKitCreate(name="Concurrent", version=version_payload()))
+            .id
+        )
     return engine, factory, kit_id
 
 
@@ -274,9 +343,11 @@ def test_different_digest_concurrency_gets_contiguous_versions(
 def test_version_number_retry_has_explicit_limit(
     db_session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    kit_id = BrandKitService(db_session).create(
-        BrandKitCreate(name="Retry Bound", version=version_payload())
-    ).id
+    kit_id = (
+        BrandKitService(db_session)
+        .create(BrandKitCreate(name="Retry Bound", version=version_payload()))
+        .id
+    )
     service = BrandKitService(db_session)
     attempts = 0
 
@@ -286,9 +357,7 @@ def test_version_number_retry_has_explicit_limit(
         raise IntegrityError("forced", {}, Exception("version collision"))
 
     monkeypatch.setattr(service.repository, "add_version", contested)
-    monkeypatch.setattr(
-        service.repository, "get_version_by_digest", lambda *_: None
-    )
+    monkeypatch.setattr(service.repository, "get_version_by_digest", lambda *_: None)
     monkeypatch.setattr(service.repository, "next_version_number", lambda *_: 2)
     monkeypatch.setattr(
         service.repository,
@@ -312,9 +381,11 @@ def test_version_number_retry_has_explicit_limit(
 def test_non_version_integrity_error_is_not_retried(
     db_session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    kit_id = BrandKitService(db_session).create(
-        BrandKitCreate(name="Other Integrity", version=version_payload())
-    ).id
+    kit_id = (
+        BrandKitService(db_session)
+        .create(BrandKitCreate(name="Other Integrity", version=version_payload()))
+        .id
+    )
     service = BrandKitService(db_session)
     attempts = 0
 
@@ -324,13 +395,9 @@ def test_non_version_integrity_error_is_not_retried(
         raise IntegrityError("forced", {}, Exception("other constraint"))
 
     monkeypatch.setattr(service.repository, "add_version", invalid)
-    monkeypatch.setattr(
-        service.repository, "get_version_by_digest", lambda *_: None
-    )
+    monkeypatch.setattr(service.repository, "get_version_by_digest", lambda *_: None)
     monkeypatch.setattr(service.repository, "next_version_number", lambda *_: 2)
-    monkeypatch.setattr(
-        service.repository, "get_version_by_number", lambda *_: None
-    )
+    monkeypatch.setattr(service.repository, "get_version_by_number", lambda *_: None)
 
     with pytest.raises(IntegrityError):
         service.create_version(

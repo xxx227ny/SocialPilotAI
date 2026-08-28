@@ -3537,9 +3537,27 @@ textarea { font: inherit; }
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: 1;
   padding: 8px;
   border-radius: 8px;
   background: rgba(30, 41, 59, 0.65);
+}
+
+.brand-kit-version-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.brand-onboarding .brand-kit-danger-button {
+  border-color: rgba(248, 113, 113, 0.45);
+  color: #fecaca;
+  background: rgba(185, 28, 28, 0.2);
+}
+
+.brand-onboarding .brand-kit-delete-button {
+  justify-self: start;
+  margin-top: 4px;
 }
 
 .brand-kit-fields {

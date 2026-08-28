@@ -4,6 +4,8 @@ import {
   bindProductBrandKitVersion,
   createBrandKit,
   createBrandKitVersion,
+  deleteBrandKit,
+  deleteBrandKitVersion,
   listBrandKits,
   unbindProductBrandKitVersion,
 } from "../../api/brandKits";
@@ -124,6 +126,7 @@ export function BrandKitOnboardingPanel({
   const createKitLock = useRef(false);
   const createVersionLock = useRef(false);
   const bindingLock = useRef(false);
+  const deletionLock = useRef(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -264,6 +267,74 @@ export function BrandKitOnboardingPanel({
     });
   }
 
+  async function handleDeleteVersion(version: BrandKitVersion) {
+    if (
+      deletionLock.current ||
+      !selectedKit ||
+      selectedKit.versions.length <= 1 ||
+      !window.confirm(
+        `确定删除品牌规范 #${selectedKit.id} 的未使用版本 ${version.version_number} 吗？此操作不可撤销。`,
+      )
+    ) {
+      return;
+    }
+    await runWithSynchronousRequestLock(deletionLock, async () => {
+      setActionError("");
+      setActionState("正在检查引用并删除不可变版本……");
+      try {
+        await deleteBrandKitVersion(selectedKit.id, version.id);
+        const remainingVersions = selectedKit.versions.filter(
+          (item) => item.id !== version.id,
+        );
+        const updatedKit = { ...selectedKit, versions: remainingVersions };
+        setBrandKits((current) =>
+          current.map((kit) => (kit.id === updatedKit.id ? updatedKit : kit)),
+        );
+        const nextVersionId = automaticallySelectedVersionId(updatedKit);
+        setSelectedVersionId(nextVersionId);
+        setDraft(
+          nextVersionId && remainingVersions[0]
+            ? fromVersion(remainingVersions[0])
+            : EMPTY_VERSION,
+        );
+        setActionState(`已删除未使用的不可变版本 #${version.id}`);
+      } catch (error) {
+        setActionState("");
+        setActionError(
+          getApiErrorMessage(error, "版本删除失败；该版本可能仍被业务记录引用。"),
+        );
+      }
+    });
+  }
+
+  async function handleDeleteKit(kit: BrandKit) {
+    if (
+      deletionLock.current ||
+      !window.confirm(
+        `确定删除品牌规范“${kit.name}”及其全部未使用版本吗？此操作不可撤销。`,
+      )
+    ) {
+      return;
+    }
+    await runWithSynchronousRequestLock(deletionLock, async () => {
+      setActionError("");
+      setActionState("正在检查引用并删除品牌规范……");
+      try {
+        await deleteBrandKit(kit.id);
+        setBrandKits((current) => current.filter((item) => item.id !== kit.id));
+        setSelectedKitId(null);
+        setSelectedVersionId(null);
+        setDraft(EMPTY_VERSION);
+        setActionState(`已删除品牌规范 #${kit.id}`);
+      } catch (error) {
+        setActionState("");
+        setActionError(
+          getApiErrorMessage(error, "品牌规范删除失败；其中可能有版本仍被业务记录引用。"),
+        );
+      }
+    });
+  }
+
   return (
     <section className="brand-onboarding" aria-label="首次使用引导与品牌规范">
       <header className="brand-onboarding__header">
@@ -330,18 +401,40 @@ export function BrandKitOnboardingPanel({
                           <p>存在多个版本，请明确选择；不会自动使用最新版本。</p>
                         )}
                         {kit.versions.map((version) => (
-                          <label key={version.id}>
-                            <input
-                              type="radio"
-                              name={`brand-kit-${kit.id}-version`}
-                              checked={selectedVersionId === version.id}
-                              onChange={() => chooseVersion(version)}
-                            />
-                            <span>
-                              版本 {version.version_number} · #{version.id} · {version.digest.slice(0, 12)}…
-                            </span>
-                          </label>
+                          <div className="brand-kit-version-row" key={version.id}>
+                            <label>
+                              <input
+                                type="radio"
+                                name={`brand-kit-${kit.id}-version`}
+                                checked={selectedVersionId === version.id}
+                                onChange={() => chooseVersion(version)}
+                              />
+                              <span>
+                                版本 {version.version_number} · #{version.id} · {version.digest.slice(0, 12)}…
+                              </span>
+                            </label>
+                            <button
+                              type="button"
+                              className="brand-kit-danger-button"
+                              disabled={kit.versions.length <= 1}
+                              title={
+                                kit.versions.length <= 1
+                                  ? "最后一个版本不能单独删除，请删除整个品牌规范"
+                                  : "仅未被任何业务记录引用时可删除"
+                              }
+                              onClick={() => void handleDeleteVersion(version)}
+                            >
+                              删除版本
+                            </button>
+                          </div>
                         ))}
+                        <button
+                          type="button"
+                          className="brand-kit-danger-button brand-kit-delete-button"
+                          onClick={() => void handleDeleteKit(kit)}
+                        >
+                          删除整个品牌规范
+                        </button>
                       </div>
                     )}
                   </article>

@@ -164,6 +164,7 @@ try {
   assert.match(panel, /runWithSynchronousRequestLock\(createKitLock/);
   assert.match(panel, /runWithSynchronousRequestLock\(createVersionLock/);
   assert.match(panel, /runWithSynchronousRequestLock\(bindingLock/);
+  assert.match(panel, /runWithSynchronousRequestLock\(deletionLock/);
   assert.match(panel, /versionCreationMessage\(result\)/);
   assert.match(panel, /不会自动选择最新记录/);
   assert.match(panel, /selectedVersionId === null/);
@@ -172,6 +173,11 @@ try {
   assert.match(panel, /forbidden_terms/);
   assert.match(panel, /required_disclosures/);
   assert.match(panel, /claims_constraints/);
+  assert.match(panel, /删除版本/);
+  assert.match(panel, /删除整个品牌规范/);
+  assert.match(panel, /window\.confirm/);
+  assert.match(panel, /deleteBrandKitVersion/);
+  assert.match(panel, /deleteBrandKit/);
   assert.match(page, /!isPresentation && \(/);
   assert.match(page, /<BrandKitOnboardingPanel/);
   assert.match(page, /socialpilot\.productCenter\.selectedProduct/);
@@ -191,6 +197,11 @@ try {
   assert.match(api, /apiClient\.post<BrandKitVersionCreateResult>/);
   assert.match(api, /apiClient\.put<Product>/);
   assert.match(api, /apiClient\.delete<Product>/);
+  assert.match(api, /apiClient\.delete\(`\/brand-kits\/\$\{brandKitId\}`/);
+  assert.match(
+    api,
+    /apiClient\.delete\(`\/brand-kits\/\$\{brandKitId\}\/versions\/\$\{versionId\}`/,
+  );
   assert.doesNotMatch(api, /preflight|provider|qwen|wanx|youtube|google/i);
   assert.doesNotMatch(panel, /localStorage|sessionStorage/);
 

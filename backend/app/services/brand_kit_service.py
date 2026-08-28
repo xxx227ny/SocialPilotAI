@@ -56,12 +56,15 @@ def _normalized_content(data: BrandKitVersionInput) -> dict[str, object]:
     }
     for field in _LIST_FIELDS:
         content[field] = _normalized_list(getattr(data, field))
-    if any(not content[field] for field in (
-        "brand_name",
-        "positioning",
-        "default_language",
-        "brand_tone",
-    )):
+    if any(
+        not content[field]
+        for field in (
+            "brand_name",
+            "positioning",
+            "default_language",
+            "brand_tone",
+        )
+    ):
         raise AppError("BrandKit version text fields cannot be empty", 422)
     preferred = {item.casefold() for item in content["preferred_terms"]}  # type: ignore[union-attr]
     forbidden = {item.casefold() for item in content["forbidden_terms"]}  # type: ignore[union-attr]
@@ -74,7 +77,8 @@ def _digest(content: dict[str, object]) -> str:
     canonical = dict(content)
     for field in _LIST_FIELDS:
         canonical[field] = [
-            item.casefold() for item in content[field]  # type: ignore[union-attr]
+            item.casefold()
+            for item in content[field]  # type: ignore[union-attr]
         ]
     encoded = json.dumps(
         canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":")
@@ -133,6 +137,48 @@ class BrandKitService:
     def list_versions(self, brand_kit_id: int) -> list[BrandKitVersion]:
         self.get(brand_kit_id)
         return self.repository.list_versions(brand_kit_id)
+
+    def delete_version(self, brand_kit_id: int, version_id: int) -> None:
+        version = self.get_version(brand_kit_id, version_id)
+        versions = self.repository.list_versions(brand_kit_id)
+        if len(versions) <= 1:
+            raise AppError(
+                "品牌规范必须保留至少一个不可变版本；如需删除请删除整个品牌规范",
+                409,
+            )
+        if any(self.repository.version_reference_counts(version.id).values()):
+            raise AppError(
+                "该不可变版本已被商品、批量视频或脚本历史引用，不能删除；请先解除所有引用",
+                409,
+            )
+        try:
+            self.repository.delete_version_record(version.id)
+            self.repository.touch(brand_kit_id, utc_now())
+            self.session.commit()
+        except IntegrityError as error:
+            self.session.rollback()
+            raise AppError(
+                "该不可变版本仍被业务记录引用，不能删除",
+                409,
+            ) from error
+
+    def delete(self, brand_kit_id: int) -> None:
+        kit = self.get(brand_kit_id)
+        if any(
+            any(self.repository.version_reference_counts(version.id).values())
+            for version in kit.versions
+        ):
+            raise AppError(
+                "该品牌规范包含已被商品、批量视频或脚本历史引用的版本，不能删除；请先解除所有引用",
+                409,
+            )
+        try:
+            self.repository.delete_versions_for_kit(brand_kit_id)
+            self.repository.delete_kit_record(brand_kit_id)
+            self.session.commit()
+        except IntegrityError as error:
+            self.session.rollback()
+            raise AppError("该品牌规范仍被业务记录引用，不能删除", 409) from error
 
     def create_version(
         self, brand_kit_id: int, data: BrandKitVersionInput

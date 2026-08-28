@@ -31,6 +31,17 @@ export async function createBrandKitVersion(
   return response.data;
 }
 
+export async function deleteBrandKit(brandKitId: number): Promise<void> {
+  await apiClient.delete(`/brand-kits/${brandKitId}`);
+}
+
+export async function deleteBrandKitVersion(
+  brandKitId: number,
+  versionId: number,
+): Promise<void> {
+  await apiClient.delete(`/brand-kits/${brandKitId}/versions/${versionId}`);
+}
+
 export async function bindProductBrandKitVersion(
   productId: number,
   payload: ProductBrandKitBindingPayload,

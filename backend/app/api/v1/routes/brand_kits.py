@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -57,6 +57,17 @@ def get_brand_kit_version(
     return BrandKitService(db).get_version(brand_kit_id, version_id)
 
 
+@router.delete(
+    "/brand-kits/{brand_kit_id}/versions/{version_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_brand_kit_version(
+    brand_kit_id: int, version_id: int, db: DbSession
+) -> Response:
+    BrandKitService(db).delete_version(brand_kit_id, version_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.post(
     "/brand-kits/{brand_kit_id}/versions",
     response_model=BrandKitVersionCreateRead,
@@ -67,19 +78,19 @@ def create_brand_kit_version(
     return BrandKitService(db).create_version(brand_kit_id, data)
 
 
-@router.put(
-    "/products/{product_id}/brand-kit-version", response_model=ProductRead
-)
+@router.delete("/brand-kits/{brand_kit_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_brand_kit(brand_kit_id: int, db: DbSession) -> Response:
+    BrandKitService(db).delete(brand_kit_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.put("/products/{product_id}/brand-kit-version", response_model=ProductRead)
 def bind_product_brand_kit_version(
     product_id: int, data: ProductBrandKitBinding, db: DbSession
 ) -> ProductRead:
     return BrandKitService(db).bind_product(product_id, data)
 
 
-@router.delete(
-    "/products/{product_id}/brand-kit-version", response_model=ProductRead
-)
-def unbind_product_brand_kit_version(
-    product_id: int, db: DbSession
-) -> ProductRead:
+@router.delete("/products/{product_id}/brand-kit-version", response_model=ProductRead)
+def unbind_product_brand_kit_version(product_id: int, db: DbSession) -> ProductRead:
     return BrandKitService(db).unbind_product(product_id)
