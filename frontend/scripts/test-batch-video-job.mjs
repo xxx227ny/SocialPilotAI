@@ -218,6 +218,10 @@ try {
     path.join(root, "src/components/video/VideoScriptVersionPanel.tsx"),
     "utf8",
   );
+  const advancedScriptPanel = await fs.readFile(
+    path.join(root, "src/components/video/AdvancedVideoScriptVersionPanel.tsx"),
+    "utf8",
+  );
   for (const expected of [
     "orchestration_only",
     "downstreamCostLabel",
@@ -246,17 +250,16 @@ try {
   assert.ok(batchApiSource.includes("/qwen-scripts/preflight"));
   assert.ok(batchApiSource.includes("/qwen-scripts"));
   assert.ok(!batchStateSource.toLowerCase().includes("qwen"));
-  assert.ok(panel.includes("qwenEnabled={qwenScriptEnabled}"));
   assert.ok(panel.includes("socialpilot.scriptBatch."));
-  assert.ok(panel.includes("高级手工编辑"));
   assert.ok(panel.includes("普通用户无需逐个平台填写脚本"));
   assert.ok(panel.includes('READY_FOR_SCRIPT: "等待生成脚本"'));
   assert.ok(panel.includes("脚本尚未创建"));
-  assert.ok(
-    panel.includes(
-      "scriptVariantId !== null && <VideoScriptVersionPanel",
-    ),
-  );
+  assert.ok(!panel.includes("高级手工编辑"));
+  assert.ok(!panel.includes("VideoScriptVersionPanel"));
+  assert.ok(advancedScriptPanel.includes("脚本版本管理（高级）"));
+  assert.ok(advancedScriptPanel.includes("listBatchVideoVariants"));
+  assert.ok(advancedScriptPanel.includes("item.product_id === productId"));
+  assert.ok(advancedScriptPanel.includes("<VideoScriptVersionPanel"));
   assert.ok(
     featureSource.includes(
       "qwenVideoScriptGenerationEnabled = isEnabledFeatureFlag",
@@ -267,14 +270,15 @@ try {
   );
   assert.ok(
     page.includes(
-      "showBatchVideoJobs && <BatchVideoJobPanel",
+      "showBatchVideoJobs && <BatchVideoJobPanel />",
     ),
   );
   assert.ok(
     page.includes(
-      "qwenScriptEnabled={qwenVideoScriptGenerationEnabled}",
+      "qwenEnabled={qwenVideoScriptGenerationEnabled}",
     ),
   );
+  assert.ok(page.includes("<AdvancedVideoScriptVersionPanel"));
   assert.ok(!panel.includes("preflightQwenVideoScript"));
   assert.ok(!panel.includes("createQwenVideoScriptJob"));
   assert.ok(!/Promise\.all\s*\(\s*result\.variants/i.test(panel));

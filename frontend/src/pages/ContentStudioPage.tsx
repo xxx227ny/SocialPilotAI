@@ -7,6 +7,7 @@ import { PresentationSnapshotPanel } from "../components/product/PresentationSna
 import { SocialPublishingPanel } from "../components/product/SocialPublishingPanel";
 import { DemoContextBar } from "../components/showcase/DemoContextBar";
 import { LiveWanxGenerationPanel } from "../components/video/LiveWanxGenerationPanel";
+import { AdvancedVideoScriptVersionPanel } from "../components/video/AdvancedVideoScriptVersionPanel";
 import { BatchVideoJobPanel } from "../components/video/BatchVideoJobPanel";
 import { InitialVideoProjectPanel } from "../components/video/InitialVideoProjectPanel";
 import { RealProductVideoPanel } from "../components/video/RealProductVideoPanel";
@@ -99,7 +100,7 @@ export function ContentStudioPage() {
   return (
     <div className="competition-page video-blueprint-page">
       <DemoContextBar />
-      {showBatchVideoJobs && <BatchVideoJobPanel scriptVersionsEnabled={videoScriptVersionsEnabled} qwenScriptEnabled={qwenVideoScriptGenerationEnabled} />}
+      {showBatchVideoJobs && <BatchVideoJobPanel />}
       {loading ? (
         <PageState title="正在读取视频蓝图" detail="只读取预置方案，不触发视频策划或任何 AI 调用。" />
       ) : snapshot?.video_project ? (
@@ -223,10 +224,7 @@ function VideoProductionWorkspace({
       ) : null}
 
       {view === "batch" && showBatchVideoJobs ? (
-        <BatchVideoJobPanel
-          scriptVersionsEnabled={videoScriptVersionsEnabled}
-          qwenScriptEnabled={qwenVideoScriptGenerationEnabled}
-        />
+        <BatchVideoJobPanel />
       ) : null}
 
       {view === "advanced" ? <AdvancedVideoWorkspace /> : null}
@@ -245,6 +243,12 @@ function AdvancedVideoWorkspace() {
     >
       {(product) => (
         <div className="advanced-video-workspace">
+          {videoScriptVersionsEnabled ? (
+            <AdvancedVideoScriptVersionPanel
+              productId={product.id}
+              qwenEnabled={qwenVideoScriptGenerationEnabled}
+            />
+          ) : null}
           <InitialVideoProjectPanel
             product={product}
             onGenerated={setVideoProjectId}
