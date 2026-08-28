@@ -272,6 +272,20 @@ def test_equal_voiceover_is_not_rewritten() -> None:
     assert natural_ms == duration_ms == 15000
 
 
+def test_small_voiceover_overrun_is_tempo_fitted_without_truncating_words() -> None:
+    natural = _wav(744720)
+    normalized, natural_ms, duration_ms = VoiceoverGenerationService._normalize_wav(
+        natural, 15000
+    )
+    with wave.open(io.BytesIO(normalized), "rb") as wav:
+        assert wav.getnframes() == 720000
+        assert wav.getframerate() == 48000
+        assert wav.getnchannels() == 2
+        assert wav.getsampwidth() == 2
+    assert natural_ms == 15515
+    assert duration_ms == 15000
+
+
 def test_long_voiceover_fails_once_without_artifact_or_truncation(
     db_session: Session, tmp_path: Path
 ) -> None:
@@ -280,7 +294,7 @@ def test_long_voiceover_fails_once_without_artifact_or_truncation(
         video_artifact_storage_root=str(tmp_path),
     )
     product, composition, version = _source(db_session, tmp_path, "long")
-    provider = FakeTts(frames=768000)
+    provider = FakeTts(frames=960000)
     submitted = VoiceoverGenerationService(db_session, settings).enqueue(
         product.id, _request(composition, version, "long")
     )
@@ -306,7 +320,7 @@ def test_long_voiceover_fails_once_without_artifact_or_truncation(
         == 0
     )
     with wave.open(io.BytesIO(provider.content), "rb") as wav:
-        assert wav.getnframes() == 768000
+        assert wav.getnframes() == 960000
 
 
 def test_fake_tts_contract_is_stereo_48khz_and_called_once() -> None:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import io
 import os
+import subprocess
 import tempfile
 import wave
 from decimal import Decimal
@@ -138,7 +139,10 @@ class VoiceoverGenerationService:
             rate=speaking_rate,
         )
         content, natural_duration_ms, duration_ms = self._normalize_wav(
-            content, target_duration_ms
+            content,
+            target_duration_ms,
+            ffmpeg_path=self.settings.video_composition_ffmpeg_path,
+            process_timeout=self.settings.video_composition_process_timeout,
         )
         digest = hashlib.sha256(content).hexdigest()
         existing = (
@@ -201,7 +205,11 @@ class VoiceoverGenerationService:
 
     @staticmethod
     def _normalize_wav(
-        content: bytes, target_duration_ms: int
+        content: bytes,
+        target_duration_ms: int,
+        *,
+        ffmpeg_path: str = "ffmpeg",
+        process_timeout: float = 180,
     ) -> tuple[bytes, int, int]:
         try:
             with wave.open(io.BytesIO(content), "rb") as wav:
@@ -226,7 +234,64 @@ class VoiceoverGenerationService:
         target_frames = target_frame_numerator // 1000
         natural_duration_ms = round(natural_frames * 1000 / sample_rate)
         if natural_frames > target_frames:
-            raise VoiceoverExceedsTimeline(natural_duration_ms, target_duration_ms)
+            # Provider speech duration varies slightly even for the same text. A small
+            # overrun must not make an otherwise valid production fail. Preserve every
+            # spoken word and pitch with ffmpeg's tempo filter, but keep rejecting
+            # scripts that would require an unnaturally large speed-up.
+            if natural_frames > round(target_frames * 1.15):
+                raise VoiceoverExceedsTimeline(natural_duration_ms, target_duration_ms)
+            ratio = natural_frames / target_frames
+            with tempfile.TemporaryDirectory(prefix="socialpilot-voiceover-") as root:
+                source = Path(root) / "source.wav"
+                destination = Path(root) / "normalized.wav"
+                source.write_bytes(content)
+                try:
+                    completed = subprocess.run(
+                        [
+                            ffmpeg_path,
+                            "-hide_banner",
+                            "-loglevel",
+                            "error",
+                            "-y",
+                            "-i",
+                            str(source),
+                            "-af",
+                            (
+                                f"atempo={ratio:.9f},"
+                                f"apad=whole_dur={target_duration_ms / 1000:.6f},"
+                                f"atrim=duration={target_duration_ms / 1000:.6f}"
+                            ),
+                            "-ar",
+                            str(sample_rate),
+                            "-ac",
+                            "2",
+                            "-c:a",
+                            "pcm_s16le",
+                            str(destination),
+                        ],
+                        capture_output=True,
+                        check=False,
+                        timeout=process_timeout,
+                    )
+                except (OSError, subprocess.TimeoutExpired) as exc:
+                    raise AppError(
+                        "Voiceover timeline normalization failed", 422
+                    ) from exc
+                if completed.returncode != 0 or not destination.is_file():
+                    raise AppError("Voiceover timeline normalization failed", 422)
+                normalized_content = destination.read_bytes()
+            try:
+                with wave.open(io.BytesIO(normalized_content), "rb") as normalized_wav:
+                    if (
+                        normalized_wav.getframerate() != sample_rate
+                        or normalized_wav.getnchannels() != 2
+                        or normalized_wav.getsampwidth() != 2
+                        or normalized_wav.getnframes() != target_frames
+                    ):
+                        raise AppError("Voiceover timeline normalization failed", 422)
+            except (wave.Error, EOFError) as exc:
+                raise AppError("Voiceover timeline normalization failed", 422) from exc
+            return normalized_content, natural_duration_ms, target_duration_ms
         if natural_frames == target_frames:
             return content, natural_duration_ms, target_duration_ms
         silence = b"\x00" * ((target_frames - natural_frames) * frame_size)
