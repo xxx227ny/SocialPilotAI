@@ -248,6 +248,8 @@ try {
   assert.ok(panel.includes("socialpilot.scriptBatch."));
   assert.ok(panel.includes("高级手工编辑"));
   assert.ok(panel.includes("普通用户无需逐个平台填写脚本"));
+  assert.ok(panel.includes('READY_FOR_SCRIPT: "等待生成脚本"'));
+  assert.ok(panel.includes("脚本尚未创建"));
   assert.ok(
     panel.includes(
       "scriptVariantId !== null && <VideoScriptVersionPanel",

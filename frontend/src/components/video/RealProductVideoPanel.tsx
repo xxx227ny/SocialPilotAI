@@ -1134,7 +1134,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
       <p>千问脚本 · 万象商品视觉与动态视频 · 千问云配音</p>
       <p>旁白若超过15秒会安全停止；请缩短文案后重新生成，不会裁断语音。</p>
       <label>
-        视频变体与已激活脚本
+        已激活脚本（首次一键生成前可为空）
         <select
           value={sourceId}
           onChange={(event) => {
@@ -1154,6 +1154,12 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
           ))}
         </select>
       </label>
+      {sources.length === 0 && (
+        <p className="preflight-summary" role="status">
+          当前商品还没有已激活脚本。批量任务中的“等待生成脚本”只是创建了变体槽位；
+          上传商品主图后，在下方填写批次与营销策略编号并完成费用确认，系统会自动生成并激活三平台脚本。
+        </p>
+      )}
       <label>
         商品主参考图（所有分镜冻结复用）
         <select
@@ -1175,11 +1181,17 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
           ))}
         </select>
       </label>
+      {referenceAssets.length === 0 && (
+        <p className="preflight-summary" role="alert">
+          当前商品尚未上传图片素材。请先前往“商品中心”，选中该商品并在“上传真实商品素材”中上传至少一张清晰主图。
+        </p>
+      )}
       <fieldset>
         <legend>一键生成：三平台脚本 → 画面 → 配音 → 成片</legend>
         <p>
           使用批量任务中同一商品的 TikTok、YouTube Shorts 和 Instagram
-          Reels 第一个“脚本就绪”变体；所有记录均按精确编号固定。
+          Reels 第一个“等待生成脚本”变体；首次执行不需要预先选择已激活脚本，
+          系统会自动生成并激活精确版本。所有记录均按精确编号固定。
         </p>
         <label>
           精确批次编号
