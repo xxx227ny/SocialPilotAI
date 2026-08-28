@@ -29,6 +29,7 @@ from app.schemas.video_script_version import (
     QwenScriptProviderOutput,
 )
 from app.services.qwen_video_script_generation_service import (
+    normalize_timed_four_act_narration,
     select_timed_narration,
     validate_timed_four_act_contract,
 )
@@ -192,6 +193,27 @@ def test_four_act_contract_enforces_timeline_subtitles_and_word_budgets() -> Non
         scene.subtitle_draft = scene.narration
     with pytest.raises(AppError, match="total speech budget"):
         validate_timed_four_act_contract(chinese, english=False)
+
+
+def test_overlong_provider_narration_is_deterministically_fitted_to_scenes() -> None:
+    output = QwenScriptProviderOutput.model_validate_json(VALID_RESPONSE)
+    for scene in output.scenes:
+        scene.narration = (
+            "智能室内种植系统自动补光循环供水并提醒水位不足"
+            "让城市家庭轻松收获全年新鲜香草"
+        )
+        scene.subtitle_draft = "provider returned a different subtitle"
+
+    normalized = normalize_timed_four_act_narration(output, english=False)
+
+    assert [len(scene.narration.rstrip("。")) for scene in normalized.scenes] == [
+        14,
+        22,
+        18,
+        14,
+    ]
+    assert all(scene.subtitle_draft == scene.narration for scene in normalized.scenes)
+    validate_timed_four_act_contract(normalized, english=False)
 
 
 def enqueue(session, variant, strategy, settings, key: str):

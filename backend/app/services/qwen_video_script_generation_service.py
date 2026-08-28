@@ -14,11 +14,49 @@ from app.schemas.video_script_version import QwenScriptProviderOutput
 TIMED_FOUR_ACT_SCENE_COUNT = 4
 _CJK_CHARACTER = re.compile(r"[\u3400-\u9fff]")
 _LATIN_WORD = re.compile(r"[A-Za-z0-9]+(?:['’-][A-Za-z0-9]+)*")
+_SPOKEN_UNIT = re.compile(r"[\u3400-\u9fff]|[A-Za-z0-9]+(?:['’-][A-Za-z0-9]+)*")
 
 
 def _spoken_units(value: str) -> int:
     """Estimate spoken density for mixed Chinese and Latin narration."""
     return len(_CJK_CHARACTER.findall(value)) + len(_LATIN_WORD.findall(value))
+
+
+def _truncate_spoken_units(value: str, maximum: int) -> str:
+    stripped = value.strip()
+    matches = tuple(_SPOKEN_UNIT.finditer(stripped))
+    if len(matches) <= maximum:
+        return stripped
+    shortened = stripped[: matches[maximum - 1].end()].rstrip(" ,，、;；:：.!！?？")
+    return shortened + ("。" if _CJK_CHARACTER.search(shortened) else ".")
+
+
+def normalize_timed_four_act_narration(
+    output: QwenScriptProviderOutput, *, english: bool
+) -> QwenScriptProviderOutput:
+    """Fit overlong provider narration to each frozen scene without cutting audio."""
+    scenes = sorted(output.scenes, key=lambda item: item.sequence)
+    normalized = []
+    chinese_maximums = (14, 22, 18, 14)
+    for index, scene in enumerate(scenes):
+        narration = scene.narration.strip()
+        if english:
+            words = narration.split()
+            if len(words) < 6:
+                raise AppError("Qwen narration failed the per-scene word budget", 422)
+            if len(words) > 8:
+                narration = " ".join(words[:8]).rstrip(" ,;:.!?") + "."
+        else:
+            units = _spoken_units(narration)
+            if units < 4:
+                raise AppError("Qwen narration failed the per-scene speech budget", 422)
+            narration = _truncate_spoken_units(narration, chinese_maximums[index])
+        normalized.append(
+            scene.model_copy(
+                update={"narration": narration, "subtitle_draft": narration}
+            )
+        )
+    return output.model_copy(update={"scenes": normalized})
 
 
 def select_timed_narration(
@@ -118,6 +156,7 @@ class QwenVideoScriptGenerationService:
             ) from error
         language = str(prompt_snapshot.get("language", "")).strip().lower()
         english = language == "en" or language.startswith("en-")
+        output = normalize_timed_four_act_narration(output, english=english)
         validate_timed_four_act_contract(output, english=english)
         select_timed_narration(output, min_words=24 if english else 1)
         return QwenScriptGenerationResult(
