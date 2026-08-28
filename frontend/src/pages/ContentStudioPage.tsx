@@ -187,13 +187,6 @@ function VideoProductionWorkspace({
       </header>
 
       <nav className="workspace-tabs" aria-label="视频工厂功能分区">
-        <button
-          type="button"
-          className={view === "production" ? "workspace-tabs__active" : ""}
-          onClick={() => setView("production")}
-        >
-          一键商品视频
-        </button>
         {showBatchVideoJobs ? (
           <button
             type="button"
@@ -203,6 +196,13 @@ function VideoProductionWorkspace({
             批量任务
           </button>
         ) : null}
+        <button
+          type="button"
+          className={view === "production" ? "workspace-tabs__active" : ""}
+          onClick={() => setView("production")}
+        >
+          一键商品视频
+        </button>
         <button
           type="button"
           className={view === "advanced" ? "workspace-tabs__active" : ""}

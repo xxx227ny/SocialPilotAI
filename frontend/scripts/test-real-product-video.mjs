@@ -344,6 +344,12 @@ try {
   assert.ok(page.includes("socialpilot.videoWorkspace.view"));
   assert.ok(page.includes("socialpilot.videoWorkspace.productionProduct"));
   assert.ok(page.includes("storageKey={VIDEO_PRODUCTION_PRODUCT_KEY}"));
+  const workspaceNavStart = page.indexOf('<nav className="workspace-tabs"');
+  const workspaceNav = page.slice(
+    workspaceNavStart,
+    page.indexOf("</nav>", workspaceNavStart),
+  );
+  assert.ok(workspaceNav.indexOf("批量任务") < workspaceNav.indexOf("一键商品视频"));
   safety += 3;
   const selector = await fs.readFile(
     path.join(root, "src/components/product/OperationalProductSelector.tsx"),
