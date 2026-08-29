@@ -1165,7 +1165,7 @@ textarea { font: inherit; }
 .growth-panel__header small { color: #8995a8; font-size: 8px; }
 .growth-panel__zero-ai { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
 .growth-panel__zero-ai strong { color: #16745d; }
-.growth-panel__controls { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 7px; }
+.growth-panel__controls { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 7px; }
 .growth-panel__controls label { min-width: 0; display: flex; align-items: center; padding: 8px 9px; overflow: hidden; color: #69758a; background: #fff; border: 1px dashed #cdd8e6; border-radius: 7px; cursor: pointer; font-size: 8px; }
 .growth-panel__controls input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .growth-panel__controls label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1173,6 +1173,8 @@ textarea { font: inherit; }
 .growth-panel__controls button:disabled, .growth-panel__future-action:disabled { opacity: .55; cursor: not-allowed; }
 .growth-panel__boundary, .growth-panel__status { margin: 8px 0 0 !important; color: #65738a !important; font-size: 8px !important; line-height: 1.55; }
 .growth-panel__boundary { padding-left: 8px; border-left: 2px solid #8dbce8; }
+.growth-panel__steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; margin: 9px 0 0; padding: 0; list-style-position: inside; }
+.growth-panel__steps li { padding: 8px 9px; color: #526078; background: #f7f9fd; border: 1px solid #e0e7f1; border-radius: 7px; font-size: 8px; line-height: 1.55; }
 .growth-context-state { margin-top: 11px; padding: 12px; color: #596981; background: #fff; border: 1px solid #e2e9f1; border-radius: 8px; }
 .growth-context-state--error { color: #934a54; background: #fff5f6; border-color: #f0cdd2; }
 .growth-context-state strong { font-size: 9px; }
@@ -2655,6 +2657,7 @@ textarea { font: inherit; }
   }
 
   .growth-panel__controls,
+  .growth-panel__steps,
   .growth-context-summary,
   .growth-context-platforms,
   .growth-context-chain {

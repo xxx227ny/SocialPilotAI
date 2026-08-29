@@ -66,6 +66,10 @@ try {
   assert.match(page, /socialpilot\.growthOptimization\.selectedProduct/);
   assert.match(panel, /socialpilot\.growthOptimization\.policy\.\$\{productId\}/);
   assert.match(panel, /restoredPolicy/);
+  assert.match(parent, /下载CSV填写模板/);
+  assert.match(parent, /SocialPilot-广告投放数据模板\.csv/);
+  assert.match(parent, /platform,campaign_name,date,impressions,clicks,conversions,spend,revenue/);
+  assert.match(parent, /投流优化操作步骤/);
   assert.match(page, /AI 投流策略优化/);
   assert.match(parent, /preserveRecommendationIfUnchanged/);
   assert.match(parent, /contextDigestRef\.current !== result\.context_digest/);
@@ -97,8 +101,13 @@ try {
   assert.match(panel, /resolution_status === "UNRESOLVED"/);
   assert.match(parent, /replanResolved/);
   assert.match(panel, /我确认自动模式仅运行SocialPilot AI沙箱/);
+  assert.match(panel, /仅内部方案 · 外部广告平台未连接/);
+  assert.match(panel, /本地安全沙箱/);
+  assert.match(panel, /CYCLE_STATUS_LABELS/);
+  assert.doesNotMatch(panel, /\{run\.status\}/);
+  assert.doesNotMatch(panel, /\{execution\.status\}/);
   assert.doesNotMatch(panel, /access_token|client_secret|Bearer/i);
-  console.log("growth optimization: 33 behavior scenarios, 45 static/safety assertions passed");
+  console.log("growth optimization: 33 behavior scenarios, 54 static/safety assertions passed");
 } finally {
   await server.close();
 }

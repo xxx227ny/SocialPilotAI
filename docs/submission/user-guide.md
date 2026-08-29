@@ -82,7 +82,9 @@ DEMO_AUTH_COOKIE_SECURE=true  # HTTPS部署使用true；本机HTTP验收使用fa
 ## 6. 使用 ROAS 投流沙箱
 
 1. 打开“投流优化”，选择商品。
-2. 上传 CSV。推荐字段：平台、日期、花费、收入、曝光、点击、转化。
+2. 点击“下载CSV填写模板”，替换示例行后保存为 UTF-8 CSV，再上传该文件。
+   固定列名为 `platform`、`campaign_name`、`date`、`impressions`、`clicks`、
+   `conversions`、`spend`、`revenue`；请勿重复导入同一文件。
 3. 页面会确定性计算总体和分平台 CTR、CVR、CPA、ROAS。
 4. 确认营销策略、文案矩阵和视频项目编号均已就绪。
 5. 运行投流建议前置检查。

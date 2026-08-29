@@ -70,6 +70,46 @@ const DEFAULT_AUTOMATION: GrowthAutomationControlUpdate = {
   confirm_auto_sandbox: false,
 };
 
+const RUN_STATUS_LABELS: Record<GrowthOptimizationRun["status"], string> = {
+  PROPOSED: "待激活",
+  ACTIVE: "当前方案",
+  SUPERSEDED: "已被替代",
+};
+
+const EXECUTION_STATUS_LABELS: Record<
+  GrowthOptimizationExecution["status"],
+  string
+> = {
+  SUCCEEDED: "执行完成",
+  ROLLED_BACK: "已回滚",
+};
+
+const TRIGGER_LABELS: Record<
+  GrowthOptimizationExecution["trigger_kind"],
+  string
+> = {
+  MANUAL_CONFIRMATION: "人工确认",
+  AUTO_POLICY: "自动策略",
+};
+
+const CYCLE_STATUS_LABELS: Record<GrowthAutomationCycle["status"], string> = {
+  EXECUTED: "已执行",
+  NO_CHANGE: "数据未变化",
+  REPLAN_REQUIRED: "需要重新规划",
+  KILL_SWITCHED: "已被紧急停止",
+  MANUAL_REVIEW_REQUIRED: "需要人工复核",
+  NO_ACTIVE_PLAN: "没有当前方案",
+};
+
+const ACTION_LABELS: Record<
+  GrowthOptimizationRun["actions"][number]["action"],
+  string
+> = {
+  increase: "提高",
+  decrease: "降低",
+  hold: "保持",
+};
+
 function restoredPolicy(productId: number): GrowthOptimizationPolicy {
   try {
     const parsed = JSON.parse(
@@ -712,7 +752,7 @@ export function GrowthOptimizationPanel({
             ) : (
               cycles.map((cycle) => (
                 <p key={cycle.id}>
-                  周期 #{cycle.id} · {cycle.status} · 方案 {cycle.optimization_run_id ?? "无"} · 执行 {cycle.execution_id ?? "无"} · {cycle.resolution_status === "RESOLVED" ? `已由方案 #${cycle.resolved_by_optimization_run_id}解决` : "未解决"} · 模型调用 0 · 外部修改 否
+                  周期 #{cycle.id} · {CYCLE_STATUS_LABELS[cycle.status]} · 方案 {cycle.optimization_run_id ?? "无"} · 执行 {cycle.execution_id ?? "无"} · {cycle.resolution_status === "RESOLVED" ? `已由方案 #${cycle.resolved_by_optimization_run_id}解决` : "未解决"} · 模型调用 0 · 外部修改 否
                 </p>
               ))
             )}
@@ -755,11 +795,11 @@ function NumberInput({ label, value, setValue }: { label: string; value: number;
 }
 
 function RunCard({ run, active = false, activate }: { run: GrowthOptimizationRun; active?: boolean; activate?: () => void }) {
-  return <article className="growth-context-card"><header><strong>方案 #{run.id} · {run.status}</strong><small>{run.execution_scope} · 外部平台 {run.external_execution_status}</small></header><p>总预算 {run.recommended_total_budget.toFixed(2)}</p><ul>{run.actions.map((action) => <li key={action.platform}><strong>{action.platform}</strong>：预算 {action.recommended_budget.toFixed(2)} · 竞价 {signedPercent(action.bid_adjustment_pct)} · {action.action}</li>)}</ul>{!active && activate && <button type="button" onClick={activate}>按精确方案编号激活</button>}</article>;
+  return <article className="growth-context-card"><header><strong>方案 #{run.id} · {RUN_STATUS_LABELS[run.status]}</strong><small>仅内部方案 · 外部广告平台未连接</small></header><p>总预算 {run.recommended_total_budget.toFixed(2)}</p><ul>{run.actions.map((action) => <li key={action.platform}><strong>{action.platform}</strong>：预算 {action.recommended_budget.toFixed(2)} · 竞价 {signedPercent(action.bid_adjustment_pct)} · {ACTION_LABELS[action.action]}</li>)}</ul>{!active && activate && <button type="button" onClick={activate}>按精确方案编号激活</button>}</article>;
 }
 
 function ExecutionCard({ execution, busy, rollback }: { execution: GrowthOptimizationExecution; busy: boolean; rollback: () => void }) {
-  return <article className="growth-context-card"><header><strong>执行记录 #{execution.id} · {execution.status}</strong><small>{execution.execution_mode} · {execution.provider_name} · {execution.trigger_kind}</small></header><p>真实平台修改：否 · 方案 #{execution.optimization_run_id}</p><ul>{execution.result_actions.map((action) => <li key={action.platform}><strong>{action.platform}</strong>：结果预算 {action.recommended_budget.toFixed(2)} · 竞价 {signedPercent(action.bid_adjustment_pct)}</li>)}</ul>{execution.status === "SUCCEEDED" && <button type="button" disabled={busy} onClick={rollback}>按精确执行编号回滚</button>}</article>;
+  return <article className="growth-context-card"><header><strong>执行记录 #{execution.id} · {EXECUTION_STATUS_LABELS[execution.status]}</strong><small>本地安全沙箱 · {TRIGGER_LABELS[execution.trigger_kind]}</small></header><p>真实平台修改：否 · 方案 #{execution.optimization_run_id}</p><ul>{execution.result_actions.map((action) => <li key={action.platform}><strong>{action.platform}</strong>：结果预算 {action.recommended_budget.toFixed(2)} · 竞价 {signedPercent(action.bid_adjustment_pct)}</li>)}</ul>{execution.status === "SUCCEEDED" && <button type="button" disabled={busy} onClick={rollback}>按精确执行编号回滚</button>}</article>;
 }
 
 function signedPercent(value: number) {

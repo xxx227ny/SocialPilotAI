@@ -89,6 +89,25 @@ const MISSING_LABELS: Record<string, string> = {
   v2_video_project_execution: "后端第二版视频项目执行开关",
 };
 
+const CAMPAIGN_CSV_TEMPLATE = [
+  "platform,campaign_name,date,impressions,clicks,conversions,spend,revenue",
+  "TikTok,请替换为广告活动名称,2026-08-01,1000,50,5,100.00,250.00",
+].join("\r\n");
+
+function downloadCampaignCsvTemplate() {
+  const blob = new Blob(["\uFEFF", CAMPAIGN_CSV_TEMPLATE], {
+    type: "text/csv;charset=utf-8",
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "SocialPilot-广告投放数据模板.csv";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 function isUncertainGenerationError(error: unknown): boolean {
   if (!axios.isAxiosError(error)) return false;
   if (!error.response) {
@@ -1019,6 +1038,13 @@ export function GrowthCopilotPanel({
       </div>
 
       <div className="growth-panel__controls">
+        <button
+          type="button"
+          disabled={uploading || panelSubmitting}
+          onClick={downloadCampaignCsvTemplate}
+        >
+          下载CSV填写模板
+        </button>
         <label>
           <input
             accept=".csv,text/csv"
@@ -1053,8 +1079,15 @@ export function GrowthCopilotPanel({
           {reading ? "读取中…" : "重新读取投放反馈"}
         </button>
       </div>
+      <ol className="growth-panel__steps" aria-label="投流优化操作步骤">
+        <li>下载模板并替换示例行，平台建议填写 TikTok、Instagram、Facebook 或 Pinterest。</li>
+        <li>导入CSV后确认总体及分平台的点击率、转化率、单次转化成本和ROAS。</li>
+        <li>运行前置检查，确认费用后调用千问生成建议，再生成内部预算方案。</li>
+        <li>仅在沙箱中确认执行；可查看监控记录并按精确执行编号回滚。</li>
+      </ol>
       <p className="growth-panel__boundary">
-        CSV导入会追加广告投放记录，但不会调用AI；重复导入当前不会自动去重或替换。
+        CSV列名固定为 platform、campaign_name、date、impressions、clicks、conversions、spend、revenue。
+        导入会追加广告投放记录但不会调用AI；请勿重复导入同一文件。
       </p>
       {notice && <p className="growth-panel__status">{notice}</p>}
 
