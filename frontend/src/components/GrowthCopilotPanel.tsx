@@ -1557,7 +1557,7 @@ function ContextResult({ context }: { context: FeedbackContext }) {
             <strong>{asId(context.video_project_id)}</strong>
           </div>
           <p>
-            精确选择：按编号固定视频项目，并使用其引用的文案矩阵与营销策略
+            精确选择：按编号固定视频项目，并确定性选择同商品、同营销策略的文案矩阵
           </p>
         </div>
       ) : (

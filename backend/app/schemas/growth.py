@@ -16,7 +16,9 @@ from app.schemas.campaign import CampaignMetricsSchema
 SUPPORTED_GROWTH_PLATFORMS = {
     "tiktok": "TikTok",
     "instagram": "Instagram",
+    "instagram reels": "Instagram",
     "facebook": "Facebook",
+    "facebook reels": "Facebook",
     "pinterest": "Pinterest",
 }
 GROWTH_RECOMMENDATION_CONTRACT_VERSION = "growth-recommendation-v1"

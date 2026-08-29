@@ -327,6 +327,55 @@ def test_growth_preflight_cross_product_chain_is_atomically_blocked(
     assert "exact_content_chain" in body["missing_requirements"]
 
 
+def test_growth_preflight_resolves_unlinked_video_to_latest_same_strategy_copy(
+    client: TestClient,
+    db_session: Session,
+    product_payload: dict[str, object],
+) -> None:
+    identity = create_ready_context(client, db_session, product_payload)
+    project = db_session.get(VideoProject, identity["video_project_id"])
+    assert project is not None
+    project.copy_matrix_id = None
+    project.platform = "Instagram Reels"
+    replacement = CopyMatrix(
+        product_id=int(identity["product_id"]),
+        marketing_strategy_id=int(identity["strategy_id"]),
+        copies=[
+            {
+                "platform": platform,
+                "hook": "Latest hook",
+                "caption": "Latest caption",
+                "hashtags": ["#Latest"],
+                "cta": "Latest CTA",
+            }
+            for platform in ("TikTok", "Instagram", "Facebook")
+        ],
+    )
+    db_session.add(replacement)
+    db_session.commit()
+
+    context = client.get(
+        f"/api/v1/products/{identity['product_id']}/feedback-context"
+    ).json()
+    app.dependency_overrides[get_settings] = enabled_settings
+    try:
+        preflight = client.get(
+            f"/api/v1/products/{identity['product_id']}"
+            "/growth-analysis/preflight"
+        )
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
+
+    assert context["context_ready"] is True
+    assert context["marketing_strategy_id"] == identity["strategy_id"]
+    assert context["copy_matrix_id"] == replacement.id
+    assert context["video_project_id"] == identity["video_project_id"]
+    assert context["missing_requirements"] == []
+    assert preflight.status_code == 200
+    assert preflight.json()["ready_for_execution"] is True
+    assert preflight.json()["copy_matrix_id"] == replacement.id
+
+
 def test_growth_route_default_gate_blocks_before_provider_resolution(
     client: TestClient,
     product_payload: dict[str, object],

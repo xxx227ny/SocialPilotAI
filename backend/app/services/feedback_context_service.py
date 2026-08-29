@@ -22,8 +22,8 @@ from app.services.metrics_service import MetricsService
 
 ASSOCIATION_NOTICE = (
     "Campaign metrics are associated with this Product only. The selected "
-    "MarketingStrategy, CopyMatrix, and VideoProject form an exact reference "
-    "chain for a later stage; they are not persisted campaign attribution. "
+    "MarketingStrategy, CopyMatrix, and VideoProject form a deterministic "
+    "reference set for a later stage; they are not persisted campaign attribution. "
     "VideoProject has no MarketingBrief foreign key."
 )
 
@@ -129,7 +129,13 @@ class FeedbackContextService:
         strategy = self.strategy_repository.get(
             project.marketing_strategy_id
         )
-        copy_matrix = self.copy_repository.get(project.copy_matrix_id)
+        copy_matrix = (
+            self.copy_repository.get(project.copy_matrix_id)
+            if project.copy_matrix_id is not None
+            else self.copy_repository.get_latest_by_strategy(
+                project.marketing_strategy_id
+            )
+        )
         missing: list[str] = []
         if strategy is None:
             missing.append("marketing_strategy")
@@ -202,7 +208,17 @@ class FeedbackContextService:
                     project.marketing_strategy_id if project else None
                 ),
                 "copy_matrix_id": (
+                    copy_matrix.id if copy_matrix is not None else None
+                ),
+                "video_project_copy_matrix_id": (
                     project.copy_matrix_id if project else None
+                ),
+                "copy_matrix_resolution": (
+                    "video_project_reference"
+                    if project is not None and project.copy_matrix_id is not None
+                    else "latest_same_strategy"
+                    if copy_matrix is not None
+                    else "missing"
                 ),
                 "strategy_found": strategy is not None,
                 "copy_matrix_found": copy_matrix is not None,
