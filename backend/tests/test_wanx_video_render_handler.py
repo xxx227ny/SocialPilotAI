@@ -241,6 +241,10 @@ def test_product_reference_submit_uses_exact_image_and_whole_timeline(
     assert task.source_product_asset_id == asset.id
     assert task.source_product_asset_sha256 == digest
     assert "not a slideshow" in task.render_prompt
+    assert "authoritative identity" in task.render_prompt
+    assert "Only a component clearly visible" in task.render_prompt
+    assert "no cuts, no scene transitions" in task.render_prompt
+    assert task.idempotency_key.startswith("product-reference-i2v-v2:")
     assert provider.last_request is not None
     assert provider.last_request.duration_seconds == 15
     assert len(provider.last_request.reference_images) == 1

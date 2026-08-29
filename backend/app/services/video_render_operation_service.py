@@ -48,6 +48,7 @@ from app.services.video_render_preflight import (
 from app.services.video_render_service import VideoRenderService
 
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+PRODUCT_REFERENCE_I2V_CONTRACT = "product-reference-i2v-v2"
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,7 +168,7 @@ class VideoProjectRenderExecutionService:
         reference_product_asset_sha256: str,
     ) -> tuple[VideoRenderTask, bool]:
         stable_input = {
-            "contract": "product-reference-i2v-v1",
+            "contract": PRODUCT_REFERENCE_I2V_CONTRACT,
             "video_project_id": project.id,
             "provider": WORKSPACE_RENDER_PROVIDER,
             "model": self.settings.wanx_i2v_model,
@@ -186,7 +187,7 @@ class VideoProjectRenderExecutionService:
                 sort_keys=True,
             ).encode("utf-8")
         ).hexdigest()
-        key = f"product-reference-i2v-v1:{digest}"
+        key = f"{PRODUCT_REFERENCE_I2V_CONTRACT}:{digest}"
         existing = self.render_repository.get_by_idempotency_key(key)
         if existing is not None:
             if (
@@ -208,14 +209,28 @@ class VideoProjectRenderExecutionService:
                 )
             )
         prompt = (
-            "Create a realistic vertical product demonstration video using the exact "
-            "product in the reference image. Show the physical product operating and "
-            "demonstrate its benefits with natural hands, environment interaction, "
-            "continuous camera motion and coherent multi-shot transitions. Preserve "
-            "the product shape, materials, colors and branding. This must be real "
-            "motion, not a slideshow, still-image pan, zoom animation, or floating "
-            "product cutout. No subtitles, captions, logos, watermarks or audio. "
-            "Timeline: " + " | ".join(scene_lines)
+            "Create one continuous realistic vertical product demonstration shot. "
+            "The reference image is the authoritative identity of one physical "
+            "product and must remain unchanged in every frame. Preserve its exact "
+            "shape, proportions, part count, part placement, materials, colors, "
+            "surface details, existing branding and scale. Keep the complete product "
+            "visible and supported by a stable surface; obey gravity, contact and "
+            "real-world mechanics. Only a component clearly visible in the reference "
+            "image may move, and only in a physically plausible direction. Never "
+            "invent or reveal hidden buttons, ports, cables, hinges, compartments, "
+            "attachments, ingredients, liquids or mechanisms. Treat the timeline as "
+            "narrative intent only: it never overrides these physical constraints. "
+            "If an intended action is unsupported by the visible product, keep the "
+            "product intact and communicate the benefit through natural lighting, "
+            "environment context and a restrained presentation gesture instead. "
+            "Avoid hands unless a clearly visible control must be operated; if hands "
+            "are necessary, show at most one natural pair with correct anatomy and "
+            "clear contact. Use one slow continuous dolly, orbit or handheld camera "
+            "movement with no cuts, no scene transitions and no sudden viewpoint "
+            "changes. This must contain genuine scene motion, not a slideshow, "
+            "still-image pan, zoom animation or floating product cutout. No morphing, "
+            "teleporting, duplication, clipping, new written characters, subtitles, "
+            "captions, watermarks or audio. Timeline intent: " + " | ".join(scene_lines)
         )
         task = self.render_repository.create(
             video_project_id=project.id,

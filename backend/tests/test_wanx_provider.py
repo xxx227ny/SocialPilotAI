@@ -10,7 +10,10 @@ from app.providers.base import (
     ProviderConnectionError,
 )
 from app.providers.visual_base import VisualGenerationRequest
-from app.providers.wanx_provider import WanxProvider
+from app.providers.wanx_provider import (
+    WANX_PRODUCT_I2V_NEGATIVE_PROMPT,
+    WanxProvider,
+)
 
 TEST_ENDPOINT = "https://workspace.cn-beijing.maas.aliyuncs.com/api/v1"
 TEST_KEY = "unit-test-wanx-key"
@@ -86,7 +89,8 @@ def test_submit_maps_reference_image_to_real_i2v_request() -> None:
             "duration": 15,
             "resolution": "720P",
             "prompt_extend": True,
-            "shot_type": "multi",
+            "shot_type": "single",
+            "negative_prompt": WANX_PRODUCT_I2V_NEGATIVE_PROMPT,
             "audio": False,
             "watermark": False,
         }

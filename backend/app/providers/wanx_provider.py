@@ -39,6 +39,15 @@ WANX_STATUSES = {
 }
 WANX_RATIOS = {"16:9", "9:16", "1:1", "4:3", "3:4"}
 WANX_RESOLUTIONS = {"720P", "1080P"}
+WANX_PRODUCT_I2V_NEGATIVE_PROMPT = (
+    "product morphing, warped geometry, changed product shape, changed colors, "
+    "changed materials, extra or missing parts, duplicated product, invented "
+    "buttons, invented ports, invented cables, invented compartments, floating "
+    "object, teleportation, melting, unstable scale, broken perspective, "
+    "deformed hands, extra fingers, fused fingers, detached fingers, impossible "
+    "grip, object clipping, text artifacts, new logos, subtitles, captions, "
+    "watermark, slideshow, still-image pan, still-image zoom"
+)
 
 
 class WanxProvider(VisualGenerationProvider):
@@ -99,7 +108,8 @@ class WanxProvider(VisualGenerationProvider):
             parameters.update(
                 {
                     "prompt_extend": True,
-                    "shot_type": "multi",
+                    "shot_type": "single",
+                    "negative_prompt": WANX_PRODUCT_I2V_NEGATIVE_PROMPT,
                     "audio": False,
                     "watermark": False,
                 }
