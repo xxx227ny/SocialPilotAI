@@ -99,3 +99,12 @@ def video_preview_path(source: Path, digest: str, ffmpeg: str) -> Path:
         finally:
             temporary.unlink(missing_ok=True)
     return target
+
+
+def warm_video_preview(source: Path, digest: str, ffmpeg: str) -> bool:
+    """Best-effort preview warmup; source persistence must remain successful."""
+    try:
+        video_preview_path(source, digest, ffmpeg)
+    except AppError:
+        return False
+    return True

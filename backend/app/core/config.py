@@ -134,6 +134,7 @@ class Settings(BaseSettings):
     execution_worker_status_file: str | None = None
     execution_worker_stale_seconds: int = Field(default=15, ge=5, le=300)
     video_artifact_max_bytes: int = Field(default=50_000_000, gt=0, le=500_000_000)
+    enable_video_preview_prewarm: bool = False
     enable_real_product_video: bool = False
     product_asset_storage_root: str | None = None
     product_asset_max_bytes: int = Field(default=15_000_000, gt=0, le=50_000_000)

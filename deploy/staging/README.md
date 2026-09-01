@@ -30,3 +30,8 @@ After deployment, run `smoke_test.py` against the public staging origin. The
 test creates two non-billable validation accounts, uses synthetic provider keys,
 and verifies secure cookies plus cross-workspace product and credential
 isolation without contacting an AI provider.
+
+`media_smoke_test.py` additionally accepts a verified local MP4 fixture. It
+creates an isolated staging artifact without provider calls, then validates
+public HTTPS byte ranges, low-bitrate fast-start preview generation, browser
+cache headers, shared-CDN denial, and cross-workspace media protection.

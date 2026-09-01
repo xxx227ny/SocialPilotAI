@@ -29,6 +29,7 @@ from app.services.video_artifact_storage import (
     VideoArtifactError,
     VideoArtifactStorage,
 )
+from app.services.video_preview import warm_video_preview
 from app.services.video_render_service import VideoRenderService
 
 REFRESHABLE_STATUSES = {"SUBMITTED", "PENDING", "RUNNING"}
@@ -299,7 +300,24 @@ class VideoRenderExecutionService:
                 error_message="Video artifact could not be persisted",
             )
             raise AppError("Video artifact could not be persisted", 500) from exc
+        self._warm_preview(stored.relative_path, stored.sha256)
         return VideoRenderExecutionResult(task, artifact, True)
+
+    def _warm_preview(self, storage_path: str, digest: str) -> None:
+        if (
+            not self.settings.enable_video_preview_prewarm
+            or self.artifact_storage is None
+        ):
+            return
+        try:
+            path, _ = self.artifact_storage.resolve(storage_path)
+        except VideoArtifactError:
+            return
+        warm_video_preview(
+            path,
+            digest,
+            self.settings.video_composition_ffmpeg_path,
+        )
 
     def _restore_after_invalid_refresh(
         self,

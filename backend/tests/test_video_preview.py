@@ -52,6 +52,28 @@ def test_preview_failure_preserves_original(tmp_path, monkeypatch):
     assert not list(tmp_path.glob(".previews/*.mp4"))
 
 
+def test_preview_warmup_is_best_effort(tmp_path, monkeypatch):
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"original-video-remains-immutable")
+    digest = hashlib.sha256(source.read_bytes()).hexdigest()
+    calls = []
+
+    def succeed(path, value, ffmpeg):
+        calls.append((path, value, ffmpeg))
+        return tmp_path / "preview.mp4"
+
+    monkeypatch.setattr(video_preview, "video_preview_path", succeed)
+    assert video_preview.warm_video_preview(source, digest, "ffmpeg") is True
+    assert calls == [(source, digest, "ffmpeg")]
+
+    def fail(path, value, ffmpeg):
+        raise AppError("Preview unavailable", 503)
+
+    monkeypatch.setattr(video_preview, "video_preview_path", fail)
+    assert video_preview.warm_video_preview(source, digest, "ffmpeg") is False
+    assert source.read_bytes() == b"original-video-remains-immutable"
+
+
 @pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg required")
 def test_real_preview_encoding_is_smaller_and_faststart(tmp_path):
     source = tmp_path / "source.mp4"
