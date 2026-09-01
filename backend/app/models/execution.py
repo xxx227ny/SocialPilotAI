@@ -84,6 +84,13 @@ class ExecutionJob(Base):
             name="uq_execution_jobs_workspace_idempotency",
         ),
         Index(
+            "uq_execution_jobs_legacy_idempotency",
+            "idempotency_key",
+            unique=True,
+            sqlite_where=text("workspace_id IS NULL"),
+            postgresql_where=text("workspace_id IS NULL"),
+        ),
+        Index(
             "uq_execution_jobs_running_concurrency_key",
             "concurrency_key",
             unique=True,

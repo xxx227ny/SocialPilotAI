@@ -11,7 +11,9 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.core.exceptions import AppError
-from app.models import Product, SocialAccount, VideoRenderArtifact
+from app.models import VideoRenderArtifact
+from app.repositories.product import ProductRepository
+from app.repositories.social import SocialRepository
 from app.schemas.social import (
     InstagramMediaSpecificationRead,
     InstagramPublishingMetadata,
@@ -65,6 +67,8 @@ class InstagramPublishPreflightService:
         self.settings = settings
         self.artifact_access = VideoArtifactAccessService(session, artifact_storage)
         self.media_probe = media_probe
+        self.products = ProductRepository(session)
+        self.social = SocialRepository(session)
 
     def run(
         self,
@@ -86,7 +90,7 @@ class InstagramPublishPreflightService:
                 "expires_at": expiry.isoformat(),
             }
         )
-        account = self.session.get(SocialAccount, data.social_account_id)
+        account = self.social.get_account(data.social_account_id)
         missing: list[str] = []
         if account is None or account.connection_status != "CONNECTED":
             missing.append("Instagram Professional account is not connected")
@@ -120,8 +124,8 @@ class InstagramPublishPreflightService:
         self, product_id: int, data: InstagramPublishingMetadata
     ) -> FrozenInstagramPublishInput:
         self._require_enabled()
-        product = self.session.get(Product, product_id)
-        account = self.session.get(SocialAccount, data.social_account_id)
+        product = self.products.get(product_id)
+        account = self.social.get_account(data.social_account_id)
         if product is None:
             raise AppError("Product not found", 404)
         if (
@@ -259,7 +263,7 @@ class InstagramPublishPreflightService:
         )
 
     def list_candidates(self, product_id: int) -> list[PublishArtifactCandidateRead]:
-        if self.session.get(Product, product_id) is None:
+        if self.products.get(product_id) is None:
             raise AppError("Product not found", 404)
         candidates: list[PublishArtifactCandidateRead] = []
         for artifact in self.session.scalars(

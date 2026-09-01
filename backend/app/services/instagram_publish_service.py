@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings
 from app.core.exceptions import AppError
 from app.models import PublishTask, SocialAccount
+from app.repositories.social import SocialRepository
 from app.schemas.social import (
     InstagramFinalizePreflightRead,
     InstagramPublishingMetadata,
@@ -37,9 +38,10 @@ class InstagramPublishService:
         self.preflight_service = InstagramPublishPreflightService(
             session, settings, artifact_storage, media_probe
         )
+        self.social = SocialRepository(session)
 
     def get_task(self, task_id: int, product_id: int) -> PublishTask:
-        task = self.session.get(PublishTask, task_id)
+        task = self.social.get_publish_task(task_id)
         if (
             task is None
             or task.product_id != product_id
@@ -49,7 +51,7 @@ class InstagramPublishService:
         return task
 
     def account(self, task: PublishTask) -> SocialAccount:
-        account = self.session.get(SocialAccount, task.social_account_id)
+        account = self.social.get_account(task.social_account_id)
         if (
             account is None
             or account.product_id != task.product_id

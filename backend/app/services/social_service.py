@@ -21,6 +21,7 @@ from app.providers.youtube_provider import (
     YouTubeProviderError,
     YouTubeUploadUncertain,
 )
+from app.repositories.product import ProductRepository
 from app.repositories.social import SocialRepository
 from app.schemas.social import (
     DisconnectRead,
@@ -76,6 +77,7 @@ class SocialAccountService:
         self.settings = settings
         self.provider = provider
         self.repository = SocialRepository(session)
+        self.products = ProductRepository(session)
 
     def connect(
         self, product_id: int, *, browser_session_digest: str
@@ -88,6 +90,7 @@ class SocialAccountService:
         verifier, challenge = generate_pkce_pair()
         expires_at = datetime.now(UTC) + OAUTH_SESSION_LIFETIME
         oauth_session = OAuthSession(
+            workspace_id=self.repository.workspace_id,
             product_id=product_id,
             platform="youtube",
             state_digest=digest_oauth_state(state),
@@ -148,6 +151,7 @@ class SocialAccountService:
         )
         if account is None:
             account = SocialAccount(
+                workspace_id=oauth_session.workspace_id,
                 product_id=oauth_session.product_id,
                 platform="youtube",
                 provider_account_id=channel.channel_id,
@@ -165,6 +169,7 @@ class SocialAccountService:
             )
             self.session.add(account)
         else:
+            account.workspace_id = oauth_session.workspace_id
             account.display_name = channel.display_name
             account.scopes = granted_scopes
             account.access_token_ciphertext = cipher.encrypt(tokens.access_token)
@@ -231,7 +236,7 @@ class SocialAccountService:
         return self.provider
 
     def _require_product(self, product_id: int) -> Product:
-        product = self.session.get(Product, product_id)
+        product = self.products.get(product_id)
         if product is None:
             raise AppError("Product not found", 404)
         return product
@@ -270,6 +275,7 @@ class YouTubePublishingService:
         self.provider = provider
         self.storage = storage
         self.repository = SocialRepository(session)
+        self.products = ProductRepository(session)
         self.artifact_access = VideoArtifactAccessService(session, storage)
 
     def list_candidates(self, product_id: int) -> list[PublishArtifactCandidateRead]:
@@ -368,7 +374,8 @@ class YouTubePublishingService:
         if preflight.preflight_digest != data.preflight_digest:
             raise AppError("YouTube publishing preflight has changed", 409)
         request_digest = self._request_digest(product_id, data)
-        existing = self.repository.get_publish_task_by_key(data.idempotency_key)
+        storage_key = self.repository.scoped_idempotency_key(data.idempotency_key)
+        existing = self.repository.get_publish_task_by_key(storage_key)
         if existing is not None:
             if existing.request_digest != request_digest:
                 raise AppError("Idempotency key was used for another request", 409)
@@ -378,11 +385,12 @@ class YouTubePublishingService:
                 external_call=False,
             )
         task = PublishTask(
+            workspace_id=self.repository.workspace_id,
             product_id=product_id,
             social_account_id=data.social_account_id,
             artifact_id=data.artifact_id,
             platform="youtube",
-            idempotency_key=data.idempotency_key,
+            idempotency_key=storage_key,
             request_digest=request_digest,
             preflight_digest=data.preflight_digest,
             title=data.title,
@@ -399,7 +407,7 @@ class YouTubePublishingService:
             self.session.commit()
         except IntegrityError:
             self.session.rollback()
-            concurrent = self.repository.get_publish_task_by_key(data.idempotency_key)
+            concurrent = self.repository.get_publish_task_by_key(storage_key)
             if concurrent is None or concurrent.request_digest != request_digest:
                 raise AppError(
                     "Publish request conflicts with an existing task", 409
@@ -585,7 +593,7 @@ class YouTubePublishingService:
         return account
 
     def _require_product(self, product_id: int) -> Product:
-        product = self.session.get(Product, product_id)
+        product = self.products.get(product_id)
         if product is None:
             raise AppError("Product not found", 404)
         return product

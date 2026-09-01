@@ -11,9 +11,9 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.core.exceptions import AppError
-from app.models.product import Product
-from app.models.social import SocialAccount, TikTokCreatorInfoSnapshot
 from app.models.video_render_artifact import VideoRenderArtifact
+from app.repositories.product import ProductRepository
+from app.repositories.social import SocialRepository
 from app.schemas.social import (
     PublishArtifactCandidateRead,
     TikTokMediaSpecificationRead,
@@ -66,6 +66,8 @@ class TikTokPublishPreflightService:
         self.session, self.settings = session, settings
         self.artifact_access = VideoArtifactAccessService(session, storage)
         self.media_probe = media_probe
+        self.products = ProductRepository(session)
+        self.social = SocialRepository(session)
 
     def run(
         self,
@@ -107,10 +109,10 @@ class TikTokPublishPreflightService:
         self, product_id: int, data: TikTokPublishingMetadata
     ) -> FrozenTikTokPublishInput:
         self._enabled()
-        product = self.session.get(Product, product_id)
-        account = self.session.get(SocialAccount, data.social_account_id)
-        snapshot = self.session.get(
-            TikTokCreatorInfoSnapshot, data.creator_info_snapshot_id
+        product = self.products.get(product_id)
+        account = self.social.get_account(data.social_account_id)
+        snapshot = self.social.get_tiktok_creator_snapshot(
+            data.creator_info_snapshot_id
         )
         if product is None:
             raise AppError("Product not found", 404)
@@ -242,7 +244,7 @@ class TikTokPublishPreflightService:
         )
 
     def list_candidates(self, product_id: int) -> list[PublishArtifactCandidateRead]:
-        if self.session.get(Product, product_id) is None:
+        if self.products.get(product_id) is None:
             raise AppError("Product not found", 404)
         result = []
         for artifact in self.session.scalars(

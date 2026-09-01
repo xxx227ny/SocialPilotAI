@@ -20,6 +20,7 @@ from app.execution.handlers.instagram_publish import (
     InstagramPublishSubmitV1Input,
 )
 from app.models import ExecutionJob, PublishTask
+from app.repositories.social import SocialRepository
 from app.schemas.execution import ExecutionJobCreate, ExecutionJobCreateRead
 from app.schemas.social import (
     InstagramFinalizeRequest,
@@ -51,6 +52,7 @@ class InstagramPublishJobService:
         self.settings = settings
         self.storage = storage
         self.media_probe = media_probe
+        self.social = SocialRepository(session)
 
     def enqueue_submit(
         self, product_id: int, data: InstagramPublishRequest
@@ -178,15 +180,16 @@ class InstagramPublishJobService:
     def _prepare_task(
         self, product_id: int, data: InstagramPublishRequest
     ) -> PublishTask:
-        key = f"instagram-publish:{data.input_digest}"
-        task = self.session.scalar(
-            select(PublishTask).where(PublishTask.idempotency_key == key)
+        key = self.social.scoped_idempotency_key(
+            f"instagram-publish:{data.input_digest}"
         )
+        task = self.social.get_publish_task_by_key(key)
         if task is not None:
             if not _task_matches(task, product_id, data):
                 raise AppError("Instagram PublishTask identity mismatch", 409)
             return task
         task = PublishTask(
+            workspace_id=self.social.workspace_id,
             product_id=product_id,
             social_account_id=data.social_account_id,
             artifact_id=data.artifact_id,
@@ -209,9 +212,7 @@ class InstagramPublishJobService:
             self.session.commit()
         except IntegrityError:
             self.session.rollback()
-            task = self.session.scalar(
-                select(PublishTask).where(PublishTask.idempotency_key == key)
-            )
+            task = self.social.get_publish_task_by_key(key)
             if task is None or not _task_matches(task, product_id, data):
                 raise AppError(
                     "Instagram PublishTask conflicts with existing input", 409
@@ -226,7 +227,7 @@ class InstagramPublishJobService:
             payload = InstagramPublishSubmitV1Input.model_validate(job.input_payload)
         except ValidationError:
             raise AppError("Instagram publish Job identity mismatch", 409) from None
-        task = self.session.get(PublishTask, payload.publish_task_id)
+        task = self.social.get_publish_task(payload.publish_task_id)
         expected = instagram_job_input_digest(
             data.input_digest, payload.publish_task_id
         )
@@ -319,9 +320,11 @@ class InstagramPublishJobService:
         ).get_task(task_id, product_id)
 
     def _existing(self, key: str) -> ExecutionJob | None:
-        return self.session.scalar(
-            select(ExecutionJob).where(ExecutionJob.idempotency_key == key)
-        )
+        statement = select(ExecutionJob).where(ExecutionJob.idempotency_key == key)
+        workspace_id = self.social.workspace_id
+        if workspace_id is not None:
+            statement = statement.where(ExecutionJob.workspace_id == workspace_id)
+        return self.session.scalar(statement)
 
     def _reused(self, job: ExecutionJob) -> ExecutionJobCreateRead:
         return ExecutionJobCreateRead(

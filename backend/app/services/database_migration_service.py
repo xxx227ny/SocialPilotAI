@@ -43,7 +43,8 @@ VIDEO_PROJECT_INPUT_IDENTITY_REVISION = "0022_video_project_input_identity"
 USER_ACCOUNTS_REVISION = "0023_user_accounts"
 PROVIDER_CREDENTIALS_REVISION = "0024_provider_credentials"
 EXECUTION_JOB_WORKSPACES_REVISION = "0025_execution_job_workspaces"
-HEAD_REVISION = "0026_product_workspaces"
+PRODUCT_WORKSPACES_REVISION = "0026_product_workspaces"
+HEAD_REVISION = "0027_social_workspace_isolation"
 UNVERSIONED = "unversioned"
 MANIFEST_VERSION = 1
 ALEMBIC_INI = Path(__file__).resolve().parents[2] / "alembic.ini"
@@ -289,6 +290,7 @@ def expected_schema_fingerprint(revision: str) -> str:
         USER_ACCOUNTS_REVISION,
         PROVIDER_CREDENTIALS_REVISION,
         EXECUTION_JOB_WORKSPACES_REVISION,
+        PRODUCT_WORKSPACES_REVISION,
         HEAD_REVISION,
     }:
         raise ValueError(f"Unknown expected revision: {revision}")
@@ -678,6 +680,7 @@ def get_database_migration_status(database_path: Path) -> DatabaseMigrationStatu
             USER_ACCOUNTS_REVISION,
             PROVIDER_CREDENTIALS_REVISION,
             EXECUTION_JOB_WORKSPACES_REVISION,
+            PRODUCT_WORKSPACES_REVISION,
             HEAD_REVISION,
         }:
             raise IncompatibleSchemaError("Unsupported Alembic revision")
@@ -719,6 +722,7 @@ def get_database_migration_status(database_path: Path) -> DatabaseMigrationStatu
             USER_ACCOUNTS_REVISION: "user_accounts_runtime",
             PROVIDER_CREDENTIALS_REVISION: "provider_credentials_runtime",
             EXECUTION_JOB_WORKSPACES_REVISION: "execution_job_workspaces_runtime",
+            PRODUCT_WORKSPACES_REVISION: "product_workspaces_runtime",
         }
         return DatabaseMigrationStatus(
             state=state_by_revision[revision],
@@ -807,6 +811,7 @@ def _upgrade_sqlite_database_unlocked(
                     USER_ACCOUNTS_REVISION,
                     PROVIDER_CREDENTIALS_REVISION,
                     EXECUTION_JOB_WORKSPACES_REVISION,
+                    PRODUCT_WORKSPACES_REVISION,
                     HEAD_REVISION,
                 }:
                     raise IncompatibleSchemaError(

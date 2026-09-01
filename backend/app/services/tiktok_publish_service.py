@@ -22,12 +22,13 @@ from app.services.social_security import TokenCipher
 class TikTokPublishService:
     def __init__(self, session: Session, settings: Settings) -> None:
         self.session, self.settings = session, settings
+        self.social = SocialRepository(session)
 
     def get_snapshot(
         self, snapshot_id: int, product_id: int, social_account_id: int
     ) -> TikTokCreatorInfoSnapshotRead:
-        snapshot = self.session.get(TikTokCreatorInfoSnapshot, snapshot_id)
-        account = self.session.get(SocialAccount, social_account_id)
+        snapshot = self.social.get_tiktok_creator_snapshot(snapshot_id)
+        account = self.social.get_account(social_account_id)
         if (
             snapshot is None
             or snapshot.product_id != product_id
@@ -108,6 +109,7 @@ class TikTokPublishService:
             ).encode()
         ).hexdigest()
         snapshot = TikTokCreatorInfoSnapshot(
+            workspace_id=self.social.workspace_id,
             product_id=product_id,
             social_account_id=account.id,
             request_digest=request_digest,

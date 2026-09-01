@@ -15,8 +15,9 @@ from app.execution.contracts import (
     LeaseLostError,
     WorkerStopRequested,
 )
-from app.models.social import PublishTask, SocialAccount
+from app.models.social import PublishTask
 from app.providers.tiktok_provider import TikTokProvider
+from app.repositories.social import SocialRepository
 from app.schemas.social import TikTokPublishingMetadata
 from app.services.social_security import TokenCipher
 from app.services.tiktok_media_probe import TikTokMediaProbe
@@ -102,7 +103,7 @@ class TikTokCreatorInfoV1Handler:
     def execute(self, context: ExecutionContext, payload: BaseModel) -> HandlerResult:
         data = TikTokCreatorInfoV1Input.model_validate(payload)
         with self.session_factory() as session:
-            account = session.get(SocialAccount, data.social_account_id)
+            account = SocialRepository(session).get_account(data.social_account_id)
             if (
                 account is None
                 or account.product_id != data.product_id
@@ -160,7 +161,7 @@ class TikTokSubmitV1Handler:
     def execute(self, context: ExecutionContext, payload: BaseModel) -> HandlerResult:
         data = TikTokSubmitV1Input.model_validate(payload)
         with self.session_factory() as session:
-            task = session.get(PublishTask, data.publish_task_id)
+            task = SocialRepository(session).get_publish_task(data.publish_task_id)
             if task is None:
                 return HandlerResult.failed("TIKTOK_FROZEN_INPUT_MISMATCH")
             if (
@@ -204,7 +205,9 @@ class TikTokSubmitV1Handler:
                     != data.preflight_digest
                 ):
                     raise AppError("frozen mismatch", 409)
-                account = session.get(SocialAccount, task.social_account_id)
+                account = SocialRepository(session).get_account(
+                    task.social_account_id
+                )
                 if account is None:
                     raise AppError("account missing", 409)
                 token = asyncio.run(
@@ -295,7 +298,7 @@ class TikTokRefreshV1Handler:
     def execute(self, context: ExecutionContext, payload: BaseModel) -> HandlerResult:
         data = TikTokRefreshV1Input.model_validate(payload)
         with self.session_factory() as session:
-            task = session.get(PublishTask, data.publish_task_id)
+            task = SocialRepository(session).get_publish_task(data.publish_task_id)
             if (
                 task is None
                 or task.product_id != data.product_id
@@ -308,7 +311,7 @@ class TikTokRefreshV1Handler:
                 or tiktok_refresh_task_digest(task) != data.frozen_task_digest
             ):
                 return HandlerResult.failed("TIKTOK_REFRESH_IDENTITY_MISMATCH")
-            account = session.get(SocialAccount, task.social_account_id)
+            account = SocialRepository(session).get_account(task.social_account_id)
             try:
                 token = asyncio.run(
                     TikTokPublishService(session, self.settings).access_token(
@@ -364,7 +367,10 @@ def _unknown(session: Session, task: PublishTask, code: str) -> None:
     except Exception:
         session.rollback()
         recovered = session.get(PublishTask, task_id)
-        if recovered is None:
+        workspace_id = SocialRepository(session).workspace_id
+        if recovered is None or (
+            workspace_id is not None and recovered.workspace_id != workspace_id
+        ):
             return
         recovered.status = "SUBMIT_UNKNOWN"
         recovered.safe_error_code = code

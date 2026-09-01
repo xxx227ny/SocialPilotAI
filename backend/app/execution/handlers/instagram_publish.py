@@ -17,6 +17,7 @@ from app.execution.contracts import (
 )
 from app.models import PublishTask
 from app.providers.instagram_provider import InstagramProvider
+from app.repositories.social import SocialRepository
 from app.schemas.social import InstagramMediaSpecificationRead
 from app.services.instagram_media_probe import InstagramMediaProbe
 from app.services.instagram_publish_service import (
@@ -105,7 +106,7 @@ class InstagramPublishSubmitV1Handler:
     def execute(self, context: ExecutionContext, payload: BaseModel) -> HandlerResult:
         data = InstagramPublishSubmitV1Input.model_validate(payload)
         with self.session_factory() as session:
-            task = session.get(PublishTask, data.publish_task_id)
+            task = SocialRepository(session).get_publish_task(data.publish_task_id)
             service = InstagramPublishService(
                 session,
                 self.settings,
@@ -201,7 +202,7 @@ class InstagramPublishRefreshV1Handler:
     def execute(self, context: ExecutionContext, payload: BaseModel) -> HandlerResult:
         data = InstagramPublishRefreshV1Input.model_validate(payload)
         with self.session_factory() as session:
-            task = session.get(PublishTask, data.publish_task_id)
+            task = SocialRepository(session).get_publish_task(data.publish_task_id)
             service = InstagramPublishService(
                 session, self.settings, self.artifact_storage, self.media_probe
             )
@@ -267,7 +268,7 @@ class InstagramPublishFinalizeV1Handler:
     def execute(self, context: ExecutionContext, payload: BaseModel) -> HandlerResult:
         data = InstagramPublishFinalizeV1Input.model_validate(payload)
         with self.session_factory() as session:
-            task = session.get(PublishTask, data.publish_task_id)
+            task = SocialRepository(session).get_publish_task(data.publish_task_id)
             service = InstagramPublishService(
                 session, self.settings, self.artifact_storage, self.media_probe
             )
@@ -381,7 +382,7 @@ def _mark_unknown(session: Session, task: PublishTask, code: str) -> None:
         session.commit()
     except Exception:
         session.rollback()
-        recovered = session.get(PublishTask, task_id)
+        recovered = SocialRepository(session).get_publish_task(task_id)
         if recovered is not None:
             recovered.status = "SUBMIT_UNKNOWN"
             recovered.safe_error_code = code

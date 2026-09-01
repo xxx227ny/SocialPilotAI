@@ -332,7 +332,7 @@ def _mark_failed(session: Session, task: PublishTask, code: str) -> None:
 def _mark_submit_unknown(session: Session, task: PublishTask, code: str) -> None:
     task_id = task.id
     session.rollback()
-    persisted = session.get(PublishTask, task_id)
+    persisted = SocialRepository(session).get_publish_task(task_id)
     if persisted is None:
         return
     persisted.status = "SUBMIT_UNKNOWN"

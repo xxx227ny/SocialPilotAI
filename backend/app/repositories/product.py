@@ -3,6 +3,7 @@ from __future__ import annotations
 from sqlalchemy import MetaData, Table, inspect, select
 from sqlalchemy.orm import Session, selectinload
 
+from app.execution.workspace_context import current_execution_workspace_id
 from app.models import Product, ProductAsset
 from app.schemas.product import ProductAssetCreate, ProductCreate, ProductUpdate
 
@@ -11,9 +12,16 @@ class ProductRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
+    @property
+    def workspace_id(self) -> int | None:
+        value = self.session.info.get("workspace_id")
+        if value is None:
+            value = current_execution_workspace_id()
+        return int(value) if value is not None else None
+
     def create(self, data: ProductCreate) -> Product:
         product = Product(
-            workspace_id=self.session.info.get("workspace_id"),
+            workspace_id=self.workspace_id,
             **data.model_dump(),
         )
         self.session.add(product)
@@ -26,7 +34,7 @@ class ProductRepository:
             .options(selectinload(Product.assets))
             .order_by(Product.created_at.desc())
         )
-        workspace_id = self.session.info.get("workspace_id")
+        workspace_id = self.workspace_id
         if workspace_id is not None:
             statement = statement.where(Product.workspace_id == workspace_id)
         return list(self.session.scalars(statement).all())
@@ -37,7 +45,7 @@ class ProductRepository:
             .options(selectinload(Product.assets))
             .where(Product.id == product_id)
         )
-        workspace_id = self.session.info.get("workspace_id")
+        workspace_id = self.workspace_id
         if workspace_id is not None:
             statement = statement.where(Product.workspace_id == workspace_id)
         return self.session.scalar(statement)

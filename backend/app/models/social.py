@@ -61,6 +61,9 @@ class SocialAccount(Base):
         DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
     )
     disconnected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    workspace_id: Mapped[int | None] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True, index=True
+    )
 
     product: Mapped[Product] = relationship()
     publish_tasks: Mapped[list[PublishTask]] = relationship(
@@ -88,6 +91,9 @@ class OAuthSession(Base):
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, nullable=False
+    )
+    workspace_id: Mapped[int | None] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True, index=True
     )
 
 
@@ -151,6 +157,9 @@ class PublishTask(Base):
     )
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    workspace_id: Mapped[int | None] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True, index=True
+    )
 
     social_account: Mapped[SocialAccount] = relationship(back_populates="publish_tasks")
     artifact: Mapped[VideoRenderArtifact] = relationship()
@@ -183,6 +192,9 @@ class TikTokCreatorInfoSnapshot(Base):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, nullable=False
+    )
+    workspace_id: Mapped[int | None] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True, index=True
     )
 
     product: Mapped[Product] = relationship()

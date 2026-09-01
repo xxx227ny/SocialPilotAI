@@ -9,12 +9,13 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.core.exceptions import AppError
-from app.models import OAuthSession, Product, SocialAccount
+from app.models import OAuthSession, SocialAccount
 from app.providers.pinterest_provider import (
     PINTEREST_SCOPES,
     PinterestProvider,
     PinterestProviderError,
 )
+from app.repositories.product import ProductRepository
 from app.repositories.social import SocialRepository
 from app.schemas.social import (
     PinterestConnectRead,
@@ -38,18 +39,20 @@ class PinterestAccountService:
         self.settings = settings
         self.provider = provider
         self.repository = SocialRepository(session)
+        self.products = ProductRepository(session)
 
     def connect(
         self, product_id: int, *, browser_session_digest: str
     ) -> PinterestConnectRead:
         self._require_enabled()
-        if self.session.get(Product, product_id) is None:
+        if self.products.get(product_id) is None:
             raise AppError("Product not found", 404)
         cipher = TokenCipher(self.settings)
         state = generate_oauth_state()
         expires_at = datetime.now(UTC) + PINTEREST_OAUTH_SESSION_LIFETIME
         self.session.add(
             OAuthSession(
+                workspace_id=self.repository.workspace_id,
                 product_id=product_id,
                 platform="pinterest",
                 state_digest=digest_oauth_state(state),
@@ -122,6 +125,7 @@ class PinterestAccountService:
         }
         if account is None:
             account = SocialAccount(
+                workspace_id=oauth.workspace_id,
                 product_id=oauth.product_id,
                 platform="pinterest",
                 provider_account_id=user.account_id,
@@ -129,6 +133,7 @@ class PinterestAccountService:
             )
             self.session.add(account)
         else:
+            account.workspace_id = oauth.workspace_id
             for name, value in values.items():
                 setattr(account, name, value)
         self.session.commit()

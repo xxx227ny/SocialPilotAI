@@ -21,7 +21,8 @@ from app.execution.handlers.tiktok_publish import (
     TikTokSubmitV1Input,
 )
 from app.models.execution import ExecutionJob
-from app.models.social import PublishTask, SocialAccount, TikTokCreatorInfoSnapshot
+from app.models.social import PublishTask, SocialAccount
+from app.repositories.social import SocialRepository
 from app.schemas.execution import ExecutionJobCreate, ExecutionJobCreateRead
 from app.schemas.social import (
     TikTokCreatorInfoRequest,
@@ -53,12 +54,13 @@ class TikTokPublishJobService:
             storage,
             probe,
         )
+        self.social = SocialRepository(session)
 
     def enqueue_creator_info(
         self, product_id: int, data: TikTokCreatorInfoRequest
     ) -> ExecutionJobCreateRead:
         self._enabled()
-        account = self.session.get(SocialAccount, data.social_account_id)
+        account = self.social.get_account(data.social_account_id)
         if (
             account is None
             or account.product_id != product_id
@@ -109,12 +111,14 @@ class TikTokPublishJobService:
             or checked.preflight_digest != data.preflight_digest
         ):
             raise AppError("TikTok publishing Preflight identity mismatch", 409)
+        task_key = self.social.scoped_idempotency_key(key)
         task = PublishTask(
+            workspace_id=self.social.workspace_id,
             product_id=product_id,
             social_account_id=data.social_account_id,
             artifact_id=data.artifact_id,
             platform="tiktok",
-            idempotency_key=key,
+            idempotency_key=task_key,
             request_digest=data.input_digest,
             preflight_digest=data.preflight_digest,
             title=data.title,
@@ -144,6 +148,7 @@ class TikTokPublishJobService:
                 metadata=data,
             )
             job = ExecutionJob(
+                workspace_id=self.social.workspace_id,
                 job_type=TIKTOK_PUBLISH_SUBMIT_V1,
                 source_type="product",
                 source_id=product_id,
@@ -169,6 +174,8 @@ class TikTokPublishJobService:
                 with Session(
                     bind=self.session.get_bind(), expire_on_commit=False
                 ) as recovery:
+                    if self.social.workspace_id is not None:
+                        recovery.info["workspace_id"] = self.social.workspace_id
                     recovery_service = TikTokPublishJobService(
                         recovery, self.settings, self.storage, self.probe
                     )
@@ -198,7 +205,7 @@ class TikTokPublishJobService:
         self, task_id: int, data: TikTokRefreshRequest
     ) -> ExecutionJobCreateRead:
         self._enabled()
-        task = self.session.get(PublishTask, task_id)
+        task = self.social.get_publish_task(task_id)
         if (
             task is None
             or task.product_id != data.product_id
@@ -298,9 +305,9 @@ class TikTokPublishJobService:
             payload = TikTokSubmitV1Input.model_validate(job.input_payload)
         except Exception:
             raise AppError("TikTok Submit Job identity mismatch", 409) from None
-        task = self.session.get(PublishTask, payload.publish_task_id)
-        snapshot = self.session.get(
-            TikTokCreatorInfoSnapshot, data.creator_info_snapshot_id
+        task = self.social.get_publish_task(payload.publish_task_id)
+        snapshot = self.social.get_tiktok_creator_snapshot(
+            data.creator_info_snapshot_id
         )
         try:
             frozen = TikTokPublishPreflightService(
@@ -354,7 +361,7 @@ class TikTokPublishJobService:
             payload = TikTokRefreshV1Input.model_validate(job.input_payload)
         except Exception:
             raise AppError("TikTok Refresh Job identity mismatch", 409) from None
-        account = self.session.get(SocialAccount, task.social_account_id)
+        account = self.social.get_account(task.social_account_id)
         frozen_task = copy(task)
         frozen_task.status = "PROCESSING"
         expected_frozen_digest = tiktok_refresh_task_digest(frozen_task)
@@ -380,9 +387,11 @@ class TikTokPublishJobService:
             raise AppError("TikTok Refresh Job identity mismatch", 409)
 
     def _existing(self, key: str) -> ExecutionJob | None:
-        return self.session.scalar(
-            select(ExecutionJob).where(ExecutionJob.idempotency_key == key)
-        )
+        statement = select(ExecutionJob).where(ExecutionJob.idempotency_key == key)
+        workspace_id = self.social.workspace_id
+        if workspace_id is not None:
+            statement = statement.where(ExecutionJob.workspace_id == workspace_id)
+        return self.session.scalar(statement)
 
     def _enabled(self) -> None:
         if not self.settings.enable_tiktok_publishing:

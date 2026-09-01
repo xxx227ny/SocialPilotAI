@@ -16,6 +16,7 @@ from app.providers.instagram_provider import (
     InstagramProvider,
     InstagramProviderError,
 )
+from app.repositories.product import ProductRepository
 from app.repositories.social import SocialRepository
 from app.schemas.social import (
     InstagramConnectRead,
@@ -43,6 +44,7 @@ class InstagramAccountService:
         self.settings = settings
         self.provider = provider
         self.repository = SocialRepository(session)
+        self.products = ProductRepository(session)
 
     def connect(
         self, product_id: int, *, browser_session_digest: str
@@ -53,6 +55,7 @@ class InstagramAccountService:
         state = generate_oauth_state()
         expires_at = datetime.now(UTC) + INSTAGRAM_OAUTH_SESSION_LIFETIME
         session = OAuthSession(
+            workspace_id=self.repository.workspace_id,
             product_id=product_id,
             platform="instagram",
             state_digest=digest_oauth_state(state),
@@ -126,6 +129,7 @@ class InstagramAccountService:
         encrypted_access_token = cipher.encrypt(long_token.access_token)
         if account is None:
             account = SocialAccount(
+                workspace_id=oauth_session.workspace_id,
                 product_id=oauth_session.product_id,
                 platform="instagram",
                 provider_account_id=profile.account_id,
@@ -139,6 +143,7 @@ class InstagramAccountService:
             )
             self.session.add(account)
         else:
+            account.workspace_id = oauth_session.workspace_id
             account.display_name = profile.username
             account.scopes = list(short.scopes)
             account.access_token_ciphertext = encrypted_access_token
@@ -181,7 +186,7 @@ class InstagramAccountService:
         return self.provider
 
     def _require_product(self, product_id: int) -> Product:
-        product = self.session.get(Product, product_id)
+        product = self.products.get(product_id)
         if product is None:
             raise AppError("Product not found", 404)
         return product

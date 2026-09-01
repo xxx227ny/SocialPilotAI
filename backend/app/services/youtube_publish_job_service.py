@@ -18,6 +18,7 @@ from app.execution.handlers.youtube_publish import (
     youtube_publish_task_digest,
 )
 from app.models import ExecutionJob, PublishTask
+from app.repositories.social import SocialRepository
 from app.schemas.execution import ExecutionJobCreate, ExecutionJobCreateRead
 from app.schemas.social import PublishTaskIdentityRequest, YouTubePublishRequest
 from app.services.execution_queue_service import ExecutionQueueService
@@ -35,6 +36,7 @@ class YouTubePublishJobService:
         self.session = session
         self.settings = settings
         self.artifact_storage = artifact_storage
+        self.social = SocialRepository(session)
 
     def enqueue_submit(
         self, product_id: int, data: YouTubePublishRequest
@@ -94,7 +96,7 @@ class YouTubePublishJobService:
     def enqueue_refresh(
         self, task_id: int, data: PublishTaskIdentityRequest
     ) -> ExecutionJobCreateRead:
-        task = self.session.get(PublishTask, task_id)
+        task = self.social.get_publish_task(task_id)
         if task is None or task.product_id != data.product_id:
             raise AppError("Publish task not found for Product", 404)
         idempotency_key = _job_key(
@@ -139,15 +141,14 @@ class YouTubePublishJobService:
     def _prepare_publish_task(
         self, product_id: int, data: YouTubePublishRequest
     ) -> PublishTask:
-        key = _task_key(data.input_digest)
-        existing = self.session.scalar(
-            select(PublishTask).where(PublishTask.idempotency_key == key)
-        )
+        key = self.social.scoped_idempotency_key(_task_key(data.input_digest))
+        existing = self.social.get_publish_task_by_key(key)
         if existing is not None:
             if not _publish_task_matches(existing, product_id, data):
                 raise AppError("Publish task identity mismatch", 409)
             return existing
         task = PublishTask(
+            workspace_id=self.social.workspace_id,
             product_id=product_id,
             social_account_id=data.social_account_id,
             artifact_id=data.artifact_id,
@@ -169,9 +170,7 @@ class YouTubePublishJobService:
             self.session.commit()
         except IntegrityError:
             self.session.rollback()
-            concurrent = self.session.scalar(
-                select(PublishTask).where(PublishTask.idempotency_key == key)
-            )
+            concurrent = self.social.get_publish_task_by_key(key)
             if concurrent is None or not _publish_task_matches(
                 concurrent, product_id, data
             ):
@@ -183,9 +182,11 @@ class YouTubePublishJobService:
         return task
 
     def _existing_job(self, key: str) -> ExecutionJob | None:
-        return self.session.scalar(
-            select(ExecutionJob).where(ExecutionJob.idempotency_key == key)
-        )
+        statement = select(ExecutionJob).where(ExecutionJob.idempotency_key == key)
+        workspace_id = self.social.workspace_id
+        if workspace_id is not None:
+            statement = statement.where(ExecutionJob.workspace_id == workspace_id)
+        return self.session.scalar(statement)
 
     def _validate_submit_reuse(
         self,
@@ -197,7 +198,7 @@ class YouTubePublishJobService:
             payload = YouTubePublishSubmitV1Input.model_validate(job.input_payload)
         except ValidationError:
             raise AppError("YouTube publish Job identity mismatch", 409) from None
-        task = self.session.get(PublishTask, payload.publish_task_id)
+        task = self.social.get_publish_task(payload.publish_task_id)
         if (
             job.job_type != YOUTUBE_PUBLISH_SUBMIT_V1
             or job.source_type != "product"

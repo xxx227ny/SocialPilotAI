@@ -22,6 +22,10 @@ from app.execution.credential_context import (
     reset_execution_api_key,
 )
 from app.execution.registry import ExecutionHandlerRegistry
+from app.execution.workspace_context import (
+    bind_execution_workspace_id,
+    reset_execution_workspace_id,
+)
 from app.schemas.execution import (
     ExecutionJobClaimRequest,
     ExecutionJobCompleteRequest,
@@ -156,6 +160,7 @@ class ExecutionWorker:
         result: HandlerResult | None = None
         lease_was_lost = False
         credential_token = None
+        workspace_token = bind_execution_workspace_id(workspace_id)
         try:
             if self._workspace_credential_resolver is not None:
                 credential_token = bind_execution_api_key(None)
@@ -182,6 +187,7 @@ class ExecutionWorker:
         finally:
             if credential_token is not None:
                 reset_execution_api_key(credential_token)
+            reset_execution_workspace_id(workspace_token)
             heartbeat_stop.set()
             heartbeat_thread.join()
             self._set_heartbeat_thread(None)
