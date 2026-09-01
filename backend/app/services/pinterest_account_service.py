@@ -3,7 +3,7 @@ from __future__ import annotations
 import hmac
 import secrets
 from datetime import UTC, datetime, timedelta
-from urllib.parse import urlencode, urlparse
+from urllib.parse import urlencode
 
 from sqlalchemy.orm import Session
 
@@ -26,6 +26,7 @@ from app.services.social_security import (
     TokenCipher,
     digest_oauth_state,
     generate_oauth_state,
+    validated_social_frontend_origin,
 )
 
 PINTEREST_OAUTH_SESSION_LIFETIME = timedelta(minutes=10)
@@ -178,13 +179,7 @@ class PinterestAccountService:
     def _frontend_redirect(self, path: str, status: str) -> str:
         if status not in {"connected", "denied", "failed"}:
             raise AppError("Pinterest OAuth result is invalid", 500)
-        base = self.settings.social_frontend_base_url.rstrip("/")
-        parsed = urlparse(base)
-        if parsed.scheme not in {"http", "https"} or parsed.hostname not in {
-            "127.0.0.1",
-            "localhost",
-        }:
-            raise AppError("Social frontend redirect is not allowed", 503)
+        base = validated_social_frontend_origin(self.settings)
         return f"{base}{path}?{urlencode({'pinterest_oauth': status})}"
 
 

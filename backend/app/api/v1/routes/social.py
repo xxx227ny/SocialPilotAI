@@ -78,6 +78,26 @@ DbSession = Annotated[Session, Depends(get_db)]
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 
 
+def _oauth_cookie_secure(settings: Settings) -> bool:
+    if settings.enable_user_auth:
+        return settings.user_auth_cookie_secure
+    return settings.demo_auth_cookie_secure if settings.enable_demo_auth else False
+
+
+def _set_oauth_browser_cookie(
+    response: Response, browser_session: str, settings: Settings
+) -> None:
+    response.set_cookie(
+        OAUTH_BROWSER_COOKIE,
+        browser_session,
+        max_age=600,
+        httponly=True,
+        secure=_oauth_cookie_secure(settings),
+        samesite="lax",
+        path="/api/v1/social-accounts",
+    )
+
+
 @router.post("/social-accounts/youtube/connect", response_model=YouTubeConnectRead)
 def connect_youtube(
     data: YouTubeConnectRequest,
@@ -90,15 +110,7 @@ def connect_youtube(
     browser_session = request.cookies.get(OAUTH_BROWSER_COOKIE)
     if not browser_session:
         browser_session = secrets.token_urlsafe(32)
-        response.set_cookie(
-            OAUTH_BROWSER_COOKIE,
-            browser_session,
-            max_age=600,
-            httponly=True,
-            secure=False,
-            samesite="lax",
-            path="/api/v1/social-accounts",
-        )
+        _set_oauth_browser_cookie(response, browser_session, settings)
     return SocialAccountService(db, settings, provider).connect(
         data.product_id,
         browser_session_digest=digest_oauth_state(browser_session),
@@ -138,15 +150,7 @@ def connect_instagram(
     browser_session = request.cookies.get(OAUTH_BROWSER_COOKIE)
     if not browser_session:
         browser_session = secrets.token_urlsafe(32)
-        response.set_cookie(
-            OAUTH_BROWSER_COOKIE,
-            browser_session,
-            max_age=600,
-            httponly=True,
-            secure=False,
-            samesite="lax",
-            path="/api/v1/social-accounts",
-        )
+        _set_oauth_browser_cookie(response, browser_session, settings)
     return InstagramAccountService(db, settings, provider).connect(
         data.product_id,
         browser_session_digest=digest_oauth_state(browser_session),
@@ -201,15 +205,7 @@ def connect_tiktok(
     browser_session = request.cookies.get(OAUTH_BROWSER_COOKIE)
     if not browser_session:
         browser_session = secrets.token_urlsafe(32)
-        response.set_cookie(
-            OAUTH_BROWSER_COOKIE,
-            browser_session,
-            max_age=600,
-            httponly=True,
-            secure=False,
-            samesite="lax",
-            path="/api/v1/social-accounts",
-        )
+        _set_oauth_browser_cookie(response, browser_session, settings)
     return TikTokAccountService(db, settings, provider).connect(
         data.product_id,
         browser_session_digest=digest_oauth_state(browser_session),
@@ -264,15 +260,7 @@ def connect_pinterest(
     browser_session = request.cookies.get(OAUTH_BROWSER_COOKIE)
     if not browser_session:
         browser_session = secrets.token_urlsafe(32)
-        response.set_cookie(
-            OAUTH_BROWSER_COOKIE,
-            browser_session,
-            max_age=600,
-            httponly=True,
-            secure=False,
-            samesite="lax",
-            path="/api/v1/social-accounts",
-        )
+        _set_oauth_browser_cookie(response, browser_session, settings)
     return PinterestAccountService(db, settings, provider).connect(
         data.product_id, browser_session_digest=digest_oauth_state(browser_session)
     )
