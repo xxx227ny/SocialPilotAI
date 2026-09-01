@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.core.exceptions import AppError
 from app.models import MarketingBrief, Product
 from app.repositories.marketing import MarketingRepository
+from app.repositories.product import ProductRepository
 from app.schemas.marketing import MarketingTaskCreate, MarketingTaskRead
 
 SUPPORTED_MARKET_ALIASES = {
@@ -34,9 +35,10 @@ class MarketingService:
     def __init__(self, session: Session) -> None:
         self.session = session
         self.repository = MarketingRepository(session)
+        self.products = ProductRepository(session)
 
     def create(self, data: MarketingTaskCreate) -> MarketingTaskRead:
-        product = self.session.get(Product, data.product_id)
+        product = self.products.get(data.product_id)
         if product is None:
             raise AppError("Product not found", status_code=404)
         target_markets = self._validated_target_markets(product)
@@ -47,7 +49,7 @@ class MarketingService:
         return self._to_read(self.repository.create(persisted_data), target_markets)
 
     def list_for_product(self, product_id: int) -> list[MarketingTaskRead]:
-        product = self.session.get(Product, product_id)
+        product = self.products.get(product_id)
         if product is None:
             raise AppError("Product not found", status_code=404)
         return [
@@ -59,13 +61,13 @@ class MarketingService:
         task = self.repository.get(task_id)
         if task is None:
             raise AppError("Marketing task not found", status_code=404)
-        product = self.session.get(Product, task.product_id)
+        product = self.products.get(task.product_id)
         if product is None:
             raise AppError("Product not found", status_code=404)
         return self._to_read(task, product.target_markets)
 
     def get_latest_for_product(self, product_id: int) -> MarketingTaskRead | None:
-        product = self.session.get(Product, product_id)
+        product = self.products.get(product_id)
         if product is None:
             raise AppError("Product not found", status_code=404)
         task = self.repository.get_latest_for_product(product_id)
@@ -95,9 +97,7 @@ class MarketingService:
         return normalized
 
     @staticmethod
-    def _to_read(
-        task: MarketingBrief, target_markets: list[str]
-    ) -> MarketingTaskRead:
+    def _to_read(task: MarketingBrief, target_markets: list[str]) -> MarketingTaskRead:
         match = TARGET_MARKET_AUDIENCE_PATTERN.match(task.audience)
         saved_target_markets = (
             match.group(1).split(",") if match is not None else target_markets

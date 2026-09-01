@@ -13,6 +13,7 @@ from app.models import BrandKit, BrandKitVersion
 from app.models.product import utc_now
 from app.repositories.brand_kit import BrandKitRepository
 from app.repositories.product import ProductRepository
+from app.repositories.workspace_scope import current_workspace_id
 from app.schemas.brand_kit import (
     BrandKitCreate,
     BrandKitVersionCreateRead,
@@ -97,7 +98,10 @@ class BrandKitService:
         if not name:
             raise AppError("BrandKit name cannot be empty", 422)
         content = _normalized_content(data.version)
-        kit = BrandKit(name=name)
+        kit = BrandKit(
+            name=name,
+            workspace_id=current_workspace_id(self.session),
+        )
         try:
             self.repository.add_kit(kit)
             self.repository.add_version(

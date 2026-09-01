@@ -2,6 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import VideoProject
+from app.repositories.workspace_scope import scope_to_owned_products
 from app.schemas.video import VideoPlanSchema
 
 
@@ -35,7 +36,10 @@ class VideoProjectRepository:
         return project
 
     def get(self, video_project_id: int) -> VideoProject | None:
-        return self.session.get(VideoProject, video_project_id)
+        statement = select(VideoProject).where(VideoProject.id == video_project_id)
+        return self.session.scalar(
+            scope_to_owned_products(statement, VideoProject, self.session)
+        )
 
     def get_by_initial_identity(
         self,
@@ -55,7 +59,9 @@ class VideoProjectRepository:
             VideoProject.duration_seconds == duration_seconds,
             VideoProject.aspect_ratio == aspect_ratio,
         )
-        return self.session.scalar(statement.limit(1))
+        return self.session.scalar(
+            scope_to_owned_products(statement.limit(1), VideoProject, self.session)
+        )
 
     def create_for_exact_chain(
         self,
@@ -92,4 +98,6 @@ class VideoProjectRepository:
             .order_by(VideoProject.created_at.desc(), VideoProject.id.desc())
             .limit(1)
         )
-        return self.session.scalar(statement)
+        return self.session.scalar(
+            scope_to_owned_products(statement, VideoProject, self.session)
+        )

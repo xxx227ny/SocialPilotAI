@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import VideoRenderArtifact, VideoRenderTask
+from app.repositories.workspace_scope import scope_to_owned_video_render_tasks
 from app.schemas.video_render_artifact import VideoRenderArtifactCreate
 
 
@@ -27,14 +28,24 @@ class VideoRenderArtifactRepository:
         return artifact
 
     def get_by_task_id(self, task_id: int) -> VideoRenderArtifact | None:
+        statement = select(VideoRenderArtifact).where(
+            VideoRenderArtifact.video_render_task_id == task_id
+        )
         return self.session.scalar(
-            select(VideoRenderArtifact).where(
-                VideoRenderArtifact.video_render_task_id == task_id
+            scope_to_owned_video_render_tasks(
+                statement, VideoRenderArtifact, self.session
             )
         )
 
     def get(self, artifact_id: int) -> VideoRenderArtifact | None:
-        return self.session.get(VideoRenderArtifact, artifact_id)
+        statement = select(VideoRenderArtifact).where(
+            VideoRenderArtifact.id == artifact_id
+        )
+        return self.session.scalar(
+            scope_to_owned_video_render_tasks(
+                statement, VideoRenderArtifact, self.session
+            )
+        )
 
     def finalize_succeeded(
         self,
@@ -82,7 +93,13 @@ class VideoRenderArtifactRepository:
             VideoRenderArtifact.created_at.desc(),
             VideoRenderArtifact.id.desc(),
         )
-        return list(self.session.scalars(statement).all())
+        return list(
+            self.session.scalars(
+                scope_to_owned_video_render_tasks(
+                    statement, VideoRenderArtifact, self.session
+                )
+            ).all()
+        )
 
     def list_succeeded_by_video_project_id(
         self, video_project_id: int
@@ -91,8 +108,7 @@ class VideoRenderArtifactRepository:
             select(VideoRenderArtifact)
             .join(
                 VideoRenderTask,
-                VideoRenderTask.id
-                == VideoRenderArtifact.video_render_task_id,
+                VideoRenderTask.id == VideoRenderArtifact.video_render_task_id,
             )
             .where(
                 VideoRenderTask.video_project_id == video_project_id,
@@ -103,4 +119,10 @@ class VideoRenderArtifactRepository:
                 VideoRenderArtifact.id,
             )
         )
-        return list(self.session.scalars(statement).all())
+        return list(
+            self.session.scalars(
+                scope_to_owned_video_render_tasks(
+                    statement, VideoRenderArtifact, self.session
+                )
+            ).all()
+        )

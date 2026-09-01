@@ -34,6 +34,9 @@ class BrandKit(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
     )
+    workspace_id: Mapped[int | None] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True, index=True
+    )
 
     versions: Mapped[list[BrandKitVersion]] = relationship(
         back_populates="brand_kit", order_by="BrandKitVersion.version_number"

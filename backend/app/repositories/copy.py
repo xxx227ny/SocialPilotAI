@@ -2,6 +2,7 @@ from sqlalchemy import insert, select
 from sqlalchemy.orm import Session
 
 from app.models import CopyMatrix, MarketingStrategy, Product
+from app.repositories.workspace_scope import scope_to_owned_products
 from app.schemas.copy import CopyMatrixSchema, TaskBoundCopyMatrixSchema
 
 
@@ -26,7 +27,10 @@ class CopyMatrixRepository:
         return copy_matrix
 
     def get(self, copy_matrix_id: int) -> CopyMatrix | None:
-        return self.session.get(CopyMatrix, copy_matrix_id)
+        statement = select(CopyMatrix).where(CopyMatrix.id == copy_matrix_id)
+        return self.session.scalar(
+            scope_to_owned_products(statement, CopyMatrix, self.session)
+        )
 
     def get_latest_by_product(self, product_id: int) -> CopyMatrix | None:
         statement = (
@@ -35,7 +39,9 @@ class CopyMatrixRepository:
             .order_by(CopyMatrix.created_at.desc(), CopyMatrix.id.desc())
             .limit(1)
         )
-        return self.session.scalar(statement)
+        return self.session.scalar(
+            scope_to_owned_products(statement, CopyMatrix, self.session)
+        )
 
     def get_latest_valid_source_chain(
         self, product_id: int
@@ -57,7 +63,9 @@ class CopyMatrixRepository:
             .order_by(CopyMatrix.created_at.desc(), CopyMatrix.id.desc())
             .limit(1)
         )
-        row = self.session.execute(statement).one_or_none()
+        row = self.session.execute(
+            scope_to_owned_products(statement, CopyMatrix, self.session)
+        ).one_or_none()
         if row is None:
             return None
         return row[0], row[1], row[2]
@@ -92,15 +100,13 @@ class CopyMatrixRepository:
             raise RuntimeError("Created CopyMatrix could not be reloaded")
         return copy_matrix
 
-    def get_latest_by_strategy(
-        self, marketing_strategy_id: int
-    ) -> CopyMatrix | None:
+    def get_latest_by_strategy(self, marketing_strategy_id: int) -> CopyMatrix | None:
         statement = (
             select(CopyMatrix)
-            .where(
-                CopyMatrix.marketing_strategy_id == marketing_strategy_id
-            )
+            .where(CopyMatrix.marketing_strategy_id == marketing_strategy_id)
             .order_by(CopyMatrix.created_at.desc(), CopyMatrix.id.desc())
             .limit(1)
         )
-        return self.session.scalar(statement)
+        return self.session.scalar(
+            scope_to_owned_products(statement, CopyMatrix, self.session)
+        )

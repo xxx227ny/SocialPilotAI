@@ -955,7 +955,7 @@ def test_stage3f_head_contains_product_media_bridge_columns(tmp_path: Path) -> N
         ).fetchone()[0]
     finally:
         connection.close()
-    assert HEAD_REVISION == "0027_social_workspace_isolation"
+    assert HEAD_REVISION == "0028_brand_kit_workspaces"
     assert {
         "content_type",
         "size_bytes",

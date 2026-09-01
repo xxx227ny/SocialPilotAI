@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import AdCampaign
+from app.repositories.workspace_scope import scope_to_owned_products
 from app.schemas.campaign import CampaignRowSchema
 
 
@@ -27,7 +28,11 @@ class CampaignRepository:
             .where(AdCampaign.product_id == product_id)
             .order_by(AdCampaign.date, AdCampaign.id)
         )
-        return list(self.session.scalars(statement).all())
+        return list(
+            self.session.scalars(
+                scope_to_owned_products(statement, AdCampaign, self.session)
+            ).all()
+        )
 
     def list_by_ids(self, campaign_ids: list[int]) -> list[AdCampaign]:
         if not campaign_ids:
@@ -37,4 +42,8 @@ class CampaignRepository:
             .where(AdCampaign.id.in_(campaign_ids))
             .order_by(AdCampaign.date, AdCampaign.id)
         )
-        return list(self.session.scalars(statement).all())
+        return list(
+            self.session.scalars(
+                scope_to_owned_products(statement, AdCampaign, self.session)
+            ).all()
+        )

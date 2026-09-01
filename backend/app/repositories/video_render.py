@@ -2,6 +2,10 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.models import VideoRenderTask
+from app.repositories.workspace_scope import (
+    owned_video_project_ids,
+    scope_to_owned_video_projects,
+)
 
 
 class VideoRenderTaskRepository:
@@ -9,18 +13,25 @@ class VideoRenderTaskRepository:
         self.session = session
 
     def get(self, task_id: int) -> VideoRenderTask | None:
-        return self.session.get(VideoRenderTask, task_id)
+        statement = select(VideoRenderTask).where(VideoRenderTask.id == task_id)
+        return self.session.scalar(
+            scope_to_owned_video_projects(statement, VideoRenderTask, self.session)
+        )
 
     def get_by_idempotency_key(self, key: str) -> VideoRenderTask | None:
+        statement = select(VideoRenderTask).where(
+            VideoRenderTask.idempotency_key == key
+        )
         return self.session.scalar(
-            select(VideoRenderTask).where(VideoRenderTask.idempotency_key == key)
+            scope_to_owned_video_projects(statement, VideoRenderTask, self.session)
         )
 
     def get_by_provider_task_id(self, provider_task_id: str) -> VideoRenderTask | None:
+        statement = select(VideoRenderTask).where(
+            VideoRenderTask.provider_task_id == provider_task_id
+        )
         return self.session.scalar(
-            select(VideoRenderTask).where(
-                VideoRenderTask.provider_task_id == provider_task_id
-            )
+            scope_to_owned_video_projects(statement, VideoRenderTask, self.session)
         )
 
     def get_latest_by_video_project(
@@ -35,7 +46,9 @@ class VideoRenderTaskRepository:
             )
             .limit(1)
         )
-        return self.session.scalar(statement)
+        return self.session.scalar(
+            scope_to_owned_video_projects(statement, VideoRenderTask, self.session)
+        )
 
     def create(
         self,
@@ -72,13 +85,17 @@ class VideoRenderTaskRepository:
         return task
 
     def claim_for_submission(self, task_id: int) -> VideoRenderTask | None:
+        owned_projects = owned_video_project_ids(self.session)
+        conditions = [
+            VideoRenderTask.id == task_id,
+            VideoRenderTask.status == "CREATED",
+            VideoRenderTask.provider_task_id.is_(None),
+        ]
+        if owned_projects is not None:
+            conditions.append(VideoRenderTask.video_project_id.in_(owned_projects))
         result = self.session.execute(
             update(VideoRenderTask)
-            .where(
-                VideoRenderTask.id == task_id,
-                VideoRenderTask.status == "CREATED",
-                VideoRenderTask.provider_task_id.is_(None),
-            )
+            .where(*conditions)
             .values(
                 status="SUBMITTING",
                 error_code=None,
@@ -97,13 +114,17 @@ class VideoRenderTaskRepository:
         task_id: int,
         expected_status: str,
     ) -> VideoRenderTask | None:
+        owned_projects = owned_video_project_ids(self.session)
+        conditions = [
+            VideoRenderTask.id == task_id,
+            VideoRenderTask.status == expected_status,
+            VideoRenderTask.provider_task_id.is_not(None),
+        ]
+        if owned_projects is not None:
+            conditions.append(VideoRenderTask.video_project_id.in_(owned_projects))
         result = self.session.execute(
             update(VideoRenderTask)
-            .where(
-                VideoRenderTask.id == task_id,
-                VideoRenderTask.status == expected_status,
-                VideoRenderTask.provider_task_id.is_not(None),
-            )
+            .where(*conditions)
             .values(
                 status="REFRESHING",
                 error_code=None,

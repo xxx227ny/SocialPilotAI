@@ -2,6 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import MarketingBrief
+from app.repositories.workspace_scope import scope_to_owned_products
 from app.schemas.marketing import MarketingTaskCreate
 
 
@@ -17,7 +18,10 @@ class MarketingRepository:
         return task
 
     def get(self, task_id: int) -> MarketingBrief | None:
-        return self.session.get(MarketingBrief, task_id)
+        statement = select(MarketingBrief).where(MarketingBrief.id == task_id)
+        return self.session.scalar(
+            scope_to_owned_products(statement, MarketingBrief, self.session)
+        )
 
     def list_for_product(self, product_id: int) -> list[MarketingBrief]:
         statement = (
@@ -25,7 +29,11 @@ class MarketingRepository:
             .where(MarketingBrief.product_id == product_id)
             .order_by(MarketingBrief.id.asc())
         )
-        return list(self.session.scalars(statement))
+        return list(
+            self.session.scalars(
+                scope_to_owned_products(statement, MarketingBrief, self.session)
+            )
+        )
 
     def get_latest_for_product(self, product_id: int) -> MarketingBrief | None:
         statement = (
@@ -34,4 +42,6 @@ class MarketingRepository:
             .order_by(MarketingBrief.created_at.desc(), MarketingBrief.id.desc())
             .limit(1)
         )
-        return self.session.scalar(statement)
+        return self.session.scalar(
+            scope_to_owned_products(statement, MarketingBrief, self.session)
+        )

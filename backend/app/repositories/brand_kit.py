@@ -10,6 +10,7 @@ from app.models import (
     Product,
     VideoScriptVersion,
 )
+from app.repositories.workspace_scope import current_workspace_id
 
 
 class BrandKitRepository:
@@ -25,52 +26,76 @@ class BrandKitRepository:
         self.session.flush()
 
     def get(self, brand_kit_id: int) -> BrandKit | None:
-        return self.session.scalar(
+        statement = (
             select(BrandKit)
             .options(selectinload(BrandKit.versions))
             .where(BrandKit.id == brand_kit_id)
         )
+        workspace_id = current_workspace_id(self.session)
+        if workspace_id is not None:
+            statement = statement.where(BrandKit.workspace_id == workspace_id)
+        return self.session.scalar(statement)
 
     def list(self) -> list[BrandKit]:
-        return list(
-            self.session.scalars(
-                select(BrandKit)
-                .options(selectinload(BrandKit.versions))
-                .order_by(BrandKit.id)
-            ).all()
+        statement = (
+            select(BrandKit)
+            .options(selectinload(BrandKit.versions))
+            .order_by(BrandKit.id)
         )
+        workspace_id = current_workspace_id(self.session)
+        if workspace_id is not None:
+            statement = statement.where(BrandKit.workspace_id == workspace_id)
+        return list(self.session.scalars(statement).all())
 
     def get_version(self, version_id: int) -> BrandKitVersion | None:
-        return self.session.get(BrandKitVersion, version_id)
+        statement = select(BrandKitVersion).where(BrandKitVersion.id == version_id)
+        workspace_id = current_workspace_id(self.session)
+        if workspace_id is not None:
+            statement = statement.join(BrandKit).where(
+                BrandKit.workspace_id == workspace_id
+            )
+        return self.session.scalar(statement)
 
     def get_version_by_digest(
         self, brand_kit_id: int, digest: str
     ) -> BrandKitVersion | None:
-        return self.session.scalar(
-            select(BrandKitVersion).where(
-                BrandKitVersion.brand_kit_id == brand_kit_id,
-                BrandKitVersion.digest == digest,
-            )
+        statement = select(BrandKitVersion).where(
+            BrandKitVersion.brand_kit_id == brand_kit_id,
+            BrandKitVersion.digest == digest,
         )
+        workspace_id = current_workspace_id(self.session)
+        if workspace_id is not None:
+            statement = statement.join(BrandKit).where(
+                BrandKit.workspace_id == workspace_id
+            )
+        return self.session.scalar(statement)
 
     def get_version_by_number(
         self, brand_kit_id: int, version_number: int
     ) -> BrandKitVersion | None:
-        return self.session.scalar(
-            select(BrandKitVersion).where(
-                BrandKitVersion.brand_kit_id == brand_kit_id,
-                BrandKitVersion.version_number == version_number,
-            )
+        statement = select(BrandKitVersion).where(
+            BrandKitVersion.brand_kit_id == brand_kit_id,
+            BrandKitVersion.version_number == version_number,
         )
+        workspace_id = current_workspace_id(self.session)
+        if workspace_id is not None:
+            statement = statement.join(BrandKit).where(
+                BrandKit.workspace_id == workspace_id
+            )
+        return self.session.scalar(statement)
 
     def list_versions(self, brand_kit_id: int) -> list[BrandKitVersion]:
-        return list(
-            self.session.scalars(
-                select(BrandKitVersion)
-                .where(BrandKitVersion.brand_kit_id == brand_kit_id)
-                .order_by(BrandKitVersion.version_number)
-            ).all()
+        statement = (
+            select(BrandKitVersion)
+            .where(BrandKitVersion.brand_kit_id == brand_kit_id)
+            .order_by(BrandKitVersion.version_number)
         )
+        workspace_id = current_workspace_id(self.session)
+        if workspace_id is not None:
+            statement = statement.join(BrandKit).where(
+                BrandKit.workspace_id == workspace_id
+            )
+        return list(self.session.scalars(statement).all())
 
     def next_version_number(self, brand_kit_id: int) -> int:
         latest = self.session.scalar(
