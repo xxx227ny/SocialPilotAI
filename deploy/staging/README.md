@@ -2,7 +2,7 @@
 
 This deployment is deliberately isolated from the competition Demo.
 
-- Public test origin: `https://47.242.222.177:8443`
+- Public test origin: `https://staging.47.242.222.177.nip.io`
 - API listener: `127.0.0.1:8081`
 - Release root: `/opt/socialpilot-staging/releases`
 - Current symlink: `/opt/socialpilot-staging/current`
@@ -25,3 +25,8 @@ restarting only the two staging services, and verifying `/api/v1/health`.
 
 Never restart or repoint `socialpilot-api`, `socialpilot-worker`, or
 `/opt/socialpilot/current` as part of a staging deployment.
+
+After deployment, run `smoke_test.py` against the public staging origin. The
+test creates two non-billable validation accounts, uses synthetic provider keys,
+and verifies secure cookies plus cross-workspace product and credential
+isolation without contacting an AI provider.

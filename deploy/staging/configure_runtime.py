@@ -13,7 +13,7 @@ CONFIG_PATH = Path(
         "/etc/socialpilot-staging/runtime.json",
     )
 )
-PUBLIC_ORIGIN = "https://47.242.222.177:8443"
+PUBLIC_ORIGIN = "https://staging.47.242.222.177.nip.io"
 
 
 def load_encryption_key() -> str:
@@ -35,7 +35,7 @@ def main() -> None:
         "API_V1_PREFIX": "/api/v1",
         "DEBUG": "false",
         "DATABASE_URL": "sqlite:////var/lib/socialpilot-staging/socialpilot.db",
-        "CORS_ORIGINS": PUBLIC_ORIGIN,
+        "CORS_ORIGINS": json.dumps([PUBLIC_ORIGIN]),
         "ENABLE_USER_AUTH": "true",
         "ALLOW_PUBLIC_REGISTRATION": "true",
         "USER_AUTH_SESSION_TTL_SECONDS": "604800",

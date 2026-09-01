@@ -14,7 +14,7 @@ Environment=PYTHONPATH=/opt/socialpilot-staging/current/backend
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=OMP_NUM_THREADS=1
 Environment=SOCIALPILOT_SERVER_CONFIG=/etc/socialpilot-staging/runtime.json
-ExecStart=/opt/socialpilot-staging/venv/bin/python server_worker.py --database /var/lib/socialpilot-staging/socialpilot.db --status-file /var/lib/socialpilot-staging/worker-status.json --stop-file /var/lib/socialpilot-staging/worker.stop --instance-id product-staging --poll-seconds 2
+ExecStart=/opt/socialpilot-staging/venv/bin/python server_worker.py --database /var/lib/socialpilot-staging/socialpilot.db --status-file /var/lib/socialpilot-staging/worker-status.json --stop-file /var/lib/socialpilot-staging/worker.stop --instance-id socialpilot-product-staging --poll-seconds 2
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=90
