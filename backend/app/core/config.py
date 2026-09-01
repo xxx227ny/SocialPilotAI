@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     allow_public_registration: bool = False
     user_auth_session_ttl_seconds: int = Field(default=604_800, ge=900, le=2_592_000)
     user_auth_cookie_secure: bool = False
+    user_credential_encryption_key: SecretStr | None = None
+    user_credential_encryption_key_id: str = "v1"
     enable_demo_auth: bool = False
     demo_auth_username: str | None = Field(default=None, min_length=3, max_length=120)
     demo_auth_password_hash: SecretStr | None = None
@@ -194,6 +196,14 @@ class Settings(BaseSettings):
             and not self.user_auth_cookie_secure
         ):
             raise ValueError("Production user authentication requires secure cookies")
+        if (
+            self.enable_user_auth
+            and self.app_environment.casefold() == "production"
+            and self.user_credential_encryption_key is None
+        ):
+            raise ValueError(
+                "Production user authentication requires credential encryption"
+            )
         return self
 
 

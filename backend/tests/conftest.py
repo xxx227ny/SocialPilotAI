@@ -25,6 +25,7 @@ from app.models import (  # noqa: F401
     PresentationSnapshot,
     Product,
     ProductAsset,
+    ProviderCredential,
     PublishTask,
     SocialAccount,
     User,

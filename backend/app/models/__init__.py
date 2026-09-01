@@ -1,6 +1,12 @@
 """SQLAlchemy business models."""
 
-from app.models.account import AuthSession, Membership, User, Workspace
+from app.models.account import (
+    AuthSession,
+    Membership,
+    ProviderCredential,
+    User,
+    Workspace,
+)
 from app.models.batch_video import BatchVideoJob, BatchVideoVariant
 from app.models.brand_kit import BrandKit, BrandKitVersion
 from app.models.campaign import AdCampaign
@@ -57,6 +63,7 @@ __all__ = [
     "MarketingBrief",
     "MarketingStrategy",
     "Membership",
+    "ProviderCredential",
     "Product",
     "ProductAsset",
     "ProductVideoProductionBatch",

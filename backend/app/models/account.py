@@ -117,3 +117,29 @@ class AuthSession(Base):
 
     user: Mapped[User] = relationship(back_populates="sessions")
     workspace: Mapped[Workspace] = relationship(back_populates="sessions")
+
+
+class ProviderCredential(Base):
+    __tablename__ = "provider_credentials"
+    __table_args__ = (
+        UniqueConstraint(
+            "workspace_id", "provider", name="uq_provider_credential_workspace"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    workspace_id: Mapped[int] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    provider: Mapped[str] = mapped_column(String(40), nullable=False)
+    secret_ciphertext: Mapped[str] = mapped_column(Text, nullable=False)
+    encryption_key_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    secret_hint: Mapped[str] = mapped_column(String(20), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="ACTIVE")
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
+    )

@@ -40,7 +40,8 @@ GROWTH_REPLAN_REVISION = "0019_growth_replan_resolutions"
 VIDEO_PROJECT_COPY_OPTIONAL_REVISION = "0020_video_project_copy_optional"
 PRODUCT_VIDEO_PRODUCTION_REVISION = "0021_product_video_production_batches"
 VIDEO_PROJECT_INPUT_IDENTITY_REVISION = "0022_video_project_input_identity"
-HEAD_REVISION = "0023_user_accounts"
+USER_ACCOUNTS_REVISION = "0023_user_accounts"
+HEAD_REVISION = "0024_provider_credentials"
 UNVERSIONED = "unversioned"
 MANIFEST_VERSION = 1
 ALEMBIC_INI = Path(__file__).resolve().parents[2] / "alembic.ini"
@@ -283,6 +284,7 @@ def expected_schema_fingerprint(revision: str) -> str:
         VIDEO_PROJECT_COPY_OPTIONAL_REVISION,
         PRODUCT_VIDEO_PRODUCTION_REVISION,
         VIDEO_PROJECT_INPUT_IDENTITY_REVISION,
+        USER_ACCOUNTS_REVISION,
         HEAD_REVISION,
     }:
         raise ValueError(f"Unknown expected revision: {revision}")
@@ -669,6 +671,7 @@ def get_database_migration_status(database_path: Path) -> DatabaseMigrationStatu
             VIDEO_PROJECT_COPY_OPTIONAL_REVISION,
             PRODUCT_VIDEO_PRODUCTION_REVISION,
             VIDEO_PROJECT_INPUT_IDENTITY_REVISION,
+            USER_ACCOUNTS_REVISION,
             HEAD_REVISION,
         }:
             raise IncompatibleSchemaError("Unsupported Alembic revision")
@@ -707,6 +710,7 @@ def get_database_migration_status(database_path: Path) -> DatabaseMigrationStatu
             VIDEO_PROJECT_INPUT_IDENTITY_REVISION: (
                 "video_project_input_identity_runtime"
             ),
+            USER_ACCOUNTS_REVISION: "user_accounts_runtime",
         }
         return DatabaseMigrationStatus(
             state=state_by_revision[revision],
@@ -792,6 +796,7 @@ def _upgrade_sqlite_database_unlocked(
                     VIDEO_PROJECT_COPY_OPTIONAL_REVISION,
                     PRODUCT_VIDEO_PRODUCTION_REVISION,
                     VIDEO_PROJECT_INPUT_IDENTITY_REVISION,
+                    USER_ACCOUNTS_REVISION,
                     HEAD_REVISION,
                 }:
                     raise IncompatibleSchemaError(

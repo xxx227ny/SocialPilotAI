@@ -38,3 +38,22 @@ def require_authenticated_user(
             detail="请先登录后再使用工作台。",
         )
     return user
+
+
+def require_product_principal(
+    principal: Annotated[
+        AuthenticatedPrincipal | AuthenticatedUser | None,
+        Depends(require_authenticated_user),
+    ],
+) -> AuthenticatedPrincipal:
+    if not isinstance(principal, AuthenticatedPrincipal):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="当前环境尚未启用独立用户账号。",
+        )
+    return principal
+
+
+ProductPrincipalDep = Annotated[
+    AuthenticatedPrincipal, Depends(require_product_principal)
+]
