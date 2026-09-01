@@ -12,6 +12,7 @@ from app.db.session import get_db
 from app.main import app
 from app.models import (  # noqa: F401
     AdCampaign,
+    AuthSession,
     BrandKit,
     BrandKitVersion,
     CopyMatrix,
@@ -19,18 +20,21 @@ from app.models import (  # noqa: F401
     ExecutionJob,
     MarketingBrief,
     MarketingStrategy,
+    Membership,
     OAuthSession,
     PresentationSnapshot,
     Product,
     ProductAsset,
     PublishTask,
     SocialAccount,
+    User,
     VideoComposition,
     VideoCompositionArtifact,
     VideoCompositionShot,
     VideoProject,
     VideoRenderArtifact,
     VideoRenderTask,
+    Workspace,
 )
 
 

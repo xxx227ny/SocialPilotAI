@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import shutil
 import sqlite3
@@ -38,7 +39,8 @@ GROWTH_MONITORING_REVISION = "0018_growth_automation_cycles"
 GROWTH_REPLAN_REVISION = "0019_growth_replan_resolutions"
 VIDEO_PROJECT_COPY_OPTIONAL_REVISION = "0020_video_project_copy_optional"
 PRODUCT_VIDEO_PRODUCTION_REVISION = "0021_product_video_production_batches"
-HEAD_REVISION = "0022_video_project_input_identity"
+VIDEO_PROJECT_INPUT_IDENTITY_REVISION = "0022_video_project_input_identity"
+HEAD_REVISION = "0023_user_accounts"
 UNVERSIONED = "unversioned"
 MANIFEST_VERSION = 1
 ALEMBIC_INI = Path(__file__).resolve().parents[2] / "alembic.ini"
@@ -121,19 +123,32 @@ def _alembic_config(connection: Connection) -> Config:
     return config
 
 
-def _run_alembic(path: Path, action: str, revision: str) -> None:
+def _run_alembic(
+    path: Path,
+    action: str,
+    revision: str,
+    *,
+    quiet: bool = False,
+) -> None:
     engine = create_engine(_database_url(path))
     try:
         with engine.begin() as connection:
             config = _alembic_config(connection)
-            if action == "upgrade":
-                command.upgrade(config, revision)
-            elif action == "downgrade":
-                command.downgrade(config, revision)
-            elif action == "stamp":
-                command.stamp(config, revision)
-            else:
-                raise ValueError(f"Unsupported Alembic action: {action}")
+            previous_log_threshold = logging.root.manager.disable
+            if quiet:
+                logging.disable(logging.CRITICAL)
+            try:
+                if action == "upgrade":
+                    command.upgrade(config, revision)
+                elif action == "downgrade":
+                    command.downgrade(config, revision)
+                elif action == "stamp":
+                    command.stamp(config, revision)
+                else:
+                    raise ValueError(f"Unsupported Alembic action: {action}")
+            finally:
+                if quiet:
+                    logging.disable(previous_log_threshold)
     finally:
         engine.dispose()
 
@@ -267,12 +282,13 @@ def expected_schema_fingerprint(revision: str) -> str:
         GROWTH_REPLAN_REVISION,
         VIDEO_PROJECT_COPY_OPTIONAL_REVISION,
         PRODUCT_VIDEO_PRODUCTION_REVISION,
+        VIDEO_PROJECT_INPUT_IDENTITY_REVISION,
         HEAD_REVISION,
     }:
         raise ValueError(f"Unknown expected revision: {revision}")
     with tempfile.TemporaryDirectory(prefix="socialpilot-schema-fingerprint-") as raw:
         reference = Path(raw) / "reference.db"
-        _run_alembic(reference, "upgrade", revision)
+        _run_alembic(reference, "upgrade", revision, quiet=True)
         return schema_fingerprint(reference)
 
 
@@ -652,6 +668,7 @@ def get_database_migration_status(database_path: Path) -> DatabaseMigrationStatu
             GROWTH_REPLAN_REVISION,
             VIDEO_PROJECT_COPY_OPTIONAL_REVISION,
             PRODUCT_VIDEO_PRODUCTION_REVISION,
+            VIDEO_PROJECT_INPUT_IDENTITY_REVISION,
             HEAD_REVISION,
         }:
             raise IncompatibleSchemaError("Unsupported Alembic revision")
@@ -687,6 +704,9 @@ def get_database_migration_status(database_path: Path) -> DatabaseMigrationStatu
             GROWTH_REPLAN_REVISION: "growth_replan_runtime",
             VIDEO_PROJECT_COPY_OPTIONAL_REVISION: "video_project_copy_optional_runtime",
             PRODUCT_VIDEO_PRODUCTION_REVISION: "product_video_production_runtime",
+            VIDEO_PROJECT_INPUT_IDENTITY_REVISION: (
+                "video_project_input_identity_runtime"
+            ),
         }
         return DatabaseMigrationStatus(
             state=state_by_revision[revision],
@@ -771,6 +791,7 @@ def _upgrade_sqlite_database_unlocked(
                     GROWTH_REPLAN_REVISION,
                     VIDEO_PROJECT_COPY_OPTIONAL_REVISION,
                     PRODUCT_VIDEO_PRODUCTION_REVISION,
+                    VIDEO_PROJECT_INPUT_IDENTITY_REVISION,
                     HEAD_REVISION,
                 }:
                     raise IncompatibleSchemaError(

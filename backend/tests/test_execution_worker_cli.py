@@ -166,7 +166,6 @@ def test_worker_cli_idles_updates_status_and_stops_without_database_write(
     assert not stop.exists()
     assert file_hash(database) == before_hash
     output = f"{stdout}\n{stderr}"
-    assert "0007_tiktok_refresh_token_expiry" in output
     assert_worker_output_is_credential_safe(
         output,
         sensitive_values=sensitive_values,

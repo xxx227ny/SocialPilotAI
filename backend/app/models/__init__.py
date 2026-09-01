@@ -1,5 +1,6 @@
 """SQLAlchemy business models."""
 
+from app.models.account import AuthSession, Membership, User, Workspace
 from app.models.batch_video import BatchVideoJob, BatchVideoVariant
 from app.models.brand_kit import BrandKit, BrandKitVersion
 from app.models.campaign import AdCampaign
@@ -40,6 +41,7 @@ from app.models.video_script_version import (
 
 __all__ = [
     "AdCampaign",
+    "AuthSession",
     "BrandKit",
     "BrandKitVersion",
     "BatchVideoJob",
@@ -54,6 +56,7 @@ __all__ = [
     "GrowthOptimizationExecution",
     "MarketingBrief",
     "MarketingStrategy",
+    "Membership",
     "Product",
     "ProductAsset",
     "ProductVideoProductionBatch",
@@ -63,6 +66,8 @@ __all__ = [
     "OAuthSession",
     "PublishTask",
     "VideoProject",
+    "User",
+    "Workspace",
     "VideoRenderTask",
     "VideoRenderArtifact",
     "VideoScriptVersion",

@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     api_v1_prefix: str = "/api/v1"
     debug: bool = False
     database_url: str = "sqlite:///./socialpilot.db"
+    enable_user_auth: bool = False
+    allow_public_registration: bool = False
+    user_auth_session_ttl_seconds: int = Field(default=604_800, ge=900, le=2_592_000)
+    user_auth_cookie_secure: bool = False
     enable_demo_auth: bool = False
     demo_auth_username: str | None = Field(default=None, min_length=3, max_length=120)
     demo_auth_password_hash: SecretStr | None = None
@@ -184,6 +188,12 @@ class Settings(BaseSettings):
                 raise ValueError("Demo authentication session secret is required")
             if len(self.demo_auth_session_secret.get_secret_value()) < 32:
                 raise ValueError("Demo authentication session secret is too short")
+        if (
+            self.enable_user_auth
+            and self.app_environment.casefold() == "production"
+            and not self.user_auth_cookie_secure
+        ):
+            raise ValueError("Production user authentication requires secure cookies")
         return self
 
 
