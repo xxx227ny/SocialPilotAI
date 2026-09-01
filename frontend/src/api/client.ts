@@ -10,8 +10,16 @@ import type {
 
 export const AI_EXECUTION_TIMEOUT_MS = 180_000;
 
+// Production deployments serve the UI and API from the same origin. Force the
+// production value so a developer-only .env.local can never leak localhost
+// into a public bundle. The local launcher still supplies its explicit URL.
+const apiBaseUrl = import.meta.env.PROD
+  ? "/api/v1"
+  : import.meta.env.VITE_API_BASE_URL?.trim() ||
+    "http://127.0.0.1:8000/api/v1";
+
 export const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api/v1",
+  baseURL: apiBaseUrl,
   timeout: 5000,
   withCredentials: true,
 });
