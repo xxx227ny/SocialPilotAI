@@ -28,6 +28,8 @@ def require_authenticated_user(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="请先登录后再使用工作台。",
             )
+        db.info["workspace_id"] = principal.workspace_id
+        db.info["user_id"] = principal.user_id
         return principal
     if not settings.enable_demo_auth:
         return None

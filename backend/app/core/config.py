@@ -204,6 +204,23 @@ class Settings(BaseSettings):
             raise ValueError(
                 "Production user authentication requires credential encryption"
             )
+        if self.enable_user_auth and self.app_environment.casefold() == "production":
+            server_provider_keys = (
+                self.qwen_api_key,
+                self.dashscope_api_key,
+                self.wanx_api_key,
+            )
+            has_shared_key = any(
+                value is not None and bool(value.get_secret_value().strip())
+                for value in server_provider_keys
+            )
+            has_shared_key_file = bool(
+                (self.token_plan_api_key_file or "").strip()
+            )
+            if has_shared_key or has_shared_key_file:
+                raise ValueError(
+                    "Production user authentication forbids shared provider keys"
+                )
         return self
 
 

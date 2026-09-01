@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from app.core.config import Settings, get_settings
+from app.api.dependencies import WorkspaceProviderSettingsDep
 from app.core.exceptions import AppError
 from app.db.session import get_db
 from app.models import BatchVideoVariant, VideoScriptVersion
@@ -47,7 +47,7 @@ from app.services.wanx_product_image_service import WanxProductImageService
 
 router = APIRouter(prefix="/products/{product_id}/real-product-video")
 Db = Annotated[Session, Depends(get_db)]
-SettingsDep = Annotated[Settings, Depends(get_settings)]
+SettingsDep = WorkspaceProviderSettingsDep
 
 
 @router.get("/sources", response_model=list[ProductVideoSourceRead])

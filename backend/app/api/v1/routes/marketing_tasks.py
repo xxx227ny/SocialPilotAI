@@ -7,8 +7,8 @@ from app.api.dependencies import (
     CopyExecutionGateDep,
     StrategyExecutionGateDep,
     TextProviderDep,
+    WorkspaceProviderSettingsDep,
 )
-from app.core.config import Settings, get_settings
 from app.db.session import get_db
 from app.schemas.copy import (
     CopyJobEnqueueRequest,
@@ -40,7 +40,7 @@ from app.services.strategy_preflight import StrategyPreflightService
 
 router = APIRouter(prefix="/marketing-tasks")
 DbSession = Annotated[Session, Depends(get_db)]
-SettingsDep = Annotated[Settings, Depends(get_settings)]
+SettingsDep = WorkspaceProviderSettingsDep
 
 
 @router.post(

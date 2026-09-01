@@ -14,6 +14,20 @@ export async function login(
   ).data;
 }
 
+export async function register(
+  email: string,
+  password: string,
+  workspaceName?: string,
+): Promise<AuthSession> {
+  return (
+    await apiClient.post<AuthSession>("/auth/register", {
+      email,
+      password,
+      workspace_name: workspaceName?.trim() || null,
+    })
+  ).data;
+}
+
 export async function logout(): Promise<AuthSession> {
   return (await apiClient.post<AuthSession>("/auth/logout")).data;
 }

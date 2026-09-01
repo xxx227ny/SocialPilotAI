@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
-from app.core.config import Settings, get_settings
+from app.api.dependencies import WorkspaceProviderSettingsDep
 from app.db.session import get_db
 from app.schemas.batch_video import (
     BatchQwenScriptCreateRead,
@@ -23,7 +23,7 @@ from app.services.batch_video_preflight import BatchVideoPreflightService
 
 router = APIRouter()
 Db = Annotated[Session, Depends(get_db)]
-SettingsDep = Annotated[Settings, Depends(get_settings)]
+SettingsDep = WorkspaceProviderSettingsDep
 
 
 @router.post("/batch-video-jobs/preflight", response_model=BatchVideoPreflightRead)

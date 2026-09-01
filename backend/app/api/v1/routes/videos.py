@@ -3,8 +3,10 @@ from typing import Annotated
 from fastapi import APIRouter, Body, Depends
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import VideoProjectTextProviderDep
-from app.core.config import Settings, get_settings
+from app.api.dependencies import (
+    VideoProjectTextProviderDep,
+    WorkspaceProviderSettingsDep,
+)
 from app.db.session import get_db
 from app.schemas.execution import ExecutionJobCreateRead
 from app.schemas.video import (
@@ -27,7 +29,7 @@ from app.services.video_render_preflight import VideoProjectQueryService
 
 router = APIRouter(prefix="/products")
 DbSession = Annotated[Session, Depends(get_db)]
-SettingsDep = Annotated[Settings, Depends(get_settings)]
+SettingsDep = WorkspaceProviderSettingsDep
 
 
 @router.post(

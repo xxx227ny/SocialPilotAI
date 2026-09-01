@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from threading import Event, Lock, Thread
@@ -15,6 +16,10 @@ from app.execution.contracts import (
     HandlerStatus,
     LeaseLostError,
     WorkerStopRequested,
+)
+from app.execution.credential_context import (
+    bind_execution_api_key,
+    reset_execution_api_key,
 )
 from app.execution.registry import ExecutionHandlerRegistry
 from app.schemas.execution import (
@@ -57,6 +62,8 @@ class ExecutionWorker:
         worker_id: str,
         lease_seconds: int = 30,
         heartbeat_interval_seconds: float = 5,
+        workspace_credential_resolver: Callable[[int | None], str | None]
+        | None = None,
     ) -> None:
         if len(worker_id) < 8:
             raise ValueError("Worker identity must contain at least 8 characters")
@@ -71,6 +78,7 @@ class ExecutionWorker:
         self._worker_id = worker_id
         self._lease_seconds = lease_seconds
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
+        self._workspace_credential_resolver = workspace_credential_resolver
         self._stop_event = Event()
         self._run_lock = Lock()
         self._thread_lock = Lock()
@@ -109,13 +117,20 @@ class ExecutionWorker:
             if claimed is None:
                 return WorkerRunResult(WorkerRunStatus.NO_JOB)
             return self._execute_claimed(
-                claimed.id, claimed.job_type, claimed.input_payload
+                claimed.id,
+                claimed.job_type,
+                claimed.input_payload,
+                claimed.workspace_id,
             )
         finally:
             self._run_lock.release()
 
     def _execute_claimed(
-        self, job_id: int, job_type: str, input_payload: dict[str, object]
+        self,
+        job_id: int,
+        job_type: str,
+        input_payload: dict[str, object],
+        workspace_id: int | None,
     ) -> WorkerRunResult:
         lease_lost = Event()
         heartbeat_stop = Event()
@@ -140,7 +155,13 @@ class ExecutionWorker:
         heartbeat_thread.start()
         result: HandlerResult | None = None
         lease_was_lost = False
+        credential_token = None
         try:
+            if self._workspace_credential_resolver is not None:
+                credential_token = bind_execution_api_key(None)
+                api_key = self._workspace_credential_resolver(workspace_id)
+                reset_execution_api_key(credential_token)
+                credential_token = bind_execution_api_key(api_key)
             result = self._invoke_handler(job_type, input_payload, context)
         except LeaseLostError:
             lease_was_lost = True
@@ -159,6 +180,8 @@ class ExecutionWorker:
                 else HandlerResult.failed("HANDLER_EXECUTION_FAILED")
             )
         finally:
+            if credential_token is not None:
+                reset_execution_api_key(credential_token)
             heartbeat_stop.set()
             heartbeat_thread.join()
             self._set_heartbeat_thread(None)

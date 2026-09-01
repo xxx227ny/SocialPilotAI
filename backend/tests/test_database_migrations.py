@@ -128,6 +128,7 @@ def business_snapshot(path: Path) -> str:
                 record.pop("source_input_digest", None)
                 record.pop("source_product_asset_id", None)
                 record.pop("source_product_asset_sha256", None)
+                record.pop("workspace_id", None)
                 payload[table_name].append(record)
     finally:
         connection.close()
@@ -954,7 +955,7 @@ def test_stage3f_head_contains_product_media_bridge_columns(tmp_path: Path) -> N
         ).fetchone()[0]
     finally:
         connection.close()
-    assert HEAD_REVISION == "0024_provider_credentials"
+    assert HEAD_REVISION == "0026_product_workspaces"
     assert {
         "content_type",
         "size_bytes",

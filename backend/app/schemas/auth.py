@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -24,3 +26,5 @@ class AuthSessionRead(BaseModel):
     email: str | None = None
     user_id: int | None = None
     workspace_id: int | None = None
+    auth_mode: Literal["disabled", "demo", "user"] | None = None
+    registration_enabled: bool | None = None

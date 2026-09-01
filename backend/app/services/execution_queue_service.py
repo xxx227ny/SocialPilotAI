@@ -48,10 +48,12 @@ class ExecutionQueueService:
         key = data.idempotency_key.strip()
         if len(key) < 8:
             raise AppError("Idempotency key is invalid", 422)
-        existing = self.repository.get_by_idempotency_key(key)
+        workspace_id = self.session.info.get("workspace_id")
+        existing = self.repository.get_by_idempotency_key(key, workspace_id)
         if existing is not None:
             return self._idempotent_result(existing, digest)
         job = ExecutionJob(
+            workspace_id=workspace_id,
             job_type=data.job_type.casefold(),
             source_type=data.source_type.casefold(),
             source_id=data.source_id,
@@ -73,7 +75,7 @@ class ExecutionQueueService:
             self.session.commit()
         except IntegrityError:
             self.session.rollback()
-            concurrent = self.repository.get_by_idempotency_key(key)
+            concurrent = self.repository.get_by_idempotency_key(key, workspace_id)
             if concurrent is None:
                 raise
             return self._idempotent_result(concurrent, digest)
@@ -90,16 +92,23 @@ class ExecutionQueueService:
         normalized_status = status.upper() if status else None
         if normalized_status is not None and normalized_status not in JOB_STATUSES:
             raise AppError("Execution job status filter is invalid", 422)
-        return self.repository.list(
+        jobs = self.repository.list(
             status=normalized_status,
             job_type=job_type.casefold() if job_type else None,
             source_type=source_type.casefold() if source_type else None,
             source_id=source_id,
         )
+        workspace_id = self.session.info.get("workspace_id")
+        if workspace_id is not None:
+            return [job for job in jobs if job.workspace_id == workspace_id]
+        return jobs
 
     def get(self, job_id: int) -> ExecutionJob:
         job = self.repository.get(job_id)
-        if job is None:
+        workspace_id = self.session.info.get("workspace_id")
+        if job is None or (
+            workspace_id is not None and job.workspace_id != workspace_id
+        ):
             raise AppError("Execution job not found", 404)
         return job
 
@@ -149,15 +158,17 @@ class ExecutionQueueService:
         return self._read(job.id)
 
     def claim(self, data: ExecutionJobClaimRequest) -> ExecutionJobRead | None:
+        workspace_id = self.session.info.get("workspace_id")
         for retry in range(MAX_CLAIM_CONCURRENCY_RETRIES + 1):
             now = utc_now()
-            self._recover_expired_leases(now)
+            self._recover_expired_leases(now, workspace_id=workspace_id)
             try:
                 job_id = self.repository.claim_next(
                     owner_digest=_owner_digest(data.worker_id),
                     lease_expires_at=now + timedelta(seconds=data.lease_seconds),
                     now=now,
                     job_types=data.job_types,
+                    workspace_id=workspace_id,
                 )
             except IntegrityError as error:
                 self.session.rollback()
@@ -288,13 +299,17 @@ class ExecutionQueueService:
         return self._read(job.id)
 
     def recover_expired_leases(self) -> list[ExecutionJobRead]:
-        recovered = self._recover_expired_leases(utc_now())
+        recovered = self._recover_expired_leases(
+            utc_now(), workspace_id=self.session.info.get("workspace_id")
+        )
         self.session.commit()
         return [self._read(job_id) for job_id in recovered]
 
-    def _recover_expired_leases(self, now: datetime) -> list[int]:
+    def _recover_expired_leases(
+        self, now: datetime, *, workspace_id: int | None = None
+    ) -> list[int]:
         recovered: list[int] = []
-        for job in self.repository.running_with_expired_lease(now):
+        for job in self.repository.running_with_expired_lease(now, workspace_id):
             attempt = self.repository.latest_attempt(job.id)
             external_possible = bool(
                 (attempt and attempt.external_submission_possible)
@@ -339,7 +354,9 @@ class ExecutionQueueService:
         if job.lease_owner_digest != _owner_digest(worker_id):
             raise AppError("Execution job lease is owned by another worker", 409)
         if job.lease_expires_at is None or _aware(job.lease_expires_at) <= now:
-            self._recover_expired_leases(now)
+            self._recover_expired_leases(
+                now, workspace_id=self.session.info.get("workspace_id")
+            )
             self.session.commit()
             raise AppError("Execution job lease has expired", 409)
         attempt = self.repository.latest_attempt(job.id)

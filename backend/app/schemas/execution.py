@@ -81,6 +81,7 @@ class ExecutionJobRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    workspace_id: int | None
     job_type: str
     source_type: str
     source_id: int

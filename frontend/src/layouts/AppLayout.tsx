@@ -12,11 +12,12 @@ const navItems = [
   { to: "/copy-matrix", label: "文案矩阵", icon: "✦" },
   { to: "/content-studio", label: "视频工厂", icon: "▶" },
   { to: "/growth-copilot", label: "投流优化", icon: "↗" },
+  { to: "/settings/api-key", label: "API Key 设置", icon: "⚿", productOnly: true },
 ];
 
 export function AppLayout() {
   const { isPresentation } = usePresentationMode();
-  const { enabled: authEnabled, logout, username } = useAuth();
+  const { authMode, enabled: authEnabled, logout, username } = useAuth();
   const navigate = useNavigate();
 
   const handleLogout = async () => {
@@ -37,7 +38,7 @@ export function AppLayout() {
 
         <nav className="nav" aria-label="主要导航">
           <span className="nav__label">工作台</span>
-          {navItems.map((item) => (
+          {navItems.filter((item) => !item.productOnly || authMode === "user").map((item) => (
             <NavLink
               key={item.to}
               to={item.to}

@@ -8,9 +8,10 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import (
     VideoArtifactStorageDep,
+    WorkspaceProviderSettingsDep,
     get_visual_generation_provider,
 )
-from app.core.config import Settings, get_settings, settings
+from app.core.config import settings
 from app.core.exceptions import AppError
 from app.db.session import get_db
 from app.providers.visual_base import VisualGenerationProvider
@@ -55,7 +56,7 @@ from app.services.video_render_service import VideoRenderService
 
 router = APIRouter()
 DbSession = Annotated[Session, Depends(get_db)]
-SettingsDep = Annotated[Settings, Depends(get_settings)]
+SettingsDep = WorkspaceProviderSettingsDep
 VisualProviderFactory = Callable[[], VisualGenerationProvider]
 
 

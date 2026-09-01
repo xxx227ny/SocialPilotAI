@@ -14,6 +14,10 @@ import httpx
 
 from app.core.config import Settings
 from app.core.exceptions import SafeProviderFailure
+from app.execution.credential_context import (
+    current_execution_api_key,
+    execution_api_key_is_bound,
+)
 from app.providers.base import (
     ProviderAuthenticationError,
     ProviderConnectionError,
@@ -196,6 +200,10 @@ def wanx_missing_requirements(settings: Settings) -> tuple[str, ...]:
 
 def effective_qwen_api_key(settings: Settings) -> str:
     """Return credentials paired with the configured provider endpoint."""
+    if execution_api_key_is_bound():
+        return current_execution_api_key() or ""
+    if settings.enable_user_auth:
+        return ""
     if _token_plan_credentials_selected(settings):
         return (
             _secret_file(settings.token_plan_api_key_file)
@@ -211,6 +219,10 @@ def effective_qwen_api_key(settings: Settings) -> str:
 
 def effective_wanx_api_key(settings: Settings) -> str:
     """Use credentials paired with the active Qwen/Wanx provider profile."""
+    if execution_api_key_is_bound():
+        return current_execution_api_key() or ""
+    if settings.enable_user_auth:
+        return ""
     if _token_plan_credentials_selected(settings):
         return _secret_file(settings.token_plan_api_key_file) or _secret(
             settings.wanx_api_key

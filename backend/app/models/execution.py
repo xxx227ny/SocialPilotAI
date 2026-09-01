@@ -78,7 +78,11 @@ class ExecutionJob(Base):
             "AND result_entity_id > 0 AND status = 'SUCCEEDED'))",
             name="ck_execution_jobs_result_reference",
         ),
-        UniqueConstraint("idempotency_key", name="uq_execution_jobs_idempotency"),
+        UniqueConstraint(
+            "workspace_id",
+            "idempotency_key",
+            name="uq_execution_jobs_workspace_idempotency",
+        ),
         Index(
             "uq_execution_jobs_running_concurrency_key",
             "concurrency_key",
@@ -146,6 +150,9 @@ class ExecutionJob(Base):
     )
     result_entity_type: Mapped[str | None] = mapped_column(String(80), nullable=True)
     result_entity_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    workspace_id: Mapped[int | None] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True, index=True
+    )
 
     attempts: Mapped[list[ExecutionAttempt]] = relationship(
         back_populates="execution_job",

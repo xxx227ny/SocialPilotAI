@@ -3,8 +3,11 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import CopyExecutionGateDep, TextProviderDep
-from app.core.config import Settings, get_settings
+from app.api.dependencies import (
+    CopyExecutionGateDep,
+    TextProviderDep,
+    WorkspaceProviderSettingsDep,
+)
 from app.db.session import get_db
 from app.schemas.copy import CopyMatrixRead, CopyMatrixSchema
 from app.services.copy_generation_service import (
@@ -15,7 +18,7 @@ from app.services.copy_generation_service import (
 router = APIRouter(prefix="/products")
 strategy_copy_router = APIRouter(prefix="/strategies")
 DbSession = Annotated[Session, Depends(get_db)]
-SettingsDep = Annotated[Settings, Depends(get_settings)]
+SettingsDep = WorkspaceProviderSettingsDep
 
 
 @router.post("/{product_id}/copy", response_model=CopyMatrixSchema)

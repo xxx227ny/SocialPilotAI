@@ -2,9 +2,13 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import Depends
+from pydantic import SecretStr
+from sqlalchemy.orm import Session
 
+from app.api.auth_dependency import require_authenticated_user
 from app.core.config import Settings, get_settings
 from app.core.exceptions import AppError
+from app.db.session import get_db
 from app.providers import (
     ProviderAuthenticationError,
     ProviderConfigurationError,
@@ -26,11 +30,14 @@ from app.providers.pinterest_provider import PinterestProvider, PinterestProvide
 from app.providers.tiktok_provider import TikTokProvider, TikTokProviderError
 from app.providers.visual_base import VisualGenerationProvider
 from app.providers.youtube_provider import YouTubeProvider, YouTubeProviderError
+from app.services.demo_auth_service import AuthenticatedUser
 from app.services.instagram_media_probe import (
     FFprobeInstagramMediaProbe,
     InstagramMediaProbe,
 )
+from app.services.provider_credential_service import ProviderCredentialService
 from app.services.tiktok_media_probe import FFprobeTikTokMediaProbe, TikTokMediaProbe
+from app.services.user_auth_service import AuthenticatedPrincipal
 from app.services.video_artifact_storage import (
     HttpProviderOutputFetcher,
     LocalVideoArtifactStorage,
@@ -40,9 +47,48 @@ from app.services.video_artifact_storage import (
 )
 
 
-def get_text_generation_provider() -> TextGenerationProvider:
+def get_workspace_provider_settings(
+    app_settings: Annotated[Settings, Depends(get_settings)],
+    db: Annotated[Session, Depends(get_db)],
+    principal: Annotated[
+        AuthenticatedPrincipal | AuthenticatedUser | None,
+        Depends(require_authenticated_user),
+    ],
+) -> Settings:
+    if not app_settings.enable_user_auth:
+        return app_settings
+    workspace_id = (
+        principal.workspace_id
+        if isinstance(principal, AuthenticatedPrincipal)
+        else None
+    )
+    api_key = (
+        ProviderCredentialService(db, app_settings).read_dashscope_key(workspace_id)
+        if workspace_id is not None
+        else None
+    )
+    secret = SecretStr(api_key) if api_key else None
+    return app_settings.model_copy(
+        update={
+            "enable_user_auth": False,
+            "qwen_api_key": secret,
+            "dashscope_api_key": None,
+            "wanx_api_key": secret,
+            "token_plan_api_key_file": "",
+        }
+    )
+
+
+WorkspaceProviderSettingsDep = Annotated[
+    Settings, Depends(get_workspace_provider_settings)
+]
+
+
+def get_text_generation_provider(
+    app_settings: WorkspaceProviderSettingsDep,
+) -> TextGenerationProvider:
     try:
-        return SafeObservableTextProvider(QwenProvider())
+        return SafeObservableTextProvider(QwenProvider(app_settings))
     except (ProviderAuthenticationError, ProviderConfigurationError) as exc:
         raise AppError(
             "Qwen API credentials are not configured", status_code=503
@@ -75,7 +121,7 @@ TextProviderDep = Annotated[
 
 
 def require_strategy_execution_enabled(
-    app_settings: Annotated[Settings, Depends(get_settings)],
+    app_settings: WorkspaceProviderSettingsDep,
 ) -> None:
     if not app_settings.enable_strategy_execution:
         raise AppError(
@@ -88,7 +134,7 @@ StrategyExecutionGateDep = Annotated[None, Depends(require_strategy_execution_en
 
 
 def require_copy_execution_enabled(
-    app_settings: Annotated[Settings, Depends(get_settings)],
+    app_settings: WorkspaceProviderSettingsDep,
 ) -> None:
     if not app_settings.enable_copy_execution:
         raise AppError(
@@ -101,7 +147,7 @@ CopyExecutionGateDep = Annotated[None, Depends(require_copy_execution_enabled)]
 
 
 def require_video_project_execution_enabled(
-    app_settings: Annotated[Settings, Depends(get_settings)],
+    app_settings: WorkspaceProviderSettingsDep,
 ) -> None:
     if not app_settings.enable_video_project_execution:
         raise AppError(
@@ -130,7 +176,7 @@ VideoProjectTextProviderDep = Annotated[
 
 
 def require_v2_copy_execution_enabled(
-    app_settings: Annotated[Settings, Depends(get_settings)],
+    app_settings: WorkspaceProviderSettingsDep,
 ) -> None:
     if not app_settings.enable_copy_execution:
         raise AppError(
@@ -149,7 +195,7 @@ V2CopyExecutionGateDep = Annotated[None, Depends(require_v2_copy_execution_enabl
 
 
 def require_v2_video_project_execution_enabled(
-    app_settings: Annotated[Settings, Depends(get_settings)],
+    app_settings: WorkspaceProviderSettingsDep,
 ) -> None:
     if not app_settings.enable_v2_video_project_execution:
         raise AppError(
@@ -165,7 +211,7 @@ V2VideoProjectExecutionGateDep = Annotated[
 
 
 def require_growth_execution_enabled(
-    app_settings: Annotated[Settings, Depends(get_settings)],
+    app_settings: WorkspaceProviderSettingsDep,
 ) -> None:
     if not app_settings.enable_growth_execution:
         raise AppError(
@@ -179,7 +225,7 @@ GrowthExecutionGateDep = Annotated[None, Depends(require_growth_execution_enable
 
 
 def require_video_render_execution_enabled(
-    app_settings: Annotated[Settings, Depends(get_settings)],
+    app_settings: WorkspaceProviderSettingsDep,
 ) -> None:
     if not app_settings.enable_video_render_execution:
         raise AppError(
@@ -232,9 +278,11 @@ def _require_live_qwen_configuration(app_settings: Settings) -> None:
         )
 
 
-def get_visual_generation_provider() -> VisualGenerationProvider:
+def get_visual_generation_provider(
+    app_settings: WorkspaceProviderSettingsDep,
+) -> VisualGenerationProvider:
     try:
-        return WanxProvider()
+        return WanxProvider(app_settings)
     except (ProviderAuthenticationError, ProviderConfigurationError) as exc:
         raise AppError("Wanx provider is not configured", status_code=503) from exc
 

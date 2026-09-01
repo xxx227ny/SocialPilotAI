@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
-from app.core.config import Settings, get_settings
+from app.api.dependencies import WorkspaceProviderSettingsDep
 from app.db.session import get_db
 from app.schemas.execution import ExecutionJobCreateRead
 from app.schemas.video_script_version import (
@@ -24,7 +24,7 @@ from app.services.video_script_version_service import VideoScriptVersionService
 
 router = APIRouter()
 Db = Annotated[Session, Depends(get_db)]
-SettingsDep = Annotated[Settings, Depends(get_settings)]
+SettingsDep = WorkspaceProviderSettingsDep
 
 
 @router.post(

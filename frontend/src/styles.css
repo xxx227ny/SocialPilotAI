@@ -4165,10 +4165,138 @@ textarea { font: inherit; }
   line-height: 1.65;
 }
 
+.login-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  padding: 0.35rem;
+  margin-top: 1.25rem;
+  border-radius: 0.85rem;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.login-tabs button {
+  min-height: 2.5rem;
+  background: transparent;
+  color: #aeb9d1;
+}
+
+.login-tabs button.is-active {
+  background: #6f5cff;
+  color: #fff;
+}
+
 .login-card form,
 .login-card label {
   display: grid;
   gap: 0.55rem;
+}
+
+.settings-page {
+  display: grid;
+  gap: 1.5rem;
+  max-width: 58rem;
+  margin: 0 auto;
+}
+
+.settings-card {
+  display: grid;
+  gap: 1.5rem;
+  padding: clamp(1.25rem, 3vw, 2rem);
+  border: 1px solid #dfe4f2;
+  border-radius: 1.25rem;
+  background: #fff;
+  box-shadow: 0 1rem 3rem rgba(27, 39, 75, 0.08);
+}
+
+.credential-status {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 1rem;
+  border-radius: 1rem;
+  background: #f7f8fc;
+}
+
+.credential-status p,
+.settings-security-note {
+  margin: 0.3rem 0 0;
+  color: #68738d;
+  line-height: 1.6;
+}
+
+.status-dot {
+  width: 0.75rem;
+  height: 0.75rem;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #aeb6c8;
+  box-shadow: 0 0 0 0.35rem rgba(174, 182, 200, 0.18);
+}
+
+.status-dot.is-ready {
+  background: #1eaa74;
+  box-shadow: 0 0 0 0.35rem rgba(30, 170, 116, 0.14);
+}
+
+.credential-form,
+.credential-form label {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.credential-form label {
+  font-weight: 800;
+}
+
+.credential-form input {
+  min-height: 3.2rem;
+  padding: 0 1rem;
+  border: 1px solid #cfd6e6;
+  border-radius: 0.75rem;
+  font: inherit;
+}
+
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.settings-actions button {
+  min-height: 2.8rem;
+  padding: 0 1.15rem;
+  border: 0;
+  border-radius: 0.75rem;
+  background: #6f5cff;
+  color: #fff;
+  font: inherit;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.settings-actions button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.settings-actions .button-danger {
+  background: #fff0f2;
+  color: #b3263d;
+}
+
+.settings-message {
+  margin: 0;
+  padding: 0.85rem 1rem;
+  border-radius: 0.75rem;
+  background: #f1efff;
+  color: #4939b8;
+}
+
+.settings-security-note {
+  padding-top: 1rem;
+  border-top: 1px solid #edf0f7;
+  font-size: 0.88rem;
 }
 
 .login-card form {

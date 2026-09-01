@@ -41,7 +41,9 @@ VIDEO_PROJECT_COPY_OPTIONAL_REVISION = "0020_video_project_copy_optional"
 PRODUCT_VIDEO_PRODUCTION_REVISION = "0021_product_video_production_batches"
 VIDEO_PROJECT_INPUT_IDENTITY_REVISION = "0022_video_project_input_identity"
 USER_ACCOUNTS_REVISION = "0023_user_accounts"
-HEAD_REVISION = "0024_provider_credentials"
+PROVIDER_CREDENTIALS_REVISION = "0024_provider_credentials"
+EXECUTION_JOB_WORKSPACES_REVISION = "0025_execution_job_workspaces"
+HEAD_REVISION = "0026_product_workspaces"
 UNVERSIONED = "unversioned"
 MANIFEST_VERSION = 1
 ALEMBIC_INI = Path(__file__).resolve().parents[2] / "alembic.ini"
@@ -285,6 +287,8 @@ def expected_schema_fingerprint(revision: str) -> str:
         PRODUCT_VIDEO_PRODUCTION_REVISION,
         VIDEO_PROJECT_INPUT_IDENTITY_REVISION,
         USER_ACCOUNTS_REVISION,
+        PROVIDER_CREDENTIALS_REVISION,
+        EXECUTION_JOB_WORKSPACES_REVISION,
         HEAD_REVISION,
     }:
         raise ValueError(f"Unknown expected revision: {revision}")
@@ -672,6 +676,8 @@ def get_database_migration_status(database_path: Path) -> DatabaseMigrationStatu
             PRODUCT_VIDEO_PRODUCTION_REVISION,
             VIDEO_PROJECT_INPUT_IDENTITY_REVISION,
             USER_ACCOUNTS_REVISION,
+            PROVIDER_CREDENTIALS_REVISION,
+            EXECUTION_JOB_WORKSPACES_REVISION,
             HEAD_REVISION,
         }:
             raise IncompatibleSchemaError("Unsupported Alembic revision")
@@ -711,6 +717,8 @@ def get_database_migration_status(database_path: Path) -> DatabaseMigrationStatu
                 "video_project_input_identity_runtime"
             ),
             USER_ACCOUNTS_REVISION: "user_accounts_runtime",
+            PROVIDER_CREDENTIALS_REVISION: "provider_credentials_runtime",
+            EXECUTION_JOB_WORKSPACES_REVISION: "execution_job_workspaces_runtime",
         }
         return DatabaseMigrationStatus(
             state=state_by_revision[revision],
@@ -797,6 +805,8 @@ def _upgrade_sqlite_database_unlocked(
                     PRODUCT_VIDEO_PRODUCTION_REVISION,
                     VIDEO_PROJECT_INPUT_IDENTITY_REVISION,
                     USER_ACCOUNTS_REVISION,
+                    PROVIDER_CREDENTIALS_REVISION,
+                    EXECUTION_JOB_WORKSPACES_REVISION,
                     HEAD_REVISION,
                 }:
                     raise IncompatibleSchemaError(

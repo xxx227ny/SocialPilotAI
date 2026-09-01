@@ -43,7 +43,7 @@ def set_dashscope_credential(
     except ValueError as exc:
         db.rollback()
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="API Key 格式无效。",
         ) from exc
     return ProviderCredentialRead(

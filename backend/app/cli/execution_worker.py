@@ -21,6 +21,7 @@ from app.services.database_migration_service import (
     HEAD_REVISION,
     get_database_migration_status,
 )
+from app.services.provider_credential_service import ProviderCredentialService
 
 
 def _utc_now() -> str:
@@ -99,6 +100,13 @@ def main(argv: list[str] | None = None) -> int:
         worker_id=worker_identity,
         lease_seconds=args.lease_seconds,
         heartbeat_interval_seconds=args.heartbeat_seconds,
+        workspace_credential_resolver=(
+            lambda workspace_id: _workspace_credential(
+                session_factory, settings, workspace_id
+            )
+            if settings.enable_user_auth
+            else None
+        ),
     )
     shutdown = Event()
 
@@ -141,6 +149,19 @@ def main(argv: list[str] | None = None) -> int:
         stop_file.unlink(missing_ok=True)
         engine.dispose()
     return 0
+
+
+def _workspace_credential(
+    session_factory,
+    app_settings,
+    workspace_id: int | None,
+) -> str | None:
+    if not app_settings.enable_user_auth or workspace_id is None:
+        return None
+    with session_factory() as session:
+        return ProviderCredentialService(session, app_settings).read_dashscope_key(
+            workspace_id
+        )
 
 
 if __name__ == "__main__":

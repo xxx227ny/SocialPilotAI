@@ -12,6 +12,7 @@ import {
   getAuthSession,
   login as loginRequest,
   logout as logoutRequest,
+  register as registerRequest,
 } from "../api/auth";
 import { clearReadResources } from "../hooks/readResourceStore";
 import { clearCopyWorkspaceCache } from "../components/product/copyWorkspaceCache";
@@ -21,8 +22,11 @@ type AuthState = {
   enabled: boolean;
   authenticated: boolean;
   username: string | null;
+  authMode: "disabled" | "demo" | "user" | null;
+  registrationEnabled: boolean;
   error: string | null;
   login: (username: string, password: string) => Promise<void>;
+  register: (email: string, password: string, workspaceName?: string) => Promise<void>;
   logout: () => Promise<void>;
 };
 
@@ -33,15 +37,25 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [enabled, setEnabled] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [username, setUsername] = useState<string | null>(null);
+  const [authMode, setAuthMode] = useState<"disabled" | "demo" | "user" | null>(null);
+  const [registrationEnabled, setRegistrationEnabled] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const applySession = useCallback(
-    (session: { enabled: boolean; authenticated: boolean; username: string | null }) => {
+    (session: {
+      enabled: boolean;
+      authenticated: boolean;
+      username: string | null;
+      registration_enabled?: boolean | null;
+      auth_mode?: "disabled" | "demo" | "user" | null;
+    }) => {
       clearReadResources();
       clearCopyWorkspaceCache();
       setEnabled(session.enabled);
       setAuthenticated(session.authenticated);
       setUsername(session.username);
+      setAuthMode(session.auth_mode ?? null);
+      setRegistrationEnabled(Boolean(session.registration_enabled));
       setError(null);
     },
     [],
@@ -95,17 +109,39 @@ export function AuthProvider({ children }: PropsWithChildren) {
     applySession(session);
   }, [applySession]);
 
+  const register = useCallback(
+    async (email: string, password: string, workspaceName?: string) => {
+      const session = await registerRequest(email, password, workspaceName);
+      applySession(session);
+    },
+    [applySession],
+  );
+
   const value = useMemo(
     () => ({
       checking,
       enabled,
       authenticated,
       username,
+      authMode,
+      registrationEnabled,
       error,
       login,
+      register,
       logout,
     }),
-    [checking, enabled, authenticated, username, error, login, logout],
+    [
+      checking,
+      enabled,
+      authenticated,
+      username,
+      authMode,
+      registrationEnabled,
+      error,
+      login,
+      register,
+      logout,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

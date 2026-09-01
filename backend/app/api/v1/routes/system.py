@@ -3,14 +3,14 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.core.config import Settings, get_settings
+from app.api.dependencies import WorkspaceProviderSettingsDep
 from app.db.session import get_db
 from app.schemas.system import SystemReadinessRead
 from app.services.system_readiness_service import SystemReadinessService
 
 router = APIRouter(prefix="/system")
 DbSession = Annotated[Session, Depends(get_db)]
-SettingsDep = Annotated[Settings, Depends(get_settings)]
+SettingsDep = WorkspaceProviderSettingsDep
 
 
 @router.get("/readiness", response_model=SystemReadinessRead)

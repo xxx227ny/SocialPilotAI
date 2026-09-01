@@ -12,7 +12,10 @@ class ProductRepository:
         self.session = session
 
     def create(self, data: ProductCreate) -> Product:
-        product = Product(**data.model_dump())
+        product = Product(
+            workspace_id=self.session.info.get("workspace_id"),
+            **data.model_dump(),
+        )
         self.session.add(product)
         self.session.commit()
         return self.get(product.id)  # type: ignore[return-value]
@@ -23,6 +26,9 @@ class ProductRepository:
             .options(selectinload(Product.assets))
             .order_by(Product.created_at.desc())
         )
+        workspace_id = self.session.info.get("workspace_id")
+        if workspace_id is not None:
+            statement = statement.where(Product.workspace_id == workspace_id)
         return list(self.session.scalars(statement).all())
 
     def get(self, product_id: int) -> Product | None:
@@ -31,6 +37,9 @@ class ProductRepository:
             .options(selectinload(Product.assets))
             .where(Product.id == product_id)
         )
+        workspace_id = self.session.info.get("workspace_id")
+        if workspace_id is not None:
+            statement = statement.where(Product.workspace_id == workspace_id)
         return self.session.scalar(statement)
 
     def update(self, product: Product, data: ProductUpdate) -> Product:

@@ -49,6 +49,9 @@ class Product(Base):
     brand_kit_version_id: Mapped[int | None] = mapped_column(
         ForeignKey("brand_kit_versions.id", ondelete="RESTRICT"), index=True
     )
+    workspace_id: Mapped[int | None] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True, index=True
+    )
 
     brand_kit_version: Mapped[BrandKitVersion | None] = relationship(
         back_populates="products"

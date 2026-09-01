@@ -45,7 +45,9 @@ def _set_session_cookie(
     )
 
 
-def _principal_response(principal) -> AuthSessionRead:
+def _principal_response(
+    principal, *, registration_enabled: bool
+) -> AuthSessionRead:
     return AuthSessionRead(
         enabled=True,
         authenticated=True,
@@ -53,6 +55,8 @@ def _principal_response(principal) -> AuthSessionRead:
         email=principal.email,
         user_id=principal.user_id,
         workspace_id=principal.workspace_id,
+        auth_mode="user",
+        registration_enabled=registration_enabled,
     )
 
 
@@ -69,8 +73,16 @@ def get_auth_session(
     if settings.enable_user_auth:
         principal = read_session(db, session_token)
         if principal is None:
-            return AuthSessionRead(enabled=True, authenticated=False)
-        return _principal_response(principal)
+            return AuthSessionRead(
+                enabled=True,
+                authenticated=False,
+                auth_mode="user",
+                registration_enabled=settings.allow_public_registration,
+            )
+        return _principal_response(
+            principal,
+            registration_enabled=settings.allow_public_registration,
+        )
     if not settings.enable_demo_auth:
         return AuthSessionRead(enabled=False, authenticated=True, username=None)
     user = read_session_token(settings, session_token)
@@ -132,7 +144,10 @@ def register(
         secure=settings.user_auth_cookie_secure,
         same_site="lax",
     )
-    return _principal_response(principal)
+    return _principal_response(
+        principal,
+        registration_enabled=settings.allow_public_registration,
+    )
 
 
 @router.post(
@@ -167,7 +182,10 @@ def login(
             secure=settings.user_auth_cookie_secure,
             same_site="lax",
         )
-        return _principal_response(principal)
+        return _principal_response(
+            principal,
+            registration_enabled=settings.allow_public_registration,
+        )
     if not settings.enable_demo_auth:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

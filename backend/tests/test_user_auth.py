@@ -46,6 +46,8 @@ def test_registration_creates_isolated_account_and_secure_session(
     assert payload["username"] == EMAIL
     assert payload["user_id"] > 0
     assert payload["workspace_id"] > 0
+    assert payload["auth_mode"] == "user"
+    assert payload["registration_enabled"] is True
     assert session.json() == payload
     assert protected.status_code == 200
 

@@ -27,11 +27,16 @@ class ExecutionJobRepository:
             .where(ExecutionJob.id == job_id)
         )
 
-    def get_by_idempotency_key(self, key: str) -> ExecutionJob | None:
+    def get_by_idempotency_key(
+        self, key: str, workspace_id: int | None
+    ) -> ExecutionJob | None:
         return self.session.scalar(
             select(ExecutionJob)
             .options(selectinload(ExecutionJob.attempts))
-            .where(ExecutionJob.idempotency_key == key)
+            .where(
+                ExecutionJob.idempotency_key == key,
+                ExecutionJob.workspace_id == workspace_id,
+            )
         )
 
     def list(
@@ -61,16 +66,21 @@ class ExecutionJobRepository:
             ).all()
         )
 
-    def running_with_expired_lease(self, now: datetime) -> list[ExecutionJob]:
+    def running_with_expired_lease(
+        self, now: datetime, workspace_id: int | None = None
+    ) -> list[ExecutionJob]:
+        conditions = [
+            ExecutionJob.status == "RUNNING",
+            ExecutionJob.lease_expires_at.is_not(None),
+            ExecutionJob.lease_expires_at <= now,
+        ]
+        if workspace_id is not None:
+            conditions.append(ExecutionJob.workspace_id == workspace_id)
         return list(
             self.session.scalars(
                 select(ExecutionJob)
                 .options(selectinload(ExecutionJob.attempts))
-                .where(
-                    ExecutionJob.status == "RUNNING",
-                    ExecutionJob.lease_expires_at.is_not(None),
-                    ExecutionJob.lease_expires_at <= now,
-                )
+                .where(*conditions)
                 .order_by(ExecutionJob.id)
             ).all()
         )
@@ -82,6 +92,7 @@ class ExecutionJobRepository:
         lease_expires_at: datetime,
         now: datetime,
         job_types: list[str],
+        workspace_id: int | None = None,
     ) -> int | None:
         active = aliased(ExecutionJob)
         active_same_key = exists(
@@ -90,6 +101,13 @@ class ExecutionJobRepository:
                 active.status == "RUNNING",
                 active.concurrency_key == ExecutionJob.concurrency_key,
                 active.id != ExecutionJob.id,
+                or_(
+                    active.workspace_id == ExecutionJob.workspace_id,
+                    and_(
+                        active.workspace_id.is_(None),
+                        ExecutionJob.workspace_id.is_(None),
+                    ),
+                ),
             )
             .correlate(ExecutionJob)
         )
@@ -104,6 +122,8 @@ class ExecutionJobRepository:
         ]
         if job_types:
             conditions.append(ExecutionJob.job_type.in_(job_types))
+        if workspace_id is not None:
+            conditions.append(ExecutionJob.workspace_id == workspace_id)
         candidate = (
             select(ExecutionJob.id)
             .where(and_(*conditions))
@@ -143,4 +163,3 @@ class ExecutionJobRepository:
             .order_by(desc(ExecutionAttempt.attempt_number))
             .limit(1)
         )
-

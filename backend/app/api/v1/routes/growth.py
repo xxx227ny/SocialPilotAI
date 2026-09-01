@@ -8,8 +8,8 @@ from app.api.dependencies import (
     TextProviderDep,
     V2CopyExecutionGateDep,
     V2VideoProjectExecutionGateDep,
+    WorkspaceProviderSettingsDep,
 )
-from app.core.config import Settings, get_settings
 from app.db.session import get_db
 from app.schemas.campaign import CampaignUploadResponse
 from app.schemas.copy import (
@@ -71,7 +71,7 @@ from app.services.v2_video_project_preflight import (
 
 router = APIRouter(prefix="/products")
 DbSession = Annotated[Session, Depends(get_db)]
-SettingsDep = Annotated[Settings, Depends(get_settings)]
+SettingsDep = WorkspaceProviderSettingsDep
 
 
 @router.post("/{product_id}/campaigns/upload", response_model=CampaignUploadResponse)

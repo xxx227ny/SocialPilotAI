@@ -10,6 +10,7 @@ import { GrowthCopilotPage } from "./pages/GrowthCopilotPage";
 import { ProductCenterPage } from "./pages/ProductCenterPage";
 import { SnapshotPresentationPage } from "./pages/SnapshotPresentationPage";
 import { LoginPage } from "./pages/LoginPage";
+import { ApiKeySettingsPage } from "./pages/ApiKeySettingsPage";
 import { parseSnapshotPresentationRoute } from "./components/presentation/snapshotPresentationState";
 
 export default function App() {
@@ -33,6 +34,7 @@ export default function App() {
         <Route path="copy-matrix" element={<CopyMatrixPage />} />
         <Route path="content-studio" element={<ContentStudioPage />} />
         <Route path="growth-copilot" element={<GrowthCopilotPage />} />
+        <Route path="settings/api-key" element={<ApiKeySettingsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
