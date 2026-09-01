@@ -86,6 +86,8 @@ class FakeOutputFetcher(ProviderOutputFetcher):
 
 def enabled_render_settings(
     artifact_root: Path | None = None,
+    *,
+    preview_prewarm: bool = False,
 ) -> Settings:
     return Settings(
         _env_file=None,
@@ -93,6 +95,7 @@ def enabled_render_settings(
         video_artifact_storage_root=(
             str(artifact_root) if artifact_root is not None else None
         ),
+        enable_video_preview_prewarm=preview_prewarm,
     )
 
 
@@ -102,11 +105,15 @@ def execution_service(
     *,
     artifact_root: Path | None = None,
     output_fetcher: ProviderOutputFetcher | None = None,
+    preview_prewarm: bool = False,
 ) -> VideoRenderExecutionService:
     return VideoRenderExecutionService(
         db_session,
         provider,
-        enabled_render_settings(artifact_root),
+        enabled_render_settings(
+            artifact_root,
+            preview_prewarm=preview_prewarm,
+        ),
         output_fetcher=output_fetcher,
         artifact_storage=(
             LocalVideoArtifactStorage(artifact_root, 1_000_000)
@@ -254,6 +261,7 @@ def test_refresh_running_status(db_session: Session) -> None:
 def test_refresh_succeeded_creates_artifact(
     db_session: Session,
     tmp_path: Path,
+    monkeypatch,
 ) -> None:
     provider = MockVisualProvider(
         snapshots=[
@@ -269,12 +277,23 @@ def test_refresh_succeeded_creates_artifact(
     task, _ = submit_task(db_session, provider)
 
     fetcher = FakeOutputFetcher()
+    warm_calls = []
+
+    def record_warm(path, digest, ffmpeg):
+        warm_calls.append((path, digest, ffmpeg))
+        return True
+
+    monkeypatch.setattr(
+        "app.services.video_render_execution_service.warm_video_preview",
+        record_warm,
+    )
     result = asyncio.run(
         execution_service(
             db_session,
             provider,
             artifact_root=tmp_path,
             output_fetcher=fetcher,
+            preview_prewarm=True,
         ).refresh(task.id)
     )
 
@@ -287,6 +306,11 @@ def test_refresh_succeeded_creates_artifact(
     assert (tmp_path / result.artifact.storage_path).read_bytes() == (
         b"safe-fake-mp4"
     )
+    assert len(warm_calls) == 1
+    warmed_path, warmed_digest, warmed_ffmpeg = warm_calls[0]
+    assert warmed_path == tmp_path / result.artifact.storage_path
+    assert warmed_digest == result.artifact.artifact_metadata["sha256"]
+    assert warmed_ffmpeg == "ffmpeg"
 
 
 def test_refresh_failed_saves_provider_error(db_session: Session) -> None:
