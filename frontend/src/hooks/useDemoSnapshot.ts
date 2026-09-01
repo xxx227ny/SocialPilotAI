@@ -3,12 +3,14 @@ import { useEffect, useState } from "react";
 import { getDemoSnapshot } from "../api/dashboard";
 import type { DashboardSnapshot } from "../types/dashboard";
 
-export function useDemoSnapshot() {
+export function useDemoSnapshot(enabled = true) {
   const [snapshot, setSnapshot] = useState<DashboardSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
+    if (!enabled) { setLoading(false); return; }
+    setLoading(true);
     let active = true;
     void getDemoSnapshot()
       .then((result) => {
@@ -26,7 +28,7 @@ export function useDemoSnapshot() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [enabled]);
 
   return { snapshot, loading, error };
 }

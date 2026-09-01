@@ -10,6 +10,11 @@ import type { PlatformCopy } from "../../types/copy";
 import type { MarketingTask } from "../../types/marketing";
 import type { Product } from "../../types/product";
 import { StrategyPreflightPanel } from "./StrategyPreflightPanel";
+import {
+  cacheEntryIsFresh,
+  getLatestTaskSnapshot,
+  setLatestTaskSnapshot,
+} from "./copyWorkspaceCache";
 
 type PlatformName = PlatformCopy["platform"];
 type SaveState = "synced" | "dirty" | "saving" | "success" | "error";
@@ -104,12 +109,21 @@ export function MarketingTaskConfig({
   onProductUpdated,
   onTaskChanged,
 }: MarketingTaskConfigProps) {
+  const initialTaskSnapshot = getLatestTaskSnapshot(product.id);
   const [markets, setMarkets] = useState<string[]>(product.target_markets);
   const [saveState, setSaveState] = useState<SaveState>("synced");
   const [saveError, setSaveError] = useState("");
-  const [taskState, setTaskState] = useState<TaskState>("loading");
+  const [taskState, setTaskState] = useState<TaskState>(() =>
+    initialTaskSnapshot === undefined
+      ? "loading"
+      : initialTaskSnapshot.value === null
+        ? "empty"
+        : "ready",
+  );
   const [taskError, setTaskError] = useState("");
-  const [savedTask, setSavedTask] = useState<MarketingTask | null>(null);
+  const [savedTask, setSavedTask] = useState<MarketingTask | null>(
+    () => initialTaskSnapshot?.value ?? null,
+  );
   const [taskRetryKey, setTaskRetryKey] = useState(0);
   const saveLock = useRef(false);
   const saveRequestId = useRef(0);
@@ -143,14 +157,25 @@ export function MarketingTaskConfig({
 
   useEffect(() => {
     const productId = product.id;
+    const cached = getLatestTaskSnapshot(productId);
     const requestId = ++taskRequestId.current;
     const controller = new AbortController();
     taskController.current?.abort();
     taskController.current = controller;
     taskSubmitLock.current = false;
-    setSavedTask(null);
     setTaskError("");
-    setTaskState("loading");
+    if (cached !== undefined) {
+      setSavedTask(cached.value);
+      setTaskState(cached.value === null ? "empty" : "ready");
+      if (cached.value !== null) {
+        onTaskChanged?.(cached.value);
+        platformsChangeRef.current(cached.value.platforms);
+      }
+      if (cacheEntryIsFresh(cached)) return () => controller.abort();
+    } else {
+      setSavedTask(null);
+      setTaskState("loading");
+    }
 
     void getLatestMarketingTask(productId, controller.signal)
       .then((task) => {
@@ -162,9 +187,12 @@ export function MarketingTaskConfig({
           return;
         }
         if (task === null) {
+          setLatestTaskSnapshot(productId, null);
+          setSavedTask(null);
           setTaskState("empty");
           return;
         }
+        setLatestTaskSnapshot(productId, task);
         setSavedTask(task);
         onTaskChanged?.(task);
         platformsChangeRef.current(task.platforms);
@@ -345,6 +373,7 @@ export function MarketingTaskConfig({
         return;
       }
       setSavedTask(task);
+      setLatestTaskSnapshot(productId, task);
       onTaskChanged?.(task);
       platformsChangeRef.current(task.platforms);
       setTaskState("ready");

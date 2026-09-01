@@ -27,6 +27,9 @@ def test_ffmpeg_uses_fixed_safe_contract(tmp_path: Path) -> None:
             and "libx264" in command
             and "anullsrc=r=48000:cl=stereo" in command
         )
+        assert command[command.index("-g") + 1] == "60"
+        assert command[command.index("-keyint_min") + 1] == "30"
+        assert command[command.index("-sc_threshold") + 1] == "0"
         assert "http" not in " ".join(command).casefold()
         return type("R", (), {"returncode": 0, "stdout": b"", "stderr": b""})()
 

@@ -46,3 +46,5 @@ export async function getCompositionArtifact(artifactId: number, signal?: AbortS
 
 export const compositionArtifactContentUrl = (artifactId: number) =>
   apiContentUrl(`/video-composition-artifacts/${artifactId}/content`);
+export const compositionArtifactPreviewUrl = (artifactId: number) =>
+  apiContentUrl(`/video-composition-artifacts/${artifactId}/preview`);

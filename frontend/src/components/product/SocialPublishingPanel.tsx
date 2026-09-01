@@ -945,6 +945,12 @@ function YouTubePublisher({
     setState("idle");
   }, [productId]);
 
+  useEffect(() => {
+    setArtifactId((current) => artifacts.some(
+      (artifact) => String(artifact.artifact_id) === current,
+    ) ? current : String(artifacts[artifacts.length - 1]?.artifact_id ?? ""));
+  }, [artifacts]);
+
   async function runPreflight() {
     const data = metadata();
     if (!data) {

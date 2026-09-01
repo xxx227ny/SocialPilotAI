@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.api.dependencies import get_video_artifact_storage, get_youtube_provider
 from app.core.config import Settings, _local_env_file, get_settings
+from app.core.exceptions import AppError
 from app.execution.runtime_registry import build_execution_handler_registry
 from app.execution.worker import ExecutionWorker, WorkerRunStatus
 from app.main import app
@@ -28,6 +29,7 @@ from app.providers.youtube_provider import (
     YouTubeUploadUncertain,
     YouTubeVideoStatus,
 )
+from app.services.social_security import validated_social_frontend_origin
 from app.services.video_artifact_storage import LocalVideoArtifactStorage
 from app.services.video_render_service import VideoRenderService
 from tests.test_video_render_service import create_video_project, render_request
@@ -191,9 +193,14 @@ def configure(
 
 
 def create_publishable_artifact(
-    db: Session, storage: LocalVideoArtifactStorage
+    db: Session,
+    storage: LocalVideoArtifactStorage,
+    *,
+    platform: str = "YouTube Shorts",
 ) -> tuple[int, int]:
     project = create_video_project(db)
+    project.platform = platform
+    db.commit()
     service = VideoRenderService(db)
     task = service.create_render_task(project.id, render_request("social-render"))
     service.transition_status(task.id, "SUBMITTED")
@@ -504,6 +511,55 @@ def test_oauth_state_is_one_time_and_tokens_are_encrypted(
     assert REFRESH_TOKEN not in database_text
     assert provider.exchange_calls == 1
     assert provider.channel_calls == 1
+
+
+def test_youtube_public_https_callback_redirects_to_configured_origin(
+    client: TestClient, db_session: Session, tmp_path: Path
+) -> None:
+    provider = FakeYouTubeProvider()
+    configured = enabled_settings(tmp_path).model_copy(
+        update={"social_frontend_base_url": "https://47.242.222.177/"}
+    )
+    app.dependency_overrides[get_settings] = lambda: configured
+    app.dependency_overrides[get_youtube_provider] = lambda: provider
+    project = create_video_project(db_session)
+    connect = client.post(
+        "/api/v1/social-accounts/youtube/connect", json={"product_id": project.id}
+    )
+    state = parse_qs(urlparse(connect.json()["authorization_url"]).query)["state"][0]
+
+    response = client.get(
+        "/api/v1/social-accounts/youtube/callback",
+        params={"state": state, "code": "fake-code"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == (
+        "https://47.242.222.177/products?youtube_oauth=connected"
+    )
+
+
+@pytest.mark.parametrize(
+    "unsafe_origin",
+    [
+        "http://47.242.222.177",
+        "javascript:alert(1)",
+        "https://47.242.222.177/products",
+        "https://47.242.222.177?next=https://evil.example",
+        "https://47.242.222.177#fragment",
+        "https://user:password@47.242.222.177",
+    ],
+)
+def test_social_frontend_origin_rejects_non_origin_redirects(
+    tmp_path: Path, unsafe_origin: str
+) -> None:
+    configured = enabled_settings(tmp_path).model_copy(
+        update={"social_frontend_base_url": unsafe_origin}
+    )
+
+    with pytest.raises(AppError, match="Social frontend redirect is not allowed"):
+        validated_social_frontend_origin(configured)
 
 
 def test_expired_and_denied_oauth_are_safe(

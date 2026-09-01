@@ -76,7 +76,13 @@ export function InstagramPublishingPanel({ productId, accounts, onTask }: {
   useEffect(() => {
     const controller = new AbortController();
     if (account) void listInstagramPublishArtifacts(productId, controller.signal)
-      .then((items) => { if (!controller.signal.aborted) setArtifacts(items); })
+      .then((items) => {
+        if (controller.signal.aborted) return;
+        setArtifacts(items);
+        setArtifactId((current) => items.some((item) => String(item.artifact_id) === current)
+          ? current
+          : String(items[items.length - 1]?.artifact_id ?? ""));
+      })
       .catch(() => { if (!controller.signal.aborted) setMessage("Instagram Artifact 读取失败"); });
     return () => { controller.abort(); cancelAll(); };
   }, [productId, account?.id]);

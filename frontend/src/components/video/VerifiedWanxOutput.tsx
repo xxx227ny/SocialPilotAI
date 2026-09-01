@@ -1,5 +1,5 @@
 import type { VideoRenderArtifact } from "../../types/video";
-import { getVideoRenderArtifactContentUrl } from "../../api/videos";
+import { getVideoRenderArtifactPreviewUrl } from "../../api/videos";
 
 interface VerifiedWanxOutputProps {
   artifact: VideoRenderArtifact;
@@ -7,7 +7,7 @@ interface VerifiedWanxOutputProps {
 
 export function VerifiedWanxOutput({ artifact }: VerifiedWanxOutputProps) {
   const playbackUrl = artifact.storage_path
-    ? getVideoRenderArtifactContentUrl(artifact.id)
+    ? getVideoRenderArtifactPreviewUrl(artifact.id)
     : artifact.provider_output_url;
   if (!playbackUrl) return null;
 

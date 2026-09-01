@@ -36,6 +36,7 @@ from app.schemas.video_composition_enhancement import (
 from app.services.video_artifact_http import (
     RangeNotSatisfiable,
     parse_byte_range,
+    private_media_cache_headers,
     stream_file,
 )
 from app.services.video_composition_enhancement_job_service import (
@@ -54,6 +55,7 @@ from app.services.video_composition_service import (
     VideoCompositionArtifactAccessService,
     VideoCompositionService,
 )
+from app.services.video_preview import PREVIEW_VERSION, video_preview_path
 
 router = APIRouter()
 Db = Annotated[Session, Depends(get_db)]
@@ -111,13 +113,14 @@ def get_composition_artifact(
     return VideoCompositionArtifactRead.model_validate(artifact)
 
 
-def _headers(length: int, filename: str) -> dict[str, str]:
+def _headers(length: int, filename: str, etag: str) -> dict[str, str]:
     return {
         "Accept-Ranges": "bytes",
         "Content-Length": str(length),
         "Content-Type": "video/mp4",
         "Content-Disposition": f'inline; filename="{filename}"',
         "X-Content-Type-Options": "nosniff",
+        **private_media_cache_headers(etag),
     }
 
 
@@ -132,7 +135,9 @@ def content(artifact_id: int, request: Request, db: Db, settings: SettingsDep):
         return StreamingResponse(
             stream_file(path),
             media_type="video/mp4",
-            headers=_headers(artifact.size_bytes, name),
+            headers=_headers(
+                artifact.size_bytes, name, f"composition-source-{artifact.sha256}"
+            ),
         )
     try:
         byte_range = parse_byte_range(range_value, artifact.size_bytes)
@@ -142,9 +147,10 @@ def content(artifact_id: int, request: Request, db: Db, settings: SettingsDep):
             headers={
                 "Content-Range": f"bytes */{artifact.size_bytes}",
                 "Content-Length": "0",
+                **private_media_cache_headers(f"composition-source-{artifact.sha256}"),
             },
         )
-    headers = _headers(byte_range.length, name)
+    headers = _headers(byte_range.length, name, f"composition-source-{artifact.sha256}")
     headers["Content-Range"] = (
         f"bytes {byte_range.start}-{byte_range.end}/{artifact.size_bytes}"
     )
@@ -166,7 +172,28 @@ def head_content(artifact_id: int, db: Db, settings: SettingsDep) -> Response:
         headers=_headers(
             artifact.size_bytes,
             f"composition-{artifact.composition_id}-{artifact.id}.mp4",
+            f"composition-source-{artifact.sha256}",
         ),
+    )
+
+
+@router.get("/video-composition-artifacts/{artifact_id}/preview")
+def composition_preview(
+    artifact_id: int, request: Request, db: Db, settings: SettingsDep
+):
+    artifact, path = VideoCompositionArtifactAccessService(db, settings).resolve(
+        artifact_id
+    )
+    preview = video_preview_path(
+        path, artifact.sha256, settings.video_composition_ffmpeg_path
+    )
+    return _asset_response(
+        request,
+        preview,
+        preview.stat().st_size,
+        "video/mp4",
+        f"composition-{artifact.id}-preview.mp4",
+        f"composition-preview-{PREVIEW_VERSION}-{artifact.sha256}",
     )
 
 
@@ -215,9 +242,7 @@ def submit_composition_enhancement(
     gate: VideoCompositionEnhancementGateDep,
 ) -> VideoCompositionEnhancementSubmitRead:
     del gate
-    return VideoCompositionEnhancementJobService(db, settings).enqueue(
-        product_id, data
-    )
+    return VideoCompositionEnhancementJobService(db, settings).enqueue(product_id, data)
 
 
 @router.get(
@@ -257,7 +282,12 @@ def get_composition_subtitle_artifact(
 
 
 def _asset_response(
-    request: Request, path, length: int, content_type: str, filename: str
+    request: Request,
+    path,
+    length: int,
+    content_type: str,
+    filename: str,
+    etag: str,
 ):
     headers = {
         "Accept-Ranges": "bytes",
@@ -265,6 +295,7 @@ def _asset_response(
         "Content-Type": content_type,
         "Content-Disposition": f'inline; filename="{filename}"',
         "X-Content-Type-Options": "nosniff",
+        **private_media_cache_headers(etag),
     }
     range_value = request.headers.get("range")
     if range_value is None:
@@ -276,12 +307,14 @@ def _asset_response(
     except RangeNotSatisfiable:
         return Response(
             status_code=416,
-            headers={"Content-Range": f"bytes */{length}", "Content-Length": "0"},
+            headers={
+                "Content-Range": f"bytes */{length}",
+                "Content-Length": "0",
+                **private_media_cache_headers(etag),
+            },
         )
     headers["Content-Length"] = str(byte_range.length)
-    headers["Content-Range"] = (
-        f"bytes {byte_range.start}-{byte_range.end}/{length}"
-    )
+    headers["Content-Range"] = f"bytes {byte_range.start}-{byte_range.end}/{length}"
     return StreamingResponse(
         stream_file(path, start=byte_range.start, length=byte_range.length),
         status_code=206,
@@ -303,6 +336,27 @@ def enhancement_content(
         artifact.size_bytes,
         "video/mp4",
         f"enhancement-{artifact.enhancement_id}-{artifact.id}.mp4",
+        f"enhancement-source-{artifact.sha256}",
+    )
+
+
+@router.get("/video-composition-enhancement-artifacts/{artifact_id}/preview")
+def enhancement_preview(
+    artifact_id: int, request: Request, db: Db, settings: SettingsDep
+):
+    artifact, path = VideoCompositionEnhancementArtifactAccessService(
+        db, settings
+    ).resolve_video(artifact_id)
+    preview = video_preview_path(
+        path, artifact.sha256, settings.video_composition_ffmpeg_path
+    )
+    return _asset_response(
+        request,
+        preview,
+        preview.stat().st_size,
+        "video/mp4",
+        f"enhancement-{artifact.id}-preview.mp4",
+        f"enhancement-preview-{PREVIEW_VERSION}-{artifact.sha256}",
     )
 
 
@@ -320,14 +374,13 @@ def head_enhancement_content(
             "Content-Length": str(artifact.size_bytes),
             "Content-Type": "video/mp4",
             "X-Content-Type-Options": "nosniff",
+            **private_media_cache_headers(f"enhancement-source-{artifact.sha256}"),
         },
     )
 
 
 @router.get("/video-composition-subtitle-artifacts/{artifact_id}/content")
-def subtitle_content(
-    artifact_id: int, request: Request, db: Db, settings: SettingsDep
-):
+def subtitle_content(artifact_id: int, request: Request, db: Db, settings: SettingsDep):
     artifact, path = VideoCompositionEnhancementArtifactAccessService(
         db, settings
     ).resolve_subtitle(artifact_id)
@@ -337,13 +390,12 @@ def subtitle_content(
         artifact.size_bytes,
         "text/vtt; charset=utf-8",
         f"enhancement-{artifact.enhancement_id}-subtitles.vtt",
+        f"subtitle-source-{artifact.sha256}",
     )
 
 
 @router.head("/video-composition-subtitle-artifacts/{artifact_id}/content")
-def head_subtitle_content(
-    artifact_id: int, db: Db, settings: SettingsDep
-) -> Response:
+def head_subtitle_content(artifact_id: int, db: Db, settings: SettingsDep) -> Response:
     try:
         artifact, _ = VideoCompositionEnhancementArtifactAccessService(
             db, settings
@@ -361,5 +413,6 @@ def head_subtitle_content(
                 f'{artifact.enhancement_id}-subtitles.vtt"'
             ),
             "X-Content-Type-Options": "nosniff",
+            **private_media_cache_headers(f"subtitle-source-{artifact.sha256}"),
         },
     )

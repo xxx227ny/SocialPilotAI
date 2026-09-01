@@ -449,6 +449,9 @@ def test_enhancement_ffmpeg_builds_frozen_mix_graph(tmp_path, with_music) -> Non
     assert ("[2:a]" in analysis_graph) is with_music
     command = run.call_args_list[1].args[0]
     graph = command[command.index("-filter_complex") + 1]
+    assert command[command.index("-g") + 1] == "60"
+    assert command[command.index("-keyint_min") + 1] == "30"
+    assert command[command.index("-sc_threshold") + 1] == "0"
     assert "loudnorm=" not in graph
     assert "volume=6.510dB" in graph
     assert "alimiter=limit=0.891251:level=false" in graph
@@ -698,6 +701,9 @@ def test_enhancement_artifact_get_head_and_range_are_exact(
         )
     assert metadata.status_code == 200
     assert full.status_code == 200 and full.content == video_content
+    assert full.headers["cache-control"] == "private, max-age=86400, immutable"
+    assert full.headers["cdn-cache-control"] == "no-store"
+    assert full.headers["vary"] == "Cookie"
     assert head.status_code == 200
     assert partial.status_code == 206 and partial.content == video_content[:4]
     assert missing.status_code == 404

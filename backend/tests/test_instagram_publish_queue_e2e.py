@@ -69,7 +69,9 @@ def setup_runtime(db: Session, tmp_path: Path):
     )
     storage = LocalVideoArtifactStorage(tmp_path.resolve(), 1_000_000)
     probe = FakeProbe()
-    product_id, artifact_id = create_publishable_artifact(db, storage)
+    product_id, artifact_id = create_publishable_artifact(
+        db, storage, platform="Instagram Reels"
+    )
     account = SocialAccount(
         product_id=product_id,
         platform="instagram",

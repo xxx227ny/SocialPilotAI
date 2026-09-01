@@ -1,4 +1,4 @@
-import { apiClient, apiContentUrl } from "./client";
+import { AI_EXECUTION_TIMEOUT_MS, apiClient, apiContentUrl } from "./client";
 import type { ExecutionJob } from "../types/execution";
 import type {
   HappyHorseVideoPreflight,
@@ -73,7 +73,10 @@ async function controlProductVideoProductionBatch(
   const response = await apiClient.post<ProductVideoProductionResult>(
     `/products/${productId}/real-product-video/production-batches/${batchId}/${action}`,
     undefined,
-    { signal },
+    {
+      signal,
+      timeout: action === "advance" ? AI_EXECUTION_TIMEOUT_MS : undefined,
+    },
   );
   return response.data;
 }
@@ -222,6 +225,8 @@ export async function refreshHappyHorseVideo(
 
 export const happyHorseVideoContentUrl = (artifactId: number) =>
   apiContentUrl(`/video-render-artifacts/${artifactId}/content`);
+export const happyHorseVideoPreviewUrl = (artifactId: number) =>
+  apiContentUrl(`/video-render-artifacts/${artifactId}/preview`);
 
 export async function getExactMarketingJob(jobId: number, signal?: AbortSignal) {
   const response = await apiClient.get<ExecutionJob>(`/execution-jobs/${jobId}`, {

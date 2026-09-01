@@ -149,7 +149,7 @@ export function TikTokPublishingPanel({ productId, accounts, onTask }: {
     void listTikTokPublishArtifacts(productId, operation.controller.signal)
       .then((items) => {
         if (!current("artifacts", operation)) return;
-        const selected = items.length === 1 ? items[0].artifact_id : 0;
+        const selected = items[items.length - 1]?.artifact_id ?? 0;
         liveIdentity.current.artifactId = selected || null;
         setArtifacts(items); setArtifactId(selected);
       })

@@ -16,8 +16,8 @@ import type { CampaignMetrics, GrowthRecommendation } from "../types/growth";
 import type { PlatformMetrics } from "../types/dashboard";
 
 export function GrowthCopilotPage() {
-  const { snapshot, loading, error } = useDemoSnapshot();
   const { isPresentation } = usePresentationMode();
+  const { snapshot, loading, error } = useDemoSnapshot(isPresentation);
   const [campaignIds, setCampaignIds] = useState<number[] | null>(null);
   const [campaignRecordsFailed, setCampaignRecordsFailed] = useState(false);
   const productId = snapshot?.product.id;

@@ -110,6 +110,9 @@ try {
   assert.match(component, /listStrategyJobs/);
   assert.match(component, /getExecutionJob/);
   assert.match(component, /getExactMarketingStrategy/);
+  assert.match(component, /Promise\.all/);
+  assert.match(component, /getStrategyWorkspaceSnapshot/);
+  assert.match(component, /setStrategyWorkspaceSnapshot/);
   assert.match(component, /retryExecutionJob/);
   assert.match(component, /submitLockRef\.current/);
   assert.match(component, /SUBMIT_UNKNOWN/);

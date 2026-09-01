@@ -13,6 +13,8 @@ import {
   login as loginRequest,
   logout as logoutRequest,
 } from "../api/auth";
+import { clearReadResources } from "../hooks/readResourceStore";
+import { clearCopyWorkspaceCache } from "../components/product/copyWorkspaceCache";
 
 type AuthState = {
   checking: boolean;
@@ -35,6 +37,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
   const applySession = useCallback(
     (session: { enabled: boolean; authenticated: boolean; username: string | null }) => {
+      clearReadResources();
+      clearCopyWorkspaceCache();
       setEnabled(session.enabled);
       setAuthenticated(session.authenticated);
       setUsername(session.username);
@@ -66,6 +70,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     const handleUnauthorized = () => {
       if (enabled) {
+        clearReadResources();
+        clearCopyWorkspaceCache();
         setAuthenticated(false);
         setUsername(null);
       }

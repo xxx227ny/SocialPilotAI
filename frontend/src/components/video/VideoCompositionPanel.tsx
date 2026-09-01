@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { getApiErrorMessage } from "../../api/client";
 import {
-  compositionArtifactContentUrl,
+  compositionArtifactPreviewUrl,
   getCompositionArtifact,
   getCompositionJob,
   preflightVideoComposition,
@@ -103,7 +103,7 @@ export function VideoCompositionPanel({ product, videoProjectId }: { product: Pr
     <button type="button" onClick={() => void runPreflight()} disabled={selectedShots.length < 3 || submitLock.current}>运行零模型调用前置检查</button>
     {preflight && <><label><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />确认本地CPU与磁盘写入</label><button type="button" disabled={!confirmed || submitLock.current} onClick={() => void submit()}>创建15秒成片</button></>}
     {job && <p>任务 #{job.id} · {job.status}</p>}
-    {result && <><p>合成视频 #{result.id} · {result.duration_ms}毫秒 · {result.video_codec}/{result.audio_codec}</p><video controls src={compositionArtifactContentUrl(result.id)} /><VideoCompositionEnhancementPanel product={product} artifact={result} /></>}
+    {result && <><p>合成视频 #{result.id} · {result.duration_ms}毫秒 · {result.video_codec}/{result.audio_codec}</p><video controls playsInline preload="metadata" src={compositionArtifactPreviewUrl(result.id)} /><VideoCompositionEnhancementPanel product={product} artifact={result} /></>}
     {job?.status === "SUCCEEDED" && !result && <button type="button" onClick={() => setJob({ ...job })} disabled={resultLock.current}>重新读取精确成片记录</button>}
     {message && <p role="status">{message}</p>}
   </section>;

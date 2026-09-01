@@ -157,10 +157,12 @@ try {
   assert.match(panel, /getSystemReadiness/);
   assert.match(panel, /listBrandKits/);
   assert.match(panel, /listMarketingTasks/);
-  assert.match(
-    panel,
-    /\.catch\([\s\S]*setReadiness\(null\);[\s\S]*setBrandKits\(\[\]\);[\s\S]*setBriefs\(\[\]\);/,
-  );
+  assert.match(panel, /useReadResource\("system-readiness"/);
+  assert.match(panel, /useReadResource\("brand-kits"/);
+  assert.doesNotMatch(panel, /Promise\.all\(/);
+  assert.doesNotMatch(panel, /setReadiness\(null\)|setBrandKits\(\[\]\)/);
+  assert.match(panel, /readiness\?\.qwen.ready === false/);
+  assert.match(panel, /待确认/);
   assert.match(panel, /runWithSynchronousRequestLock\(createKitLock/);
   assert.match(panel, /runWithSynchronousRequestLock\(createVersionLock/);
   assert.match(panel, /runWithSynchronousRequestLock\(bindingLock/);

@@ -4,13 +4,13 @@ import {
   controlBatchVideoJob,
   createBatchVideo,
   getBatchVideoJob,
-  listBatchProducts,
   listBatchVideoVariants,
   preflightBatchVideo,
 } from "../../api/batchVideoJobs";
+import { listProducts } from "../../api/products";
+import { useReadResource } from "../../hooks/useReadResource";
 import type {
   BatchPlatform,
-  BatchProductOption,
   BatchVideoCreateResult,
   BatchVideoRequest,
 } from "../../types/batchVideo";
@@ -49,7 +49,8 @@ const workflowApi: BatchWorkflowApi = {
 };
 
 export function BatchVideoJobPanel() {
-  const [products, setProducts] = useState<BatchProductOption[]>([]);
+  const productList = useReadResource("products", listProducts);
+  const products = productList.data ?? [];
   const [productIds, setProductIds] = useState<number[]>([]);
   const [platforms, setPlatforms] = useState<BatchPlatform[]>(ALL_PLATFORMS);
   const [variantsPerPlatform, setVariantsPerPlatform] = useState(1);
@@ -61,17 +62,15 @@ export function BatchVideoJobPanel() {
   const pollController = useRef<AbortController | null>(null);
   const sequence = useRef(0);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    void listBatchProducts(controller.signal)
-      .then(setProducts)
-      .catch(() => setMessage("无法读取商品；未创建任何批量任务。"));
-    return () => {
-      controller.abort();
-      abortBatchOperation(slot.current);
-      pollController.current?.abort();
-    };
+  useEffect(() => () => {
+    abortBatchOperation(slot.current);
+    pollController.current?.abort();
   }, []);
+
+  useEffect(() => {
+    if (productList.loadedAt === null || productList.loading || productList.error) return;
+    setProductIds((current) => current.filter((id) => products.some((item) => item.id === id)));
+  }, [productList.loadedAt, productList.loading, productList.error, products]);
 
   useEffect(() => {
     if (!result) return;
@@ -204,7 +203,7 @@ export function BatchVideoJobPanel() {
       <div className="batch-video-panel__grid">
         <fieldset><legend>商品（可多选）</legend>{products.map((product) => (
           <label key={product.id}><input type="checkbox" checked={productIds.includes(product.id)} onChange={(event) => setProductIds((value) => event.target.checked ? [...value, product.id] : value.filter((id) => id !== product.id))} />{product.name} · BrandKitVersion {product.brand_kit_version_id ?? "未绑定"}</label>
-        ))}</fieldset>
+        ))}{productList.loadedAt === null ? <p role="status">正在首次读取商品……</p> : null}{productList.error ? <button type="button" onClick={productList.refresh}>重新读取商品</button> : null}</fieldset>
         <fieldset><legend>平台</legend>{ALL_PLATFORMS.map((platform) => (
           <label key={platform}><input type="checkbox" checked={platforms.includes(platform)} onChange={(event) => setPlatforms((value) => event.target.checked ? [...value, platform] : value.filter((item) => item !== platform))} />{platform}</label>
         ))}</fieldset>

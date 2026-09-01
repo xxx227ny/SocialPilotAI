@@ -1,4 +1,4 @@
-import { getPresentationSnapshotArtifactContentUrl } from "../../api/presentationSnapshots";
+import { getPresentationSnapshotArtifactPreviewUrl } from "../../api/presentationSnapshots";
 import type { PresentationSnapshot } from "../../types/presentationSnapshot";
 import type { SnapshotPresentationView } from "./snapshotPresentationPayload";
 
@@ -68,7 +68,7 @@ export function SnapshotVideoSlide({
             <header><span>SNAPSHOT ARTIFACT</span><strong>{view.artifact ? `#${view.artifact.id}` : "缺失"}</strong></header>
             {artifactAvailable && view.artifact ? (
               <>
-                <video controls playsInline preload="metadata" src={getPresentationSnapshotArtifactContentUrl(snapshot.id)}>
+                <video controls playsInline preload="metadata" src={getPresentationSnapshotArtifactPreviewUrl(snapshot.id)}>
                   Your browser does not support video playback.
                 </video>
                 <dl>

@@ -25,8 +25,11 @@ for (const label of [
   assert.match(component, new RegExp(label.replace("/", "\\/")));
 }
 assert.match(component, /正在检查本机配置，不调用模型/);
-assert.match(component, /启动 SocialPilotAI/);
+assert.match(component, /最新状态待确认/);
+assert.match(component, /不代表 API Key 缺失/);
 assert.match(component, /getSystemReadiness/);
+assert.match(component, /readiness\s*\?\s*"ready"/);
+assert.match(component, /继续显示上次成功检查的结果/);
 assert.match(api, /\/system\/readiness/);
 assert.match(layout, /!isPresentation && <SystemReadinessPanel/);
 assert.doesNotMatch(types, /api_key|client_secret|access_token|refresh_token/i);

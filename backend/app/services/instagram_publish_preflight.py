@@ -141,6 +141,7 @@ class InstagramPublishPreflightService:
             or copy_matrix is None
             or strategy is None
             or project.product_id != product_id
+            or project.platform != "Instagram Reels"
             or copy_matrix.product_id != product_id
             or strategy.product_id != product_id
             or project.copy_matrix_id != copy_matrix.id
@@ -268,7 +269,10 @@ class InstagramPublishPreflightService:
                 verified = self.artifact_access.resolve_verified(artifact.id)
                 task = verified.artifact.video_render_task
                 project = task.video_project
-                if project.product_id != product_id:
+                if (
+                    project.product_id != product_id
+                    or project.platform != "Instagram Reels"
+                ):
                     continue
             except (AppError, AttributeError):
                 continue

@@ -289,6 +289,11 @@ export function getVideoRenderArtifactContentUrl(artifactId: number): string {
   return `${baseUrl}/video-render-artifacts/${artifactId}/content`;
 }
 
+export function getVideoRenderArtifactPreviewUrl(artifactId: number): string {
+  const baseUrl = apiClient.defaults.baseURL?.replace(/\/$/, "") ?? "";
+  return `${baseUrl}/video-render-artifacts/${artifactId}/preview`;
+}
+
 export async function downloadVideoRenderArtifact(
   artifactId: number,
   signal?: AbortSignal,

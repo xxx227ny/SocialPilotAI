@@ -32,6 +32,7 @@ from app.services.live_video_render_service import LiveVideoRenderService
 from app.services.video_artifact_http import (
     RangeNotSatisfiable,
     parse_byte_range,
+    private_media_cache_headers,
     safe_artifact_filename,
     stream_file,
 )
@@ -40,6 +41,7 @@ from app.services.video_artifact_storage import (
     VideoArtifactError,
     VideoArtifactStorage,
 )
+from app.services.video_preview import PREVIEW_VERSION, video_preview_path
 from app.services.video_render_job_service import VideoRenderJobService
 from app.services.video_render_operation_service import (
     VideoArtifactAccessService,
@@ -107,9 +109,9 @@ def create_video_render_task(
 def list_video_render_artifacts(
     video_project_id: int, db: DbSession
 ) -> list[VideoRenderArtifactSchema]:
-    return VideoRenderService(
-        db
-    ).list_succeeded_artifacts_by_video_project(video_project_id)
+    return VideoRenderService(db).list_succeeded_artifacts_by_video_project(
+        video_project_id
+    )
 
 
 @router.get(
@@ -160,9 +162,7 @@ def get_latest_video_render_task(
     db: DbSession,
     artifact_storage: RecoveryArtifactStorageDep,
 ) -> VideoRenderOperationRead:
-    return VideoRenderRecoveryService(
-        db, artifact_storage
-    ).get_latest(video_project_id)
+    return VideoRenderRecoveryService(db, artifact_storage).get_latest(video_project_id)
 
 
 @router.post(
@@ -179,18 +179,14 @@ async def create_live_video_render(
         raise AppError("Live Wanx demo is disabled", status_code=403)
     if data.confirm_live_generation is not True:
         raise AppError("Live generation confirmation is required", 422)
-    result = await LiveVideoRenderService(
-        db, provider_factory
-    ).execute(video_project_id)
+    result = await LiveVideoRenderService(db, provider_factory).execute(
+        video_project_id
+    )
     return VideoRenderExecutionSchema.model_validate(result)
 
 
-@router.get(
-    "/video-render-tasks/{task_id}", response_model=VideoRenderTaskPublicRead
-)
-def get_video_render_task(
-    task_id: int, db: DbSession
-) -> VideoRenderTaskPublicRead:
+@router.get("/video-render-tasks/{task_id}", response_model=VideoRenderTaskPublicRead)
+def get_video_render_task(task_id: int, db: DbSession) -> VideoRenderTaskPublicRead:
     return VideoRenderService(db).get_render_task(task_id)
 
 
@@ -203,9 +199,7 @@ def recover_video_render_task(
     db: DbSession,
     artifact_storage: RecoveryArtifactStorageDep,
 ) -> VideoRenderOperationRead:
-    return VideoRenderRecoveryService(
-        db, artifact_storage
-    ).get_task(task_id)
+    return VideoRenderRecoveryService(db, artifact_storage).get_task(task_id)
 
 
 @router.post(
@@ -213,9 +207,7 @@ def recover_video_render_task(
 )
 def submit_video_render_task(task_id: int) -> None:
     del task_id
-    raise AppError(
-        "Video render submission must use the confirmed queue endpoint", 409
-    )
+    raise AppError("Video render submission must use the confirmed queue endpoint", 409)
 
 
 @router.post(
@@ -241,9 +233,7 @@ def get_video_render_artifact(
     db: DbSession,
     artifact_storage: VideoArtifactStorageDep,
 ) -> VideoRenderArtifactSafeRead:
-    return VideoArtifactAccessService(
-        db, artifact_storage
-    ).get_metadata(artifact_id)
+    return VideoArtifactAccessService(db, artifact_storage).get_metadata(artifact_id)
 
 
 def _artifact_headers(
@@ -252,6 +242,7 @@ def _artifact_headers(
     content_type: str,
     content_length: int,
     disposition: str,
+    etag: str,
 ) -> dict[str, str]:
     return {
         "Accept-Ranges": "bytes",
@@ -259,7 +250,59 @@ def _artifact_headers(
         "Content-Length": str(content_length),
         "Content-Type": content_type,
         "X-Content-Type-Options": "nosniff",
+        **private_media_cache_headers(etag),
     }
+
+
+def _video_response(
+    *,
+    request: Request,
+    path: Path,
+    content_type: str,
+    size_bytes: int,
+    filename: str,
+    etag: str,
+) -> Response:
+    range_header = request.headers.get("range")
+    if range_header is None:
+        return StreamingResponse(
+            stream_file(path),
+            status_code=200,
+            headers=_artifact_headers(
+                filename=filename,
+                content_type=content_type,
+                content_length=size_bytes,
+                disposition="inline",
+                etag=etag,
+            ),
+            media_type=content_type,
+        )
+    try:
+        requested = parse_byte_range(range_header, size_bytes)
+    except RangeNotSatisfiable:
+        return Response(
+            status_code=416,
+            headers={
+                "Accept-Ranges": "bytes",
+                "Content-Range": f"bytes */{size_bytes}",
+                "Content-Length": "0",
+                **private_media_cache_headers(etag),
+            },
+        )
+    headers = _artifact_headers(
+        filename=filename,
+        content_type=content_type,
+        content_length=requested.length,
+        disposition="inline",
+        etag=etag,
+    )
+    headers["Content-Range"] = f"bytes {requested.start}-{requested.end}/{size_bytes}"
+    return StreamingResponse(
+        stream_file(path, start=requested.start, length=requested.length),
+        status_code=206,
+        headers=headers,
+        media_type=content_type,
+    )
 
 
 @router.get("/video-render-artifacts/{artifact_id}/content")
@@ -269,57 +312,47 @@ def get_video_render_artifact_content(
     db: DbSession,
     artifact_storage: VideoArtifactStorageDep,
 ) -> StreamingResponse:
-    verified = VideoArtifactAccessService(
-        db, artifact_storage
-    ).resolve_verified(artifact_id)
+    verified = VideoArtifactAccessService(db, artifact_storage).resolve_verified(
+        artifact_id
+    )
     filename = safe_artifact_filename(
         artifact_id,
         verified.artifact.video_render_task_id,
         verified.path.suffix,
     )
-    range_header = request.headers.get("range")
-    if range_header is None:
-        headers = _artifact_headers(
-            filename=filename,
-            content_type=verified.content_type,
-            content_length=verified.size_bytes,
-            disposition="inline",
-        )
-        return StreamingResponse(
-            stream_file(verified.path),
-            status_code=200,
-            headers=headers,
-            media_type=verified.content_type,
-        )
-    try:
-        requested = parse_byte_range(range_header, verified.size_bytes)
-    except RangeNotSatisfiable:
-        return Response(
-            status_code=416,
-            headers={
-                "Accept-Ranges": "bytes",
-                "Content-Range": f"bytes */{verified.size_bytes}",
-                "Content-Length": "0",
-            },
-        )
-    headers = _artifact_headers(
-        filename=filename,
+    return _video_response(
+        request=request,
+        path=verified.path,
         content_type=verified.content_type,
-        content_length=requested.length,
-        disposition="inline",
+        size_bytes=verified.size_bytes,
+        filename=filename,
+        etag=f"video-source-{verified.sha256}",
     )
-    headers["Content-Range"] = (
-        f"bytes {requested.start}-{requested.end}/{verified.size_bytes}"
+
+
+@router.get("/video-render-artifacts/{artifact_id}/preview")
+def get_video_render_artifact_preview(
+    artifact_id: int,
+    request: Request,
+    db: DbSession,
+    artifact_storage: VideoArtifactStorageDep,
+    app_settings: SettingsDep,
+) -> Response:
+    verified = VideoArtifactAccessService(db, artifact_storage).resolve_verified(
+        artifact_id
     )
-    return StreamingResponse(
-        stream_file(
-            verified.path,
-            start=requested.start,
-            length=requested.length,
-        ),
-        status_code=206,
-        headers=headers,
-        media_type=verified.content_type,
+    preview = video_preview_path(
+        verified.path,
+        verified.sha256,
+        app_settings.video_composition_ffmpeg_path,
+    )
+    return _video_response(
+        request=request,
+        path=preview,
+        content_type="video/mp4",
+        size_bytes=preview.stat().st_size,
+        filename=f"video-artifact-{artifact_id}-preview.mp4",
+        etag=f"video-preview-{PREVIEW_VERSION}-{verified.sha256}",
     )
 
 
@@ -329,9 +362,9 @@ def head_video_render_artifact_content(
     db: DbSession,
     artifact_storage: VideoArtifactStorageDep,
 ) -> Response:
-    verified = VideoArtifactAccessService(
-        db, artifact_storage
-    ).resolve_verified(artifact_id)
+    verified = VideoArtifactAccessService(db, artifact_storage).resolve_verified(
+        artifact_id
+    )
     filename = safe_artifact_filename(
         artifact_id,
         verified.artifact.video_render_task_id,
@@ -344,6 +377,7 @@ def head_video_render_artifact_content(
             content_type=verified.content_type,
             content_length=verified.size_bytes,
             disposition="inline",
+            etag=f"video-source-{verified.sha256}",
         ),
     )
 
@@ -354,9 +388,9 @@ def download_video_render_artifact(
     db: DbSession,
     artifact_storage: VideoArtifactStorageDep,
 ) -> StreamingResponse:
-    verified = VideoArtifactAccessService(
-        db, artifact_storage
-    ).resolve_verified(artifact_id)
+    verified = VideoArtifactAccessService(db, artifact_storage).resolve_verified(
+        artifact_id
+    )
     filename = safe_artifact_filename(
         artifact_id,
         verified.artifact.video_render_task_id,
@@ -370,6 +404,7 @@ def download_video_render_artifact(
             content_type=verified.content_type,
             content_length=verified.size_bytes,
             disposition="attachment",
+            etag=f"video-source-{verified.sha256}",
         ),
         media_type=verified.content_type,
     )

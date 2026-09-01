@@ -6,8 +6,8 @@ import type {
 import type { UploadedProductImage } from "../types/productMarketingVideo";
 import { apiClient, apiContentUrl } from "./client";
 
-export async function listProducts(): Promise<Product[]> {
-  const response = await apiClient.get<Product[]>("/products");
+export async function listProducts(signal?: AbortSignal): Promise<Product[]> {
+  const response = await apiClient.get<Product[]>("/products", { signal });
   return response.data;
 }
 
@@ -73,4 +73,8 @@ export function productImageContentUrl(
   assetId: number,
 ): string {
   return apiContentUrl(`/products/${productId}/image-assets/${assetId}/content`);
+}
+
+export function productImageThumbnailUrl(productId: number, assetId: number): string {
+  return apiContentUrl(`/products/${productId}/image-assets/${assetId}/thumbnail`);
 }

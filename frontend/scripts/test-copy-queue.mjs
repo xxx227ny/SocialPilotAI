@@ -104,6 +104,9 @@ try {
   assert.match(state.copyMatrixCsv(matrix), /"#Portable #Fresh"/);
 
   const component = read("src", "components", "product", "CopyPreflightPanel.tsx");
+  const workspaceCache = await server.ssrLoadModule(
+    "/src/components/product/copyWorkspaceCache.ts",
+  );
   const taskConfig = read("src", "components", "product", "MarketingTaskConfig.tsx");
   const copyPage = read("src", "pages", "CopyMatrixPage.tsx");
   const copyTypes = read("src", "types", "copy.ts");
@@ -111,6 +114,9 @@ try {
   assert.match(component, /listCopyJobs/);
   assert.match(component, /getCopyExecutionJob/);
   assert.match(component, /getExactCopyMatrix/);
+  assert.match(component, /Promise\.all/);
+  assert.match(component, /getCopyWorkspaceSnapshot/);
+  assert.match(component, /setCopyWorkspaceSnapshot/);
   assert.match(component, /retryCopyExecutionJob/);
   assert.match(component, /submitLockRef\.current/);
   assert.match(component, /SUBMIT_UNKNOWN/);
@@ -141,13 +147,19 @@ try {
   assert.match(copyPage, /restoredPlatformDrafts/);
   assert.match(copyTypes, /"Pinterest"/);
 
+  workspaceCache.clearCopyWorkspaceCache();
+  workspaceCache.setLatestTaskSnapshot(1, { id: 7, product_id: 1 });
+  assert.equal(workspaceCache.getLatestTaskSnapshot(1).value.id, 7);
+  workspaceCache.clearCopyWorkspaceCache();
+  assert.equal(workspaceCache.getLatestTaskSnapshot(1), undefined);
+
   const api = read("src", "api", "copies.ts");
   assert.match(api, /\/copy-jobs/);
   assert.match(api, /\/execution-jobs\/\$\{jobId\}/);
   assert.match(api, /\/copies\/\$\{copyMatrixId\}/);
   assert.match(api, /regeneration_key\?: string/);
 
-  console.log("Copy queue frontend checks passed: 39 scenarios");
+  console.log("Copy queue frontend checks passed: 46 scenarios");
 } finally {
   await server.close();
 }

@@ -147,7 +147,7 @@ assert.doesNotMatch(
 );
 
 const output = read("src", "components", "video", "VerifiedWanxOutput.tsx");
-assert.match(output, /getVideoRenderArtifactContentUrl\(artifact\.id\)/);
+assert.match(output, /getVideoRenderArtifactPreviewUrl\(artifact\.id\)/);
 assert.match(output, /label="Artifact" value=\{`#\$\{artifact\.id\}`\}/);
 assert.match(output, /label="Status" value="SUCCEEDED"/);
 

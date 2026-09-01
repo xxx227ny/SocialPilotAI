@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { getApiErrorMessage } from "../../api/client";
 import { getProduct, listProducts } from "../../api/products";
+import { useReadResource } from "../../hooks/useReadResource";
 import type { Product } from "../../types/product";
 
 export function OperationalProductSelector({
@@ -18,7 +19,8 @@ export function OperationalProductSelector({
     updateProduct: (product: Product) => void,
   ) => React.ReactNode;
 }) {
-  const [products, setProducts] = useState<Product[]>([]);
+  const productList = useReadResource("products", listProducts);
+  const products = productList.data ?? [];
   const [selectedId, setSelectedId] = useState(() => {
     if (!storageKey) return 0;
     try {
@@ -28,37 +30,28 @@ export function OperationalProductSelector({
       return 0;
     }
   });
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [message, setMessage] = useState("正在读取商品……");
-  const requestId = useRef(0);
+  const loadSelectedProduct = useCallback(
+    (signal: AbortSignal) => selectedId > 0
+      ? getProduct(selectedId, signal)
+      : Promise.resolve(null),
+    [selectedId],
+  );
+  const selected = useReadResource(`product:${selectedId}`, loadSelectedProduct);
+  const selectedProduct = selected.data;
 
   useEffect(() => {
-    let active = true;
-    void listProducts()
-      .then((items) => {
-        if (!active) return;
-        setProducts(items);
-        if (selectedId > 0 && !items.some((item) => item.id === selectedId)) {
-          setSelectedId(0);
-          if (storageKey) {
-            try {
-              window.localStorage.removeItem(storageKey);
-            } catch {
-              // Storage may be unavailable in a restricted browser session.
-            }
-          }
-        }
-        setMessage(items.length > 0 ? "请选择要操作的商品。" : "尚未创建商品，请先前往商品中心。 ");
-      })
-      .catch((error) => {
-        if (active) {
-          setMessage(getApiErrorMessage(error, "商品列表读取失败，请检查本地服务。"));
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, [storageKey]);
+    // Only discard a remembered choice after a successful authoritative read.
+    // A slow or interrupted refresh must not erase a choice that was just used.
+    if (
+      productList.loadedAt !== null &&
+      !productList.loading &&
+      !productList.error &&
+      selectedId > 0 &&
+      !products.some((item) => item.id === selectedId)
+    ) {
+      setSelectedId(0);
+    }
+  }, [productList.loadedAt, productList.loading, productList.error, products, selectedId]);
 
   useEffect(() => {
     if (!storageKey) return;
@@ -73,32 +66,27 @@ export function OperationalProductSelector({
     }
   }, [selectedId, storageKey]);
 
-  useEffect(() => {
-    const currentRequest = ++requestId.current;
-    setSelectedProduct(null);
-    if (selectedId <= 0) return;
-    const controller = new AbortController();
-    setMessage("正在读取所选商品……");
-    void getProduct(selectedId, controller.signal)
-      .then((product) => {
-        if (currentRequest !== requestId.current) return;
-        setSelectedProduct(product);
-        setMessage("");
-      })
-      .catch((error) => {
-        if (!controller.signal.aborted && currentRequest === requestId.current) {
-          setMessage(getApiErrorMessage(error, "所选商品读取失败，请重新选择。"));
-        }
-      });
-    return () => controller.abort();
-  }, [selectedId]);
-
   function updateProduct(product: Product) {
-    setProducts((items) =>
-      items.map((item) => (item.id === product.id ? product : item)),
+    productList.updateData((items) =>
+      (items ?? []).map((item) => (item.id === product.id ? product : item)),
     );
-    setSelectedProduct(product);
+    selected.updateData(product);
   }
+
+  const listMessage = productList.loadedAt === null
+    ? productList.error
+      ? getApiErrorMessage(productList.error, "商品列表读取失败，请稍后重试。")
+      : "正在首次读取商品……"
+    : products.length === 0
+      ? "尚未创建商品，请先前往商品中心。"
+      : selectedId === 0
+        ? "请选择要操作的商品。"
+        : "";
+  const detailMessage = selectedId > 0 && selectedProduct === null
+    ? selected.error
+      ? getApiErrorMessage(selected.error, "所选商品读取失败，请重新读取。")
+      : "正在首次读取所选商品……"
+    : "";
 
   return (
     <section className="operational-product-workspace">
@@ -123,7 +111,16 @@ export function OperationalProductSelector({
           </select>
         </label>
       </header>
-      {message ? <p role="status">{message}</p> : null}
+      {listMessage || detailMessage ? (
+        <p role="status">
+          {detailMessage || listMessage}
+          {(productList.error || selected.error) ? (
+            <button type="button" onClick={productList.error ? productList.refresh : selected.refresh}>
+              重新读取
+            </button>
+          ) : null}
+        </p>
+      ) : null}
       {selectedProduct ? children(selectedProduct, updateProduct) : null}
     </section>
   );

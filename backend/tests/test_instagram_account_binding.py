@@ -299,6 +299,25 @@ def test_professional_callback_encrypts_and_replays_without_duplicates(
     ) == (2, 2, 2)
 
 
+def test_instagram_public_https_callback_redirects_to_configured_origin(
+    client: TestClient, db_session: Session
+) -> None:
+    provider = FakeInstagramProvider()
+    configured = settings().model_copy(
+        update={"social_frontend_base_url": "https://47.242.222.177/"}
+    )
+    configure(provider, configured)
+    item = product(db_session)
+    state, _ = connect(client, item.id)
+
+    response = callback(client, state, code="fake-instagram-code")
+
+    assert response.status_code == 303
+    assert response.headers["location"] == (
+        "https://47.242.222.177/products?instagram_oauth=connected"
+    )
+
+
 @pytest.mark.parametrize(
     "account_type,scopes",
     [
@@ -460,28 +479,45 @@ def test_reel_provider_contract_uses_bearer_and_exact_endpoints(tmp_path) -> Non
         if request.method == "POST":
             return httpx.Response(
                 200,
-                json={"id": "fake-container", "uri": "https://rupload.facebook.com/ig-api-upload/fake"},
+                json={
+                    "id": "fake-container",
+                    "uri": "https://rupload.facebook.com/ig-api-upload/fake",
+                },
             )
         return httpx.Response(200, json={"status_code": "FINISHED"})
 
     provider = InstagramProvider(settings(), transport=httpx.MockTransport(handler))
     media = tmp_path / "safe.mov"
     media.write_bytes(b"fake-mov")
-    container = asyncio.run(provider.create_resumable_reel_container(
-        professional_account_id="178414000000001", access_token=LONG_TOKEN,
-        caption="safe caption", share_to_feed=True,
-    ))
-    asyncio.run(provider.upload_reel_bytes(
-        upload_uri=container.upload_uri, access_token=LONG_TOKEN,
-        path=media.resolve(), size_bytes=media.stat().st_size,
-    ))
-    status = asyncio.run(provider.get_container_status(
-        container_id=container.container_id, access_token=LONG_TOKEN,
-    ))
-    published = asyncio.run(provider.publish_reel(
-        professional_account_id="178414000000001",
-        container_id=container.container_id, access_token=LONG_TOKEN,
-    ))
+    container = asyncio.run(
+        provider.create_resumable_reel_container(
+            professional_account_id="178414000000001",
+            access_token=LONG_TOKEN,
+            caption="safe caption",
+            share_to_feed=True,
+        )
+    )
+    asyncio.run(
+        provider.upload_reel_bytes(
+            upload_uri=container.upload_uri,
+            access_token=LONG_TOKEN,
+            path=media.resolve(),
+            size_bytes=media.stat().st_size,
+        )
+    )
+    status = asyncio.run(
+        provider.get_container_status(
+            container_id=container.container_id,
+            access_token=LONG_TOKEN,
+        )
+    )
+    published = asyncio.run(
+        provider.publish_reel(
+            professional_account_id="178414000000001",
+            container_id=container.container_id,
+            access_token=LONG_TOKEN,
+        )
+    )
 
     assert status.status == "FINISHED"
     assert published.media_id == "fake-media-id"

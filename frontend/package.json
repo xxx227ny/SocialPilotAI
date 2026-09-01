@@ -4,6 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "test:read-cache": "node scripts/test-read-resource-cache.mjs",
+    "test:growth-readability": "node scripts/test-growth-readability.mjs",
+    "test:read-resilience": "node scripts/test-read-resilience.mjs",
     "dev": "vite",
     "dev:token-plan": "vite --mode token-plan",
     "build": "tsc -b && vite build",

@@ -290,6 +290,11 @@ try {
     "三个平台独立推进",
     "createProductVideoProductionBatch",
     "advanceProductVideoProductionBatch",
+    "recoverUnconfirmedProductionAdvance",
+    "isUnconfirmedApiMutation",
+    "productionCheckpoint",
+    "不会重复提交或重复计费",
+    "已停止自动提交",
     "pauseProductVideoProductionBatch",
     "resumeProductVideoProductionBatch",
     "cancelProductVideoProductionBatch",
@@ -361,9 +366,12 @@ try {
       "window.localStorage.setItem(storageKey, String(selectedId))",
     ),
   );
-  assert.ok(selector.includes("!items.some((item) => item.id === selectedId)"));
+  assert.ok(selector.includes("useReadResource(\"products\", listProducts)"));
+  assert.ok(selector.includes("!products.some((item) => item.id === selectedId)"));
+  assert.ok(selector.includes("productList.loadedAt !== null"));
+  assert.ok(selector.includes("!productList.error"));
   assert.ok(selector.includes("}, [selectedId, storageKey]);"));
-  safety += 4;
+  safety += 7;
   assert.ok(!productCenter.includes("RealProductVideoPanel"));
   assert.ok(productCenter.includes("uploadProductImage"));
   assert.ok(productCenter.includes("上传真实商品素材"));
@@ -396,6 +404,8 @@ try {
     assert.ok(productVideoApi.includes(`\"${action}\"`));
     safety++;
   }
+  assert.ok(productVideoApi.includes('timeout: action === "advance" ? AI_EXECUTION_TIMEOUT_MS : undefined'));
+  safety++;
   assert.ok(batchVideoApi.includes("/qwen-scripts/preflight"));
   assert.ok(batchVideoApi.includes("/qwen-scripts"));
   assert.ok(batchVideoApi.includes("cost_confirmed: true"));

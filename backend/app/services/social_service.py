@@ -5,7 +5,7 @@ import hashlib
 import hmac
 import json
 from datetime import UTC, datetime, timedelta
-from urllib.parse import urlencode, urlparse
+from urllib.parse import urlencode
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -38,6 +38,7 @@ from app.services.social_security import (
     digest_oauth_state,
     generate_oauth_state,
     generate_pkce_pair,
+    validated_social_frontend_origin,
 )
 from app.services.video_artifact_storage import VideoArtifactStorage
 from app.services.video_render_operation_service import (
@@ -252,13 +253,7 @@ class SocialAccountService:
         return path
 
     def _frontend_redirect(self, path: str, status: str) -> str:
-        base = self.settings.social_frontend_base_url.rstrip("/")
-        parsed = urlparse(base)
-        if parsed.scheme not in {"http", "https"} or parsed.hostname not in {
-            "127.0.0.1",
-            "localhost",
-        }:
-            raise AppError("Social frontend redirect is not allowed", 503)
+        base = validated_social_frontend_origin(self.settings)
         return f"{base}{path}?{urlencode({'youtube_oauth': status})}"
 
 
@@ -573,6 +568,8 @@ class YouTubePublishingService:
         project = task.video_project
         if project is None or project.product_id != product_id:
             raise AppError("Artifact does not belong to Product", 404)
+        if project.platform != "YouTube Shorts":
+            raise AppError("Artifact is not a YouTube Shorts video", 409)
         if verified.content_type not in {"video/mp4", "video/webm"}:
             raise AppError("Artifact video type is not supported", 409)
         return verified, project

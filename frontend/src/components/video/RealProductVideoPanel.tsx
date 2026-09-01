@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { getApiErrorMessage, hasApiErrorMessage } from "../../api/client";
+import {
+  getApiErrorMessage,
+  hasApiErrorMessage,
+  isUnconfirmedApiMutation,
+} from "../../api/client";
 import {
   createOrRecoverBatchQwenScripts,
   listBatchVideoVariants,
@@ -14,6 +18,7 @@ import {
   getProductImageAsset,
   getProductVideoProductionBatch,
   happyHorseVideoContentUrl,
+  happyHorseVideoPreviewUrl,
   listProductVideoSources,
   pauseProductVideoProductionBatch,
   productVideoProductionBatchDownloadUrl,
@@ -39,6 +44,7 @@ import {
 } from "../../api/videoCompositions";
 import {
   compositionEnhancementContentUrl,
+  compositionEnhancementPreviewUrl,
   compositionSubtitleContentUrl,
   getCompositionEnhancementArtifact,
   preflightCompositionEnhancement,
@@ -952,11 +958,22 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
         }
         return;
       }
-      current = await advanceProductVideoProductionBatch(
-        product.id,
-        current.batch.id,
-        active.signal,
-      );
+      const beforeAdvance = current;
+      try {
+        current = await advanceProductVideoProductionBatch(
+          product.id,
+          current.batch.id,
+          active.signal,
+        );
+      } catch (error) {
+        if (!isUnconfirmedApiMutation(error)) throw error;
+        const recovered = await recoverUnconfirmedProductionAdvance(
+          beforeAdvance,
+          active,
+        );
+        if (!recovered) return;
+        current = recovered;
+      }
       if (!operation.current.current(active.id)) return;
       applyProduction(current);
       if (!productionBatchTerminal(current.batch, current.items)) {
@@ -964,6 +981,64 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
       }
     }
     throw new Error("批量生产等待超时，已保留批次，可稍后继续。 ");
+  }
+
+  function productionCheckpoint(value: ProductVideoProductionResult) {
+    return JSON.stringify([
+      value.batch.status,
+      value.batch.updated_at,
+      value.items.map((item) => [
+        item.id,
+        item.status,
+        item.stage,
+        item.updated_at,
+        item.safe_error_code,
+        item.final_video_artifact_id,
+      ]),
+    ]);
+  }
+
+  async function recoverUnconfirmedProductionAdvance(
+    previous: ProductVideoProductionResult,
+    active: { id: number; signal: AbortSignal },
+  ): Promise<ProductVideoProductionResult | null> {
+    const previousCheckpoint = productionCheckpoint(previous);
+    setMessage("连接确认超时，正在安全核对同一生产批次；不会重复提交或重复计费。");
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      const recovered = await getProductVideoProductionBatch(
+        product.id,
+        previous.batch.id,
+        active.signal,
+      );
+      if (!operation.current.current(active.id)) return null;
+      applyProduction(recovered);
+      if (
+        productionBatchTerminal(recovered.batch, recovered.items) ||
+        productionCheckpoint(recovered) !== previousCheckpoint
+      ) {
+        setMessage("连接已自动恢复，已按同一批次的服务端状态继续；未重复提交。");
+        return recovered;
+      }
+      await waitForUnconfirmedAdvance(active.signal);
+    }
+    setMessage(
+      "暂未取得本次推进的服务端确认，已停止自动提交。请按当前批次号重新读取记录核对。",
+    );
+    return null;
+  }
+
+  async function waitForUnconfirmedAdvance(signal: AbortSignal) {
+    await new Promise<void>((resolve, reject) => {
+      const timer = window.setTimeout(resolve, 2_000);
+      signal.addEventListener(
+        "abort",
+        () => {
+          window.clearTimeout(timer);
+          reject(new DOMException("Aborted", "AbortError"));
+        },
+        { once: true },
+      );
+    });
   }
 
   async function generateThreePlatformBatch() {
@@ -1464,9 +1539,11 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
                 )}
                 {item.final_video_artifact_id && item.subtitle_artifact_id && (
                   <div>
-                    <video
-                      controls
-                      src={compositionEnhancementContentUrl(
+                      <video
+                        controls
+                        playsInline
+                        preload="none"
+                      src={compositionEnhancementPreviewUrl(
                         item.final_video_artifact_id,
                       )}
                     />
@@ -1526,7 +1603,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
       )}
       {cloudVideoArtifactId && (
         <div>
-          <video controls src={happyHorseVideoContentUrl(cloudVideoArtifactId)} />
+          <video controls playsInline preload="metadata" src={happyHorseVideoPreviewUrl(cloudVideoArtifactId)} />
           <a href={happyHorseVideoContentUrl(cloudVideoArtifactId)} download>
             下载HappyHorse MP4
           </a>
@@ -1534,7 +1611,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
       )}
       {result && (
         <div>
-          <video controls src={compositionEnhancementContentUrl(result.video)} />
+          <video controls playsInline preload="metadata" src={compositionEnhancementPreviewUrl(result.video)} />
           <a href={compositionEnhancementContentUrl(result.video)} download>
             下载MP4
           </a>

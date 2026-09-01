@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState, type SetStateAction } from "react";
+import { useReadResource } from "../../hooks/useReadResource";
 
 import {
   bindProductBrandKitVersion,
@@ -17,8 +18,6 @@ import type {
   BrandKitVersion,
   BrandKitVersionInput,
 } from "../../types/brandKit";
-import type { SystemReadinessResponse } from "../../types/health";
-import type { MarketingTask } from "../../types/marketing";
 import type { Product } from "../../types/product";
 import {
   automaticallySelectedVersionId,
@@ -32,6 +31,8 @@ import {
 
 interface Props {
   products: Product[];
+  productsAvailable?: boolean;
+  productDetailAvailable?: boolean;
   selectedProduct: Product | null;
   briefRevision: number;
   onProductUpdated: (product: Product) => void;
@@ -106,58 +107,44 @@ function fromVersion(version: BrandKitVersion): VersionDraft {
 
 export function BrandKitOnboardingPanel({
   products,
+  productsAvailable = true,
+  productDetailAvailable = true,
   selectedProduct,
   briefRevision,
   onProductUpdated,
 }: Props) {
   const [collapsed, setCollapsed] = useState(false);
-  const [readiness, setReadiness] = useState<SystemReadinessResponse | null>(null);
-  const [brandKits, setBrandKits] = useState<BrandKit[]>([]);
-  const [briefs, setBriefs] = useState<MarketingTask[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState("");
+  const readinessRead = useReadResource("system-readiness", getSystemReadiness);
+  const kitsRead = useReadResource("brand-kits", listBrandKits);
+  const loadBriefs = useCallback((signal: AbortSignal) => selectedProduct
+    ? listMarketingTasks(selectedProduct.id, signal) : Promise.resolve([]),
+  [selectedProduct?.id, briefRevision]);
+  const briefsRead = useReadResource(`briefs:${selectedProduct?.id ?? "none"}`, loadBriefs);
+  const readiness = readinessRead.data;
+  const brandKits = kitsRead.data ?? [];
+  const briefs = briefsRead.data ?? [];
+  const loading = readinessRead.loading || kitsRead.loading || briefsRead.loading;
+  const loadError = [
+    ["系统状态", readinessRead.error], ["品牌规范", kitsRead.error], ["营销任务", briefsRead.error],
+  ].filter(([, error]) => error).map(([label, error]) => `${label}：${getApiErrorMessage(error, "暂时无法读取，请稍后重试。")}`).join(" ");
+  function reloadReads() {
+    readinessRead.refresh();
+    kitsRead.refresh();
+    briefsRead.refresh();
+  }
+  function setBrandKits(action: SetStateAction<BrandKit[]>) {
+    kitsRead.updateData((current) => typeof action === "function" ? action(current ?? []) : action);
+  }
   const [selectedKitId, setSelectedKitId] = useState<number | null>(null);
   const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
   const [kitName, setKitName] = useState("");
   const [draft, setDraft] = useState<VersionDraft>(EMPTY_VERSION);
   const [actionState, setActionState] = useState("");
   const [actionError, setActionError] = useState("");
-  const [reloadKey, setReloadKey] = useState(0);
   const createKitLock = useRef(false);
   const createVersionLock = useRef(false);
   const bindingLock = useRef(false);
   const deletionLock = useRef(false);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    setLoading(true);
-    setLoadError("");
-    Promise.all([
-      getSystemReadiness(controller.signal),
-      listBrandKits(controller.signal),
-      selectedProduct
-        ? listMarketingTasks(selectedProduct.id, controller.signal)
-        : Promise.resolve([]),
-    ])
-      .then(([loadedReadiness, loadedKits, loadedBriefs]) => {
-        if (controller.signal.aborted) return;
-        setReadiness(loadedReadiness);
-        setBrandKits(loadedKits);
-        setBriefs(loadedBriefs);
-        setLoading(false);
-      })
-      .catch((error: unknown) => {
-        if (controller.signal.aborted) return;
-        setReadiness(null);
-        setBrandKits([]);
-        setBriefs([]);
-        setLoadError(
-          getApiErrorMessage(error, "首次使用状态读取失败，请恢复本地服务后重试。"),
-        );
-        setLoading(false);
-      });
-    return () => controller.abort();
-  }, [selectedProduct?.id, selectedProduct?.brand_kit_version_id, briefRevision, reloadKey]);
 
   const selectedKit = useMemo(
     () => brandKits.find((kit) => kit.id === selectedKitId) ?? null,
@@ -171,6 +158,14 @@ export function BrandKitOnboardingPanel({
     selectedProduct,
     briefs,
   );
+  const knownSteps = [
+    readinessRead.loadedAt !== null,
+    kitsRead.loadedAt !== null,
+    productsAvailable,
+    productDetailAvailable && kitsRead.loadedAt !== null,
+    productDetailAvailable && briefsRead.loadedAt !== null,
+    readinessRead.loadedAt !== null && kitsRead.loadedAt !== null && productsAvailable && productDetailAvailable && briefsRead.loadedAt !== null,
+  ];
 
   function chooseKit(kit: BrandKit) {
     const versionId = automaticallySelectedVersionId(kit);
@@ -351,25 +346,26 @@ export function BrandKitOnboardingPanel({
       {!collapsed && (
         <>
           <ol className="brand-onboarding__steps">
-            {steps.map((step) => (
+            {steps.map((step, index) => (
               <li className={step.complete ? "is-complete" : "is-pending"} key={step.id}>
-                <span>{step.complete ? "✓" : step.id}</span>
+                <span>{knownSteps[index] && step.complete ? "✓" : step.id}</span>
                 <strong>{step.label}</strong>
-                <small>{step.complete ? "已完成" : "待完成"}</small>
+                <small>{!knownSteps[index] ? "待确认" : step.complete ? "已完成" : "待完成"}</small>
               </li>
             ))}
           </ol>
 
-          {!readiness?.qwen.ready && (
+          {readinessRead.error === null && !readinessRead.loading && readiness?.qwen.ready === false && (
             <p className="brand-onboarding__configuration">
               {SAFE_QWEN_CONFIGURATION_GUIDANCE}
             </p>
           )}
-          {loading && <p>正在从本地数据库恢复引导状态…</p>}
+          {loading && <p>正在分别读取系统状态、品牌规范和营销任务；已有资料会保留。</p>}
           {loadError && (
             <div className="brand-onboarding__error" role="alert">
               <p>{loadError}</p>
-              <button type="button" onClick={() => setReloadKey((value) => value + 1)}>
+              <p>读取失败不代表资料被删除或 API Key 失效。已加载的区域仍可查看；失败区域如有旧资料，将保留上次结果。</p>
+              <button type="button" disabled={loading} onClick={reloadReads}>
                 重新读取
               </button>
             </div>
@@ -382,12 +378,12 @@ export function BrandKitOnboardingPanel({
                   <h3>品牌规范与不可变版本</h3>
                   <p>存在多个版本时不会自动选择最新记录，必须明确选择。</p>
                 </div>
-                <button type="button" onClick={() => setReloadKey((value) => value + 1)}>
+                <button type="button" disabled={kitsRead.loading} onClick={kitsRead.refresh}>
                   重新读取本地记录
                 </button>
               </header>
               {brandKits.length === 0 ? (
-                <p className="brand-kit-empty">尚无品牌规范；系统不会自动创建。</p>
+                <p className="brand-kit-empty">{kitsRead.error ? "品牌规范暂时无法读取，不能确认是否为空；请先重新读取，勿重复创建。" : kitsRead.loadedAt === null ? "正在读取品牌规范…" : "尚无品牌规范；系统不会自动创建。"}</p>
               ) : (
                 brandKits.map((kit) => (
                   <article className={selectedKitId === kit.id ? "is-selected" : ""} key={kit.id}>
@@ -460,7 +456,7 @@ export function BrandKitOnboardingPanel({
                     创建或复用不可变版本
                   </button>
                 ) : (
-                  <button type="button" onClick={() => void handleCreateKit()}>
+                  <button type="button" disabled={kitsRead.loadedAt === null || !!kitsRead.error} onClick={() => void handleCreateKit()}>
                     创建品牌规范与版本 1
                   </button>
                 )}

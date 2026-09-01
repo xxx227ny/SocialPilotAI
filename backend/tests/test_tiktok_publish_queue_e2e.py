@@ -91,7 +91,9 @@ def setup_runtime(db: Session, tmp_path: Path):
         video_artifact_storage_root=str(tmp_path.resolve()),
     )
     storage = LocalVideoArtifactStorage(tmp_path.resolve(), 100_000_000)
-    product_id, artifact_id = create_publishable_artifact(db, storage)
+    product_id, artifact_id = create_publishable_artifact(
+        db, storage, platform="TikTok"
+    )
     account = SocialAccount(
         product_id=product_id,
         platform="tiktok",

@@ -24,6 +24,11 @@ import {
   jobNeedsPolling,
   selectExactStrategyJob,
 } from "./strategyQueueState";
+import {
+  cacheEntryIsFresh,
+  getStrategyWorkspaceSnapshot,
+  setStrategyWorkspaceSnapshot,
+} from "./copyWorkspaceCache";
 
 type LoadState = "loading" | "ready" | "blocked" | "error";
 
@@ -64,10 +69,19 @@ export function StrategyPreflightPanel({
   task,
   product,
 }: StrategyPreflightPanelProps) {
-  const [loadState, setLoadState] = useState<LoadState>("loading");
-  const [preflight, setPreflight] = useState<StrategyPreflight | null>(null);
-  const [job, setJob] = useState<ExecutionJob | null>(null);
-  const [strategy, setStrategy] = useState<MarketingStrategy | null>(null);
+  const initialSnapshot = getStrategyWorkspaceSnapshot(task.id, product.id);
+  const [loadState, setLoadState] = useState<LoadState>(
+    initialSnapshot?.value.loadState ?? "loading",
+  );
+  const [preflight, setPreflight] = useState<StrategyPreflight | null>(
+    initialSnapshot?.value.preflight ?? null,
+  );
+  const [job, setJob] = useState<ExecutionJob | null>(
+    initialSnapshot?.value.job ?? null,
+  );
+  const [strategy, setStrategy] = useState<MarketingStrategy | null>(
+    initialSnapshot?.value.strategy ?? null,
+  );
   const [acknowledged, setAcknowledged] = useState(false);
   const [reused, setReused] = useState(false);
   const [message, setMessage] = useState("");
@@ -97,19 +111,30 @@ export function StrategyPreflightPanel({
     controllerRef.current = controller;
     submitLockRef.current = false;
     retryLockRef.current = false;
-    setLoadState("loading");
     setMessage("");
-    setPreflight(null);
-    setJob(null);
-    setStrategy(null);
-    setReused(false);
     setAcknowledged(false);
 
+    const cached = getStrategyWorkspaceSnapshot(taskId, productId);
+    if (cached) {
+      setLoadState(cached.value.loadState);
+      setPreflight(cached.value.preflight);
+      setJob(cached.value.job);
+      setStrategy(cached.value.strategy);
+      setReused(cached.value.reused);
+      if (cacheEntryIsFresh(cached)) return;
+    } else {
+      setLoadState("loading");
+      setPreflight(null);
+      setJob(null);
+      setStrategy(null);
+      setReused(false);
+    }
+
     try {
-      const currentPreflight = await getStrategyPreflight(
-        taskId,
-        controller.signal,
-      );
+      const [currentPreflight, jobs] = await Promise.all([
+        getStrategyPreflight(taskId, controller.signal),
+        listStrategyJobs(taskId, controller.signal),
+      ]);
       if (
         !isCurrent(taskId, productId, controller) ||
         currentPreflight.task_id !== taskId ||
@@ -117,23 +142,38 @@ export function StrategyPreflightPanel({
       ) {
         return;
       }
-      setPreflight(currentPreflight);
-      setLoadState(currentPreflight.ready_for_execution ? "ready" : "blocked");
-
-      const jobs = await listStrategyJobs(taskId, controller.signal);
-      if (!isCurrent(taskId, productId, controller)) return;
       const restored = selectExactStrategyJob(
         jobs,
         taskId,
         productId,
         currentPreflight.input_digest,
       );
+      const strategyId = exactStrategyResultId(restored);
+      const restoredStrategy = strategyId === null
+        ? null
+        : await getExactMarketingStrategy(taskId, strategyId, controller.signal);
+      if (!isCurrent(taskId, productId, controller)) return;
+      if (
+        restoredStrategy &&
+        (restoredStrategy.id !== strategyId || restoredStrategy.product_id !== productId)
+      ) return;
+      const nextLoadState = currentPreflight.ready_for_execution ? "ready" : "blocked";
+      setPreflight(currentPreflight);
+      setLoadState(nextLoadState);
       setJob(restored);
-      if (restored) setReused(true);
+      setStrategy(restoredStrategy);
+      setReused(restored !== null);
+      setStrategyWorkspaceSnapshot(taskId, productId, {
+        loadState: nextLoadState,
+        preflight: currentPreflight,
+        job: restored,
+        strategy: restoredStrategy,
+        reused: restored !== null,
+      });
     } catch (error) {
       if (!controller.signal.aborted) {
         setMessage(getApiErrorMessage(error, "策略队列状态读取失败，请重试。"));
-        setLoadState("error");
+        if (!cached) setLoadState("error");
       }
     }
   }, [isCurrent, product.id, task.id]);
@@ -182,6 +222,7 @@ export function StrategyPreflightPanel({
       if (job?.status !== "SUCCEEDED") setStrategy(null);
       return;
     }
+    if (strategy?.id === strategyId) return;
     const controller = new AbortController();
     void getExactMarketingStrategy(task.id, strategyId, controller.signal)
       .then((result) => {
@@ -201,7 +242,24 @@ export function StrategyPreflightPanel({
         }
       });
     return () => controller.abort();
-  }, [job, product.id, task.id]);
+  }, [job, product.id, strategy?.id, task.id]);
+
+  useEffect(() => {
+    if (
+      !preflight ||
+      preflight.task_id !== task.id ||
+      preflight.product_id !== product.id ||
+      loadState === "loading" ||
+      loadState === "error"
+    ) return;
+    setStrategyWorkspaceSnapshot(task.id, product.id, {
+      loadState,
+      preflight,
+      job,
+      strategy,
+      reused,
+    });
+  }, [job, loadState, preflight, product.id, reused, strategy, task.id]);
 
   const canEnqueue = Boolean(
     strategyExecutionEnabled &&

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
+import { useReadResource } from "../../hooks/useReadResource";
 
 import { getSystemReadiness } from "../../api/health";
 import type { SystemReadinessResponse } from "../../types/health";
@@ -34,30 +35,18 @@ const COMPONENTS: Array<{ key: ComponentKey; label: string }> = [
 ];
 
 export function SystemReadinessPanel() {
-  const [state, setState] = useState<LoadState>("loading");
-  const [readiness, setReadiness] = useState<SystemReadinessResponse | null>(null);
+  const read = useReadResource("system-readiness", getSystemReadiness);
+  const readiness = read.data;
+  // A transient refresh failure must not replace a previously verified snapshot
+  // with an alarming whole-system outage. The timestamp below makes staleness clear.
+  const state: LoadState = readiness
+    ? "ready"
+    : read.loading
+      ? "loading"
+      : read.error
+        ? "failed"
+        : "ready";
   const [expanded, setExpanded] = useState(false);
-
-  const load = useCallback((signal?: AbortSignal) => {
-    setState("loading");
-    void getSystemReadiness(signal)
-      .then((result) => {
-        if (signal?.aborted) return;
-        setReadiness(result);
-        setState("ready");
-      })
-      .catch(() => {
-        if (signal?.aborted) return;
-        setReadiness(null);
-        setState("failed");
-      });
-  }, []);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    load(controller.signal);
-    return () => controller.abort();
-  }, [load]);
 
   return (
     <section className="system-readiness" aria-label="系统就绪状态">
@@ -65,21 +54,27 @@ export function SystemReadinessPanel() {
         <div>
           <strong>系统就绪状态</strong>
           <span>{coreReadinessLabel(readiness, state)}</span>
+          {read.loadedAt !== null && <small>检查于 {new Date(read.loadedAt).toLocaleTimeString("zh-CN")}；配置就绪不代表公网始终连通</small>}
         </div>
         <div className="system-readiness__actions">
           <button type="button" onClick={() => setExpanded((value) => !value)}>
             {expanded ? "收起详情" : "展开详情"}
           </button>
           {expanded ? (
-            <button type="button" onClick={() => load()} disabled={state === "loading"}>
+            <button type="button" onClick={read.refresh} disabled={state === "loading"}>
               {state === "loading" ? "检查中……" : "重新检查"}
             </button>
           ) : null}
         </div>
       </header>
+      {expanded && read.error && readiness ? (
+        <p className="system-readiness__offline" role="status">
+          本次刷新暂时失败；继续显示上次成功检查的结果，业务数据不会因此被清空。可稍后重新检查。
+        </p>
+      ) : null}
       {expanded && state === "failed" ? (
         <p className="system-readiness__offline">
-          后端未连接。请运行“启动 SocialPilotAI”；若仍失败，请查看本机运行日志。
+          暂时无法确认最新系统状态，可能是公网连接中断或超时，不代表 API Key 缺失。请重新检查；若持续失败，请检查本机后台和公网通道。
         </p>
       ) : expanded ? (
         <div className="system-readiness__grid">
@@ -121,7 +116,7 @@ function coreReadinessLabel(
   state: LoadState,
 ) {
   if (state === "loading") return "正在检查本机配置，不调用模型";
-  if (state === "failed" || !readiness) return "本地服务未连接";
+  if (state === "failed" || !readiness) return "连接异常，最新状态待确认";
   const coreReady = [
     readiness.backend,
     readiness.qwen,
@@ -130,5 +125,5 @@ function coreReadinessLabel(
     readiness.artifact_storage,
     readiness.execution_worker,
   ].every((item) => item.ready);
-  return coreReady ? "核心生成服务已就绪" : "部分核心服务需要配置";
+  return coreReady ? "上次检查：核心生成服务已就绪" : "上次检查：部分核心服务需要配置";
 }

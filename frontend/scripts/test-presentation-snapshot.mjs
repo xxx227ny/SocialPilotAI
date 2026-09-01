@@ -300,7 +300,7 @@ try {
     "SnapshotGrowthSlide.tsx",
   ].map((name) => read("src", "components", "presentation", name));
   const presentationSource = [snapshotPage, ...slides].join("\n");
-  assert.match(slides[2], /getPresentationSnapshotArtifactContentUrl\(snapshot\.id\)/);
+  assert.match(slides[2], /getPresentationSnapshotArtifactPreviewUrl\(snapshot\.id\)/);
   assert.match(slides[1], /MissingCopyCard/);
   assert.match(slides[1], /formatSnapshotCopyIdentity/);
   assert.doesNotMatch(slides[1], /api\//);

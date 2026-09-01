@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { getApiErrorMessage } from "../../api/client";
 import {
-  compositionEnhancementContentUrl,
+  compositionEnhancementPreviewUrl,
   compositionSubtitleContentUrl,
   getCompositionEnhancementArtifact,
   getCompositionEnhancementJob,
@@ -388,7 +388,7 @@ export function VideoCompositionEnhancementPanel({
             {result.subtitle_cue_count} cues ·{" "}
             {(result.measured_lufs_milli / 1000).toFixed(1)} LUFS
           </p>
-          <video controls src={compositionEnhancementContentUrl(result.id)} />
+          <video controls playsInline preload="metadata" src={compositionEnhancementPreviewUrl(result.id)} />
           <a href={compositionSubtitleContentUrl(result.subtitle_artifact_id)}>
             读取精确 WebVTT
           </a>

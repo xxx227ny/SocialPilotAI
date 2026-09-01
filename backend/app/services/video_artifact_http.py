@@ -4,7 +4,18 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
-CHUNK_SIZE = 64 * 1024
+CHUNK_SIZE = 512 * 1024
+PRIVATE_MEDIA_CACHE_CONTROL = "private, max-age=86400, immutable"
+
+
+def private_media_cache_headers(etag: str) -> dict[str, str]:
+    return {
+        "Cache-Control": PRIVATE_MEDIA_CACHE_CONTROL,
+        "CDN-Cache-Control": "no-store",
+        "ETag": f'"{etag}"',
+        "Vary": "Cookie",
+        "Cross-Origin-Resource-Policy": "same-origin",
+    }
 
 
 @dataclass(frozen=True, slots=True)

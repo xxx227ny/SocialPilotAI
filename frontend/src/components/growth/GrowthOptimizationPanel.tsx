@@ -548,7 +548,7 @@ export function GrowthOptimizationPanel({
         />
         每15秒串行刷新ROAS上下文
       </label>
-      <div className="growth-panel__controls">
+      <div className="growth-optimization__controls">
         <NumberInput label="总预算" value={policy.total_budget} setValue={(value) => setPolicy((old) => ({ ...old, total_budget: value }))} />
         <NumberInput label="目标ROAS" value={policy.target_roas} setValue={(value) => setPolicy((old) => ({ ...old, target_roas: value }))} />
         <button type="button" disabled={!canCreateOptimizationRun(analysis, context, policy, busy)} onClick={() => void createRun()}>
@@ -791,7 +791,7 @@ export function GrowthOptimizationPanel({
 }
 
 function NumberInput({ label, value, setValue }: { label: string; value: number; setValue: (value: number) => void }) {
-  return <label><span>{label}</span><input type="number" min="0.01" step="0.01" value={value} onChange={(event) => setValue(Number(event.target.value))} /></label>;
+  return <label className="growth-number-field"><span>{label}</span><input type="number" min="0.01" step="0.01" value={value} onChange={(event) => setValue(Number(event.target.value))} /></label>;
 }
 
 function RunCard({ run, active = false, activate }: { run: GrowthOptimizationRun; active?: boolean; activate?: () => void }) {

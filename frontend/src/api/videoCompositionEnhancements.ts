@@ -48,5 +48,7 @@ export async function getCompositionEnhancementArtifact(artifactId: number, sign
 
 export const compositionEnhancementContentUrl = (artifactId: number) =>
   apiContentUrl(`/video-composition-enhancement-artifacts/${artifactId}/content`);
+export const compositionEnhancementPreviewUrl = (artifactId: number) =>
+  apiContentUrl(`/video-composition-enhancement-artifacts/${artifactId}/preview`);
 export const compositionSubtitleContentUrl = (artifactId: number) =>
   apiContentUrl(`/video-composition-subtitle-artifacts/${artifactId}/content`);

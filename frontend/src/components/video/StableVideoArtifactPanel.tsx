@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   downloadVideoRenderArtifact,
   getVideoRenderArtifactMetadata,
-  getVideoRenderArtifactContentUrl,
+  getVideoRenderArtifactPreviewUrl,
 } from "../../api/videos";
 import type {
   VideoRenderArtifactReference,
@@ -234,7 +234,7 @@ export function StableVideoArtifactPanel({
           key={playerKey}
           controls
           preload="metadata"
-          src={getVideoRenderArtifactContentUrl(metadata.id)}
+          src={getVideoRenderArtifactPreviewUrl(metadata.id)}
           onLoadStart={() => setPlaybackState("playback_loading")}
           onLoadedMetadata={() => setPlaybackState("playback_ready")}
           onCanPlay={() => setPlaybackState("playback_ready")}

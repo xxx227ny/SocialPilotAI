@@ -7,15 +7,15 @@ import {
   getProduct,
   listProducts,
   productImageContentUrl,
+  productImageThumbnailUrl,
   uploadProductImage,
 } from "../api/products";
 import { BrandKitOnboardingPanel } from "../components/product/BrandKitOnboardingPanel";
 import { ProductCreateForm } from "../components/product/ProductCreateForm";
 import { usePresentationMode } from "../context/PresentationModeContext";
+import { useReadResource } from "../hooks/useReadResource";
 import type { Product } from "../types/product";
 
-type ListState = "loading" | "refreshing" | "ready" | "error";
-type DetailState = "idle" | "loading" | "ready" | "error";
 const PRODUCT_CENTER_SELECTION_KEY = "socialpilot.productCenter.selectedProduct";
 
 function restoredProductCenterSelection() {
@@ -31,48 +31,24 @@ function restoredProductCenterSelection() {
 
 export function ProductCenterPage() {
   const { isPresentation } = usePresentationMode();
-  const [products, setProducts] = useState<Product[]>([]);
-  const [listState, setListState] = useState<ListState>("loading");
-  const [listError, setListError] = useState("");
+  const productList = useReadResource("products", listProducts);
+  const products = productList.data ?? [];
+  const listState = productList.loading ? (productList.loadedAt ? "refreshing" : "loading") : productList.error ? "error" : "ready";
+  const listError = productList.error ? getApiErrorMessage(productList.error, "商品列表暂时无法读取，请稍后重试。") : "";
   const [selectedProductId, setSelectedProductId] = useState<number | null>(
     restoredProductCenterSelection,
   );
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [detailState, setDetailState] = useState<DetailState>("idle");
-  const [detailError, setDetailError] = useState("");
-  const [detailRetryKey, setDetailRetryKey] = useState(0);
+  const loadDetail = useCallback((signal: AbortSignal) => selectedProductId === null
+    ? Promise.resolve(null) : getProduct(selectedProductId, signal), [selectedProductId]);
+  const productDetail = useReadResource(`product:${selectedProductId}`, loadDetail);
+  const selectedProduct = productDetail.data;
+  const detailState = selectedProductId === null ? "idle" : productDetail.loading ? "loading" : productDetail.error ? "error" : "ready";
+  const detailError = productDetail.error ? getApiErrorMessage(productDetail.error, "商品详情暂时无法读取，请稍后重试。") : "";
   const [newlyCreatedId, setNewlyCreatedId] = useState<number | null>(null);
-  const listRequestId = useRef(0);
-
-  const loadProducts = useCallback(async (preferredProductId?: number) => {
-    const requestId = ++listRequestId.current;
-    setListState((current) => (current === "ready" ? "refreshing" : "loading"));
-    setListError("");
-
-    try {
-      const loadedProducts = await listProducts();
-      if (requestId !== listRequestId.current) return;
-      setProducts(loadedProducts);
-      setListState("ready");
-
-      if (
-        preferredProductId !== undefined &&
-        loadedProducts.some((product) => product.id === preferredProductId)
-      ) {
-        setSelectedProductId(preferredProductId);
-      }
-    } catch (error) {
-      if (requestId !== listRequestId.current) return;
-      setListError(
-        getApiErrorMessage(error, "商品列表加载失败，请检查服务连接后重试。"),
-      );
-      setListState("error");
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadProducts();
-  }, [loadProducts]);
+  function loadProducts(preferredProductId?: number) {
+    if (preferredProductId !== undefined) setSelectedProductId(preferredProductId);
+    productList.refresh();
+  }
 
   useEffect(() => {
     if (
@@ -99,50 +75,13 @@ export function ProductCenterPage() {
     }
   }, [selectedProductId]);
 
-  useEffect(() => {
-    if (selectedProductId === null) {
-      setSelectedProduct(null);
-      setDetailState("idle");
-      setDetailError("");
-      return;
-    }
-
-    const controller = new AbortController();
-    let active = true;
-    setDetailState("loading");
-    setDetailError("");
-
-    void getProduct(selectedProductId, controller.signal)
-      .then((product) => {
-        if (!active) return;
-        setSelectedProduct(product);
-        setDetailState("ready");
-      })
-      .catch((error: unknown) => {
-        if (!active || controller.signal.aborted) return;
-        setSelectedProduct(null);
-        setDetailError(
-          getApiErrorMessage(error, "商品详情加载失败，请稍后重试。"),
-        );
-        setDetailState("error");
-      });
-
-    return () => {
-      active = false;
-      controller.abort();
-    };
-  }, [selectedProductId, detailRetryKey]);
-
   function handleProductCreated(product: Product) {
-    setProducts((current) => [
+    productList.updateData((current) => [
       product,
-      ...current.filter((item) => item.id !== product.id),
+      ...(current ?? []).filter((item) => item.id !== product.id),
     ]);
     setNewlyCreatedId(product.id);
     setSelectedProductId(product.id);
-    setSelectedProduct(product);
-    setDetailState("ready");
-    setListError("");
     void loadProducts(product.id);
   }
 
@@ -152,20 +91,17 @@ export function ProductCenterPage() {
   }
 
   function handleProductUpdated(product: Product) {
-    setProducts((current) =>
-      current.map((item) => (item.id === product.id ? product : item)),
+    productList.updateData((current) =>
+      (current ?? []).map((item) => (item.id === product.id ? product : item)),
     );
-    setSelectedProduct((current) =>
+    productDetail.updateData((current) =>
       current?.id === product.id ? product : current,
     );
   }
 
   function handleProductDeleted(productId: number) {
-    setProducts((current) => current.filter((item) => item.id !== productId));
+    productList.updateData((current) => (current ?? []).filter((item) => item.id !== productId));
     setSelectedProductId(null);
-    setSelectedProduct(null);
-    setDetailState("idle");
-    setDetailError("");
     setNewlyCreatedId((current) => (current === productId ? null : current));
     void loadProducts();
   }
@@ -179,14 +115,16 @@ export function ProductCenterPage() {
           <p>创建真实商品资料，并从后端商品接口查看列表与完整详情。</p>
         </div>
         <div className="product-count">
-          <strong>{products.length}</strong>
-          <span>已录入商品</span>
+          <strong>{productList.loadedAt ? products.length : "—"}</strong>
+          <span>{productList.loadedAt ? (productList.error ? "上次读取的商品" : "已录入商品") : "商品数量待确认"}</span>
         </div>
       </header>
 
       {!isPresentation && (
         <BrandKitOnboardingPanel
           products={products}
+          productsAvailable={productList.loadedAt !== null}
+          productDetailAvailable={selectedProductId === null || productDetail.loadedAt !== null}
           selectedProduct={selectedProduct}
           briefRevision={0}
           onProductUpdated={handleProductUpdated}
@@ -217,9 +155,15 @@ export function ProductCenterPage() {
             </div>
 
             <div className="product-list" aria-busy={listState === "loading"}>
-              {listState === "loading" ? (
+              {listError && productList.loadedAt !== null && (
+                <div className="product-read-notice" role="status">
+                  {listError} 当前显示上次成功读取的商品列表。
+                  <button type="button" onClick={() => loadProducts()} disabled={productList.loading}>重新读取</button>
+                </div>
+              )}
+              {listState === "loading" && productList.loadedAt === null ? (
                 <ProductState title="正在加载商品" detail="正在读取真实商品列表…" />
-              ) : listState === "error" ? (
+              ) : listState === "error" && productList.loadedAt === null ? (
                 <ProductState
                   title="商品列表加载失败"
                   detail={listError}
@@ -229,8 +173,8 @@ export function ProductCenterPage() {
                 />
               ) : products.length === 0 ? (
                 <ProductState
-                  title="还没有商品资料"
-                  detail="使用左侧表单创建第一个真实商品。"
+                  title={productList.error ? "上次读取时暂无商品" : "还没有商品资料"}
+                  detail={productList.error ? "当前数量尚未确认，请先恢复读取后再创建。" : "使用左侧表单创建第一个真实商品。"}
                 />
               ) : (
                 products.map((product) => {
@@ -280,19 +224,25 @@ export function ProductCenterPage() {
             </div>
 
             <div className="product-detail" aria-busy={detailState === "loading"}>
+              {selectedProduct && Boolean(productDetail.error) && (
+                <div className="product-read-notice" role="status">
+                  {detailError} 当前显示该商品上次读取的详情。
+                  <button type="button" onClick={productDetail.refresh} disabled={productDetail.loading}>重新读取详情</button>
+                </div>
+              )}
               {detailState === "idle" ? (
                 <ProductState
                   title="请选择一个商品"
                   detail="点击上方列表项，查看描述、卖点、目标市场、素材和时间信息。"
                 />
-              ) : detailState === "loading" ? (
+              ) : detailState === "loading" && !selectedProduct ? (
                 <ProductState title="正在加载详情" detail="正在读取单个商品资料……" />
-              ) : detailState === "error" ? (
+              ) : detailState === "error" && !selectedProduct ? (
                 <ProductState
                   title="商品详情加载失败"
                   detail={detailError}
                   actionLabel="重试详情"
-                  onAction={() => setDetailRetryKey((current) => current + 1)}
+                  onAction={productDetail.refresh}
                   error
                 />
               ) : selectedProduct ? (
@@ -557,9 +507,10 @@ function ProductDetail({
               <article key={asset.id}>
                 {asset.sha256 && asset.content_type?.startsWith("image/") ? (
                   <img
-                    src={productImageContentUrl(product.id, asset.id)}
+                    src={productImageThumbnailUrl(product.id, asset.id)}
                     alt={`${product.name} 素材 ${asset.id}`}
                     loading="lazy"
+                    decoding="async"
                   />
                 ) : (
                   <div className="product-asset-grid__placeholder">无预览</div>

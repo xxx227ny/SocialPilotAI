@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from pathlib import Path
 
 from sqlalchemy.exc import IntegrityError
@@ -63,6 +64,18 @@ class ProductService:
         existing = self.repository.get_asset_by_sha(product_id, normalized.sha256)
         if existing is not None:
             return existing, True
+        # Asset ownership and deletion are per product. A global content hash
+        # path collides with the unique storage_identity of another product.
+        # Keep existing assets immutable; namespace only newly uploaded files.
+        identity = (
+            f"product-images/products/{product_id}/"
+            f"{normalized.sha256}.{normalized.extension}"
+        )
+        normalized = replace(
+            normalized,
+            storage_identity=identity,
+            path=storage.root / identity,
+        )
         created_file = storage.persist(normalized)
         asset = ProductAsset(
             product_id=product_id,

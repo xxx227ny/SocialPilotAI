@@ -48,8 +48,8 @@ function restoredPlatformDrafts() {
 }
 
 export function CopyMatrixPage() {
-  const { snapshot, loading, error } = useDemoSnapshot();
   const { isPresentation } = usePresentationMode();
+  const { snapshot, loading, error } = useDemoSnapshot(isPresentation);
 
   if (!isPresentation) return <CopyMatrixWorkspace />;
 

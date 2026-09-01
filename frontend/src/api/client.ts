@@ -1,4 +1,6 @@
 import axios from "axios";
+import { installReadResilience } from "./readResilience";
+import { invalidateReadResources } from "../hooks/readResourceStore";
 
 import type {
   ProviderFailureDetails,
@@ -14,8 +16,17 @@ export const apiClient = axios.create({
   withCredentials: true,
 });
 
+installReadResilience(apiClient);
+
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    const method = response.config.method?.toLowerCase();
+    if (method && !["get", "head", "options"].includes(method) && /^\/(products|brand-kits|marketing-tasks)(\/|$)/.test(response.config.url ?? "")) {
+      const deleted = method === "delete" ? /\/products\/(\d+)$/.exec(response.config.url ?? "")?.[1] : undefined;
+      invalidateReadResources(deleted);
+    }
+    return response;
+  },
   (error: unknown) => {
     if (
       axios.isAxiosError(error) &&
@@ -188,10 +199,25 @@ export function getProviderFailureMessage(
   return PROVIDER_FAILURE_MESSAGES[failure.safe_error_code];
 }
 
+export function isUnconfirmedApiMutation(error: unknown): boolean {
+  if (!axios.isAxiosError(error) || axios.isCancel(error)) {
+    return false;
+  }
+  const method = (error.config?.method ?? "get").toLowerCase();
+  if (["get", "head", "options"].includes(method)) return false;
+  return !error.response || [502, 503, 504].includes(error.response.status);
+}
+
 export function getApiErrorMessage(error: unknown, fallback: string): string {
   if (!axios.isAxiosError(error)) return fallback;
   const providerFailure = getProviderFailureDetails(error);
   if (providerFailure) return getProviderFailureMessage(providerFailure);
+  if (!error.response && !axios.isCancel(error)) {
+    const method = (error.config?.method ?? "get").toLowerCase();
+    return ["get", "head"].includes(method)
+      ? "连接暂时中断或读取超时，尚未获取最新数据；请稍后重新读取，无需更换 API Key。"
+      : "未收到服务端确认，操作可能已经完成。请先重新读取记录核对，不要连续重复提交。";
+  }
   if (error.response?.status === 422) {
     return "请求未通过后端校验，请检查各字段后重试。";
   }

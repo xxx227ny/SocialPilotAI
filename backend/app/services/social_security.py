@@ -3,11 +3,37 @@ from __future__ import annotations
 import base64
 import hashlib
 import secrets
+from urllib.parse import urlparse
 
 from cryptography.fernet import Fernet, InvalidToken
 
 from app.core.config import Settings
 from app.core.exceptions import AppError
+
+
+def validated_social_frontend_origin(settings: Settings) -> str:
+    """Return the configured OAuth result origin after strict validation."""
+    base = settings.social_frontend_base_url.strip().rstrip("/")
+    parsed = urlparse(base)
+    try:
+        _ = parsed.port
+    except ValueError as exc:
+        raise AppError("Social frontend redirect is not allowed", 503) from exc
+    hostname = (parsed.hostname or "").casefold()
+    loopback = hostname in {"127.0.0.1", "localhost", "::1"}
+    if (
+        not parsed.netloc
+        or not hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path not in {"", "/"}
+        or parsed.query
+        or parsed.fragment
+        or (parsed.scheme == "http" and not loopback)
+        or (parsed.scheme != "https" and not (parsed.scheme == "http" and loopback))
+    ):
+        raise AppError("Social frontend redirect is not allowed", 503)
+    return f"{parsed.scheme}://{parsed.netloc}"
 
 
 class TokenCipher:

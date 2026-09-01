@@ -51,6 +51,13 @@ export function getPresentationSnapshotArtifactContentUrl(
   return `${baseUrl}/presentation-snapshots/${snapshotId}/artifact/content`;
 }
 
+export function getPresentationSnapshotArtifactPreviewUrl(
+  snapshotId: number,
+): string {
+  const baseUrl = apiClient.defaults.baseURL?.replace(/\/$/, "") ?? "";
+  return `${baseUrl}/presentation-snapshots/${snapshotId}/artifact/preview`;
+}
+
 export async function listPresentationSnapshots(
   productId: number,
   signal?: AbortSignal,

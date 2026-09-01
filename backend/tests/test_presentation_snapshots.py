@@ -147,21 +147,15 @@ def test_snapshot_artifact_content_is_exact_read_only_and_supports_ranges(
 ) -> None:
     source = seed_exact_chain(db_session, tmp_path)
     provider_resolutions = install_safe_dependencies(client, source["storage"])
-    app.dependency_overrides[get_video_artifact_storage] = lambda: source[
-        "storage"
-    ]
+    app.dependency_overrides[get_video_artifact_storage] = lambda: source["storage"]
     created = client.post(
         f"/api/v1/products/{source['product'].id}/presentation-snapshots",
         json=exact_request(source),
     ).json()["snapshot"]
-    snapshot_path, _ = source["storage"].resolve(
-        created["artifact_snapshot_path"]
-    )
+    snapshot_path, _ = source["storage"].resolve(created["artifact_snapshot_path"])
     source["source_path"].write_bytes(b"changed-original-artifact")
     before = source_counts(db_session)
-    snapshot_count = db_session.scalar(
-        select(func.count(PresentationSnapshot.id))
-    )
+    snapshot_count = db_session.scalar(select(func.count(PresentationSnapshot.id)))
 
     full = client.get(snapshot_content_path(created["id"]))
     ranged = client.get(
@@ -178,11 +172,12 @@ def test_snapshot_artifact_content_is_exact_read_only_and_supports_ranges(
     assert full.headers["accept-ranges"] == "bytes"
     assert full.headers["content-length"] == str(len(ARTIFACT_CONTENT))
     assert full.headers["content-type"] == "video/mp4"
+    assert full.headers["cache-control"] == "private, max-age=86400, immutable"
+    assert full.headers["cdn-cache-control"] == "no-store"
+    assert full.headers["vary"] == "Cookie"
     assert ranged.status_code == 206
     assert ranged.content == ARTIFACT_CONTENT[5:13]
-    assert ranged.headers["content-range"] == (
-        f"bytes 5-12/{len(ARTIFACT_CONTENT)}"
-    )
+    assert ranged.headers["content-range"] == (f"bytes 5-12/{len(ARTIFACT_CONTENT)}")
     assert head.status_code == 200
     assert head.content == b""
     assert invalid_range.status_code == 416
@@ -203,16 +198,12 @@ def test_snapshot_artifact_never_falls_back_and_verifies_snapshot_copy(
 ) -> None:
     source = seed_exact_chain(db_session, tmp_path)
     provider_resolutions = install_safe_dependencies(client, source["storage"])
-    app.dependency_overrides[get_video_artifact_storage] = lambda: source[
-        "storage"
-    ]
+    app.dependency_overrides[get_video_artifact_storage] = lambda: source["storage"]
     created = client.post(
         f"/api/v1/products/{source['product'].id}/presentation-snapshots",
         json=exact_request(source),
     ).json()["snapshot"]
-    snapshot_path, _ = source["storage"].resolve(
-        created["artifact_snapshot_path"]
-    )
+    snapshot_path, _ = source["storage"].resolve(created["artifact_snapshot_path"])
     endpoint = snapshot_content_path(created["id"])
 
     snapshot_path.write_bytes(ARTIFACT_CONTENT + b"tampered")
@@ -272,8 +263,7 @@ def test_campaign_order_is_canonical_and_reuses_snapshot(
         canonical_ids
     )
     assert [
-        campaign["id"]
-        for campaign in first_snapshot["snapshot_payload"]["campaigns"]
+        campaign["id"] for campaign in first_snapshot["snapshot_payload"]["campaigns"]
     ] == canonical_ids
     assert second.json()["reused"] is True
     assert second_snapshot["id"] == first_snapshot["id"]
@@ -304,19 +294,17 @@ def test_snapshot_deep_copy_survives_source_changes_and_rejects_update(
     db_session.commit()
     app.dependency_overrides.pop(get_optional_video_artifact_storage)
 
-    recovered = client.get(
-        f"/api/v1/presentation-snapshots/{created['id']}"
-    )
+    recovered = client.get(f"/api/v1/presentation-snapshots/{created['id']}")
     assert recovered.status_code == 200
     assert recovered.json()["snapshot_payload"] == original_payload
     assert recovered.json()["snapshot_payload"]["product"]["name"] == (
         "Portable Blender"
     )
     assert original_payload["marketing_brief"] is not None
-    assert recovered.json()["snapshot_payload"]["marketing_brief"] == (
-        original_payload["marketing_brief"]
+    assert (
+        recovered.json()["snapshot_payload"]["marketing_brief"]
+        == (original_payload["marketing_brief"])
     )
-
 
     install_safe_dependencies(client, source["storage"])
     newer = client.post(
@@ -342,9 +330,7 @@ def test_snapshot_payload_and_media_survive_source_record_deletion(
 ) -> None:
     source = seed_exact_chain(db_session, tmp_path)
     provider_resolutions = install_safe_dependencies(client, source["storage"])
-    app.dependency_overrides[get_video_artifact_storage] = lambda: source[
-        "storage"
-    ]
+    app.dependency_overrides[get_video_artifact_storage] = lambda: source["storage"]
     created = client.post(
         f"/api/v1/products/{source['product'].id}/presentation-snapshots",
         json=exact_request(source),
@@ -366,9 +352,7 @@ def test_snapshot_payload_and_media_survive_source_record_deletion(
         db_session.execute(delete(model))
     db_session.commit()
 
-    recovered = client.get(
-        f"/api/v1/presentation-snapshots/{created['id']}"
-    )
+    recovered = client.get(f"/api/v1/presentation-snapshots/{created['id']}")
     media = client.get(snapshot_content_path(created["id"]))
 
     assert recovered.status_code == 200
@@ -383,10 +367,10 @@ def test_snapshot_payload_and_media_survive_source_record_deletion(
     assert recovered.json()["snapshot_payload"]["publish_task"]["status"] == (
         "SUCCEEDED"
     )
-    assert recovered.json()["snapshot_payload"]["marketing_brief"]["audience"] == (
-        frozen_payload["marketing_brief"]["audience"]
+    assert (
+        recovered.json()["snapshot_payload"]["marketing_brief"]["audience"]
+        == (frozen_payload["marketing_brief"]["audience"])
     )
-
 
 
 def test_snapshot_delete_is_rejected_as_immutable(
@@ -532,7 +516,6 @@ def test_missing_sections_remain_missing_and_never_use_latest(
     assert len(list(tmp_path.glob("*.mp4"))) == 1
 
 
-
 def test_brief_identity_rejects_missing_or_other_product_without_snapshot_write(
     client: TestClient,
     db_session: Session,
@@ -665,9 +648,7 @@ def test_explicit_artifact_requires_local_storage_configuration(
     )
 
     assert response.status_code == 503
-    assert response.json()["error"]["message"] == (
-        "Artifact storage is not configured"
-    )
+    assert response.json()["error"]["message"] == ("Artifact storage is not configured")
     assert db_session.scalar(select(func.count(PresentationSnapshot.id))) == 0
 
 
@@ -736,10 +717,13 @@ def test_concurrent_requests_reuse_one_snapshot_and_artifact(
 
     try:
         with ThreadPoolExecutor(max_workers=2) as executor:
-            responses = [future.result() for future in [
-                executor.submit(submit),
-                executor.submit(submit),
-            ]]
+            responses = [
+                future.result()
+                for future in [
+                    executor.submit(submit),
+                    executor.submit(submit),
+                ]
+            ]
     finally:
         concurrent_client.close()
         app.dependency_overrides.clear()
@@ -748,9 +732,7 @@ def test_concurrent_requests_reuse_one_snapshot_and_artifact(
     bodies = [response.json() for response in responses]
     snapshots = [body["snapshot"] for body in bodies]
     assert {snapshot["id"] for snapshot in snapshots} == {snapshots[0]["id"]}
-    assert {snapshot["digest"] for snapshot in snapshots} == {
-        snapshots[0]["digest"]
-    }
+    assert {snapshot["digest"] for snapshot in snapshots} == {snapshots[0]["digest"]}
     assert {snapshot["artifact_snapshot_path"] for snapshot in snapshots} == {
         snapshots[0]["artifact_snapshot_path"]
     }
@@ -758,9 +740,7 @@ def test_concurrent_requests_reuse_one_snapshot_and_artifact(
     assert len(set(observed_session_ids)) == 2
     with session_factory() as verification_session:
         assert (
-            verification_session.scalar(
-                select(func.count(PresentationSnapshot.id))
-            )
+            verification_session.scalar(select(func.count(PresentationSnapshot.id)))
             == 1
         )
     snapshot_path = artifact_root / snapshots[0]["artifact_snapshot_path"]

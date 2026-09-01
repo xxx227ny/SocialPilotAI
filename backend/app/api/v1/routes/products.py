@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, Request, Response, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -18,6 +18,7 @@ from app.schemas.product import (
 from app.schemas.product_marketing_video import ProductAssetUploadRead
 from app.services.product import ProductService
 from app.services.product_asset_storage import ProductAssetStorage
+from app.services.product_thumbnail import THUMBNAIL_VERSION, thumbnail_path
 
 router = APIRouter(prefix="/products")
 DbSession = Annotated[Session, Depends(get_db)]
@@ -125,6 +126,36 @@ def get_product_image(
             "Content-Length": str(asset.size_bytes),
         },
     )
+
+
+@router.api_route(
+    "/{product_id}/image-assets/{asset_id}/thumbnail", methods=["GET", "HEAD"]
+)
+def get_product_thumbnail(
+    product_id: int,
+    asset_id: int,
+    request: Request,
+    db: DbSession,
+    settings: SettingsDep,
+) -> Response:
+    # Resolve through product ownership and the original digest before even 304.
+    # Cached previews never allow access to deleted or cross-product assets.
+    path, asset = _resolve_product_image(product_id, asset_id, db, settings)
+    etag = f'"thumbnail-{THUMBNAIL_VERSION}-{asset.sha256}"'
+    headers = {
+        "ETag": etag,
+        "Cache-Control": "private, no-cache",
+        "Vary": "Cookie",
+        "X-Content-Type-Options": "nosniff",
+    }
+    candidates = [
+        value.strip().removeprefix("W/")
+        for value in request.headers.get("if-none-match", "").split(",")
+    ]
+    if etag in candidates or "*" in candidates:
+        return Response(status_code=304, headers=headers)
+    preview = thumbnail_path(path, asset.sha256, settings.video_composition_ffmpeg_path)
+    return FileResponse(preview, media_type="image/webp", headers=headers)
 
 
 @router.get(

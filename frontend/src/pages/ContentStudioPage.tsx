@@ -30,8 +30,8 @@ import type { VideoRenderArtifact } from "../types/video";
 import { batchVideoJobsEnabled, qwenVideoScriptGenerationEnabled, videoScriptVersionsEnabled } from "../config/features";
 
 export function ContentStudioPage() {
-  const { snapshot, loading, error } = useDemoSnapshot();
   const { isPresentation } = usePresentationMode();
+  const { snapshot, loading, error } = useDemoSnapshot(isPresentation);
   const [artifacts, setArtifacts] = useState<VideoRenderArtifact[]>([]);
   const [publishTasks, setPublishTasks] = useState<PublishTask[]>([]);
   const [deliveryLoading, setDeliveryLoading] = useState(false);

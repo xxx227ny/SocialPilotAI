@@ -151,6 +151,7 @@ class TikTokPublishPreflightService:
             or copy is None
             or strategy is None
             or project.product_id != product_id
+            or project.platform != "TikTok"
             or copy.product_id != product_id
             or strategy.product_id != product_id
             or project.copy_matrix_id != copy.id
@@ -253,7 +254,11 @@ class TikTokPublishPreflightService:
                     verified.artifact.video_render_task,
                     verified.artifact.video_render_task.video_project,
                 )
-                if project.product_id != product_id or task.status != "SUCCEEDED":
+                if (
+                    project.product_id != product_id
+                    or project.platform != "TikTok"
+                    or task.status != "SUCCEEDED"
+                ):
                     continue
                 result.append(
                     PublishArtifactCandidateRead(

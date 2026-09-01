@@ -24,6 +24,11 @@ import {
   platformCopyText,
   selectExactCopyJob,
 } from "./copyQueueState";
+import {
+  cacheEntryIsFresh,
+  getCopyWorkspaceSnapshot,
+  setCopyWorkspaceSnapshot,
+} from "./copyWorkspaceCache";
 
 type LoadState = "loading" | "ready" | "blocked" | "error";
 type StrategySource = "direct" | "latest";
@@ -65,10 +70,19 @@ export function CopyPreflightPanel({
   strategy,
   strategySource,
 }: CopyPreflightPanelProps) {
-  const [loadState, setLoadState] = useState<LoadState>("loading");
-  const [preflight, setPreflight] = useState<CopyPreflight | null>(null);
-  const [job, setJob] = useState<ExecutionJob | null>(null);
-  const [matrix, setMatrix] = useState<PersistedCopyMatrix | null>(null);
+  const initialSnapshot = getCopyWorkspaceSnapshot(task.id, product.id, strategy.id);
+  const [loadState, setLoadState] = useState<LoadState>(
+    initialSnapshot?.value.loadState ?? "loading",
+  );
+  const [preflight, setPreflight] = useState<CopyPreflight | null>(
+    initialSnapshot?.value.preflight ?? null,
+  );
+  const [job, setJob] = useState<ExecutionJob | null>(
+    initialSnapshot?.value.job ?? null,
+  );
+  const [matrix, setMatrix] = useState<PersistedCopyMatrix | null>(
+    initialSnapshot?.value.matrix ?? null,
+  );
   const [acknowledged, setAcknowledged] = useState(false);
   const [reused, setReused] = useState(false);
   const [message, setMessage] = useState("");
@@ -127,22 +141,32 @@ export function CopyPreflightPanel({
     controllerRef.current = controller;
     submitLockRef.current = false;
     retryLockRef.current = false;
-    setLoadState("loading");
     setMessage("");
-    setPreflight(null);
-    setJob(null);
-    setMatrix(null);
-    setReused(false);
     setAcknowledged(false);
     setRegenerationRequested(false);
     setRegenerationAcknowledged(false);
 
+    const cached = getCopyWorkspaceSnapshot(taskId, productId, strategyId);
+    if (cached) {
+      setLoadState(cached.value.loadState);
+      setPreflight(cached.value.preflight);
+      setJob(cached.value.job);
+      setMatrix(cached.value.matrix);
+      setReused(cached.value.reused);
+      if (cacheEntryIsFresh(cached)) return;
+    } else {
+      setLoadState("loading");
+      setPreflight(null);
+      setJob(null);
+      setMatrix(null);
+      setReused(false);
+    }
+
     try {
-      const currentPreflight = await getCopyPreflight(
-        taskId,
-        strategyId,
-        controller.signal,
-      );
+      const [currentPreflight, jobs] = await Promise.all([
+        getCopyPreflight(taskId, strategyId, controller.signal),
+        listCopyJobs(strategyId, controller.signal),
+      ]);
       if (
         !isCurrent(taskId, productId, strategyId, controller) ||
         currentPreflight.task_id !== taskId ||
@@ -151,11 +175,6 @@ export function CopyPreflightPanel({
       ) {
         return;
       }
-      setPreflight(currentPreflight);
-      setLoadState(currentPreflight.ready_for_execution ? "ready" : "blocked");
-
-      const jobs = await listCopyJobs(strategyId, controller.signal);
-      if (!isCurrent(taskId, productId, strategyId, controller)) return;
       const restored = selectExactCopyJob(
         jobs,
         taskId,
@@ -163,12 +182,39 @@ export function CopyPreflightPanel({
         strategyId,
         currentPreflight.input_digest,
       );
+      const copyMatrixId = exactCopyResultId(restored);
+      const restoredMatrix = copyMatrixId === null
+        ? null
+        : await getExactCopyMatrix(
+            taskId,
+            strategyId,
+            copyMatrixId,
+            controller.signal,
+          );
+      if (!isCurrent(taskId, productId, strategyId, controller)) return;
+      if (
+        restoredMatrix &&
+        (restoredMatrix.id !== copyMatrixId ||
+          restoredMatrix.product_id !== productId ||
+          restoredMatrix.marketing_strategy_id !== strategyId)
+      ) return;
+      const nextLoadState = currentPreflight.ready_for_execution ? "ready" : "blocked";
+      setPreflight(currentPreflight);
+      setLoadState(nextLoadState);
       setJob(restored);
-      if (restored) setReused(true);
+      setMatrix(restoredMatrix);
+      setReused(restored !== null);
+      setCopyWorkspaceSnapshot(taskId, productId, strategyId, {
+        loadState: nextLoadState,
+        preflight: currentPreflight,
+        job: restored,
+        matrix: restoredMatrix,
+        reused: restored !== null,
+      });
     } catch (error) {
       if (!controller.signal.aborted) {
         setMessage(getApiErrorMessage(error, "Copy队列状态读取失败，请重试。"));
-        setLoadState("error");
+        if (!cached) setLoadState("error");
       }
     }
   }, [isCurrent, product.id, strategy.id, task.id]);
@@ -217,6 +263,7 @@ export function CopyPreflightPanel({
       if (job?.status !== "SUCCEEDED") setMatrix(null);
       return;
     }
+    if (matrix?.id === copyMatrixId) return;
     const controller = new AbortController();
     void getExactCopyMatrix(
       task.id,
@@ -242,7 +289,25 @@ export function CopyPreflightPanel({
         }
       });
     return () => controller.abort();
-  }, [job, product.id, strategy.id, task.id]);
+  }, [job, matrix?.id, product.id, strategy.id, task.id]);
+
+  useEffect(() => {
+    if (
+      !preflight ||
+      preflight.task_id !== task.id ||
+      preflight.product_id !== product.id ||
+      preflight.strategy_id !== strategy.id ||
+      loadState === "loading" ||
+      loadState === "error"
+    ) return;
+    setCopyWorkspaceSnapshot(task.id, product.id, strategy.id, {
+      loadState,
+      preflight,
+      job,
+      matrix,
+      reused,
+    });
+  }, [job, loadState, matrix, preflight, product.id, reused, strategy.id, task.id]);
 
   const canEnqueue = Boolean(
     copyExecutionEnabled &&
