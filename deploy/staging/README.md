@@ -15,6 +15,10 @@ registration, require secure cookies, and contain a newly generated Fernet key.
 It must not contain shared Qwen, DashScope, or Wanx provider keys. Customer keys
 are stored encrypted per workspace.
 
+Run `configure_runtime.py` with the staging virtual environment to create this
+configuration. Re-running it preserves the existing credential-encryption key,
+so stored customer credentials remain decryptable.
+
 Before changing the staging `current` symlink, record its target and create a
 SQLite online backup. Rollback consists of restoring the previous symlink,
 restarting only the two staging services, and verifying `/api/v1/health`.
