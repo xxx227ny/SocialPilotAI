@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 
 const authApi = readFileSync(new URL("../src/api/auth.ts", import.meta.url), "utf8");
 const credentialApi = readFileSync(new URL("../src/api/credentials.ts", import.meta.url), "utf8");
+const accountSecurity = readFileSync(new URL("../src/pages/AccountSecurityPage.tsx", import.meta.url), "utf8");
+const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
 const context = readFileSync(new URL("../src/context/AuthContext.tsx", import.meta.url), "utf8");
 const login = readFileSync(new URL("../src/pages/LoginPage.tsx", import.meta.url), "utf8");
 const settings = readFileSync(new URL("../src/pages/ApiKeySettingsPage.tsx", import.meta.url), "utf8");
@@ -33,8 +35,13 @@ assert.match(dashboard, /authMode === "user"/);
 assert.match(dashboard, /getDashScopeCredential/);
 assert.match(dashboard, /listProducts/);
 assert.match(onboarding, /API Key 设置/);
+assert.match(authApi, /\/auth\/change-password/);
+assert.match(authApi, /\/auth\/sessions\/revoke-others/);
+assert.match(accountSecurity, /当前密码/);
+assert.match(accountSecurity, /退出其他设备/);
+assert.match(app, /settings\/account-security/);
 assert.doesNotMatch(onboarding, /QWEN_API_KEY/);
 assert.doesNotMatch(settings, /localStorage|sessionStorage/);
 assert.doesNotMatch(credentialApi, /localStorage|sessionStorage/);
 
-console.log("Product auth frontend checks passed: 29 assertions.");
+console.log("Product auth frontend checks passed: 34 assertions.");

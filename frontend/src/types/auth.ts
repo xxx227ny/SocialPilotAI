@@ -8,3 +8,7 @@ export type AuthSession = {
   auth_mode?: "disabled" | "demo" | "user" | null;
   registration_enabled?: boolean | null;
 };
+
+export type SessionRevocation = {
+  revoked_sessions: number;
+};

@@ -200,5 +200,63 @@ def revoke_session(db: Session, token: str | None) -> None:
         auth_session.revoked_at = utc_now()
 
 
+def revoke_other_sessions(db: Session, *, user_id: int, token: str) -> int:
+    current_hash = _token_hash(token)
+    sessions = db.scalars(
+        select(AuthSession).where(
+            AuthSession.user_id == user_id,
+            AuthSession.token_hash != current_hash,
+            AuthSession.revoked_at.is_(None),
+        )
+    ).all()
+    now = utc_now()
+    for auth_session in sessions:
+        auth_session.revoked_at = now
+    db.flush()
+    return len(sessions)
+
+
+def change_password(
+    db: Session,
+    *,
+    user_id: int,
+    current_password: str,
+    new_password: str,
+    session_ttl_seconds: int,
+) -> str | None:
+    user = db.get(User, user_id)
+    password_hash = user.password_hash if user is not None else _DUMMY_PASSWORD_HASH
+    if not verify_password(current_password, password_hash):
+        return None
+    if user is None or user.status != "ACTIVE":
+        return None
+    if verify_password(new_password, user.password_hash):
+        raise ValueError("New password must differ from the current password")
+    membership = db.scalar(
+        select(Membership).where(
+            Membership.user_id == user.id,
+            Membership.status == "ACTIVE",
+        )
+    )
+    if membership is None:
+        return None
+    now = utc_now()
+    for auth_session in db.scalars(
+        select(AuthSession).where(
+            AuthSession.user_id == user.id,
+            AuthSession.revoked_at.is_(None),
+        )
+    ).all():
+        auth_session.revoked_at = now
+    user.password_hash = hash_password(new_password)
+    user.updated_at = now
+    return create_session(
+        db,
+        user_id=user.id,
+        workspace_id=membership.workspace_id,
+        session_ttl_seconds=session_ttl_seconds,
+    )
+
+
 def _token_hash(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()

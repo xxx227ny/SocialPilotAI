@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     allow_public_registration: bool = False
     user_auth_session_ttl_seconds: int = Field(default=604_800, ge=900, le=2_592_000)
     user_auth_cookie_secure: bool = False
+    user_auth_login_max_failures: int = Field(default=5, ge=3, le=20)
+    user_auth_login_window_seconds: int = Field(default=900, ge=60, le=86_400)
+    user_auth_login_lock_seconds: int = Field(default=900, ge=60, le=86_400)
     user_credential_encryption_key: SecretStr | None = None
     user_credential_encryption_key_id: str = "v1"
     enable_demo_auth: bool = False
@@ -215,9 +218,7 @@ class Settings(BaseSettings):
                 value is not None and bool(value.get_secret_value().strip())
                 for value in server_provider_keys
             )
-            has_shared_key_file = bool(
-                (self.token_plan_api_key_file or "").strip()
-            )
+            has_shared_key_file = bool((self.token_plan_api_key_file or "").strip())
             if has_shared_key or has_shared_key_file:
                 raise ValueError(
                     "Production user authentication forbids shared provider keys"

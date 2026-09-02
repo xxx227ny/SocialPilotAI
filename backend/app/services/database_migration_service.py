@@ -47,7 +47,8 @@ PRODUCT_WORKSPACES_REVISION = "0026_product_workspaces"
 SOCIAL_WORKSPACE_ISOLATION_REVISION = "0027_social_workspace_isolation"
 BRAND_KIT_WORKSPACES_REVISION = "0028_brand_kit_workspaces"
 PROVIDER_CREDENTIAL_PROFILES_REVISION = "0029_provider_credential_profiles"
-HEAD_REVISION = PROVIDER_CREDENTIAL_PROFILES_REVISION
+LOGIN_THROTTLES_REVISION = "0030_login_throttles"
+HEAD_REVISION = LOGIN_THROTTLES_REVISION
 UNVERSIONED = "unversioned"
 MANIFEST_VERSION = 1
 ALEMBIC_INI = Path(__file__).resolve().parents[2] / "alembic.ini"
@@ -296,6 +297,7 @@ def expected_schema_fingerprint(revision: str) -> str:
         PRODUCT_WORKSPACES_REVISION,
         SOCIAL_WORKSPACE_ISOLATION_REVISION,
         BRAND_KIT_WORKSPACES_REVISION,
+        PROVIDER_CREDENTIAL_PROFILES_REVISION,
         HEAD_REVISION,
     }:
         raise ValueError(f"Unknown expected revision: {revision}")
@@ -688,6 +690,7 @@ def get_database_migration_status(database_path: Path) -> DatabaseMigrationStatu
             PRODUCT_WORKSPACES_REVISION,
             SOCIAL_WORKSPACE_ISOLATION_REVISION,
             BRAND_KIT_WORKSPACES_REVISION,
+            PROVIDER_CREDENTIAL_PROFILES_REVISION,
             HEAD_REVISION,
         }:
             raise IncompatibleSchemaError("Unsupported Alembic revision")
@@ -823,6 +826,7 @@ def _upgrade_sqlite_database_unlocked(
                     PRODUCT_WORKSPACES_REVISION,
                     SOCIAL_WORKSPACE_ISOLATION_REVISION,
                     BRAND_KIT_WORKSPACES_REVISION,
+                    PROVIDER_CREDENTIAL_PROFILES_REVISION,
                     HEAD_REVISION,
                 }:
                     raise IncompatibleSchemaError(

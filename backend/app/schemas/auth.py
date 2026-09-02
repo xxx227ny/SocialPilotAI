@@ -19,6 +19,15 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=1, max_length=256)
 
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=256)
+    new_password: str = Field(min_length=10, max_length=256)
+
+
+class SessionRevocationRead(BaseModel):
+    revoked_sessions: int = Field(ge=0)
+
+
 class AuthSessionRead(BaseModel):
     enabled: bool
     authenticated: bool

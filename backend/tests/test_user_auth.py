@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
 from app.main import app
-from app.models import AuthSession, Membership, User, Workspace
+from app.models import AuthSession, LoginThrottle, Membership, User, Workspace
 
 EMAIL = "owner@example.com"
 PASSWORD = "strong-user-password"
@@ -75,10 +75,13 @@ def test_logout_revokes_session_and_login_restores_access(
     db_session: Session,
 ) -> None:
     app.dependency_overrides[get_settings] = lambda: user_auth_settings()
-    assert client.post(
-        "/api/v1/auth/register",
-        json={"email": EMAIL, "password": PASSWORD},
-    ).status_code == 201
+    assert (
+        client.post(
+            "/api/v1/auth/register",
+            json={"email": EMAIL, "password": PASSWORD},
+        ).status_code
+        == 201
+    )
 
     logged_out = client.post("/api/v1/auth/logout")
     revoked_session = db_session.scalar(select(AuthSession))
@@ -158,3 +161,124 @@ def test_registration_can_be_disabled_without_disabling_login(
 
     assert response.status_code == 409
     assert response.json()["detail"] == "当前环境未开放用户注册。"
+
+
+def test_password_change_rotates_session_and_revokes_old_password(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    app.dependency_overrides[get_settings] = lambda: user_auth_settings()
+    registered = client.post(
+        "/api/v1/auth/register",
+        json={"email": EMAIL, "password": PASSWORD},
+    )
+    old_token = registered.cookies.get("socialpilot_session")
+    assert old_token is not None
+
+    wrong = client.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": "wrong-password", "new_password": "new-password-123"},
+    )
+    unchanged = client.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": PASSWORD, "new_password": PASSWORD},
+    )
+    changed = client.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": PASSWORD, "new_password": "new-password-123"},
+    )
+    new_token = changed.cookies.get("socialpilot_session")
+
+    assert wrong.status_code == 401
+    assert unchanged.status_code == 422
+    assert changed.status_code == 200
+    assert changed.json()["authenticated"] is True
+    assert new_token is not None and new_token != old_token
+    sessions = db_session.scalars(select(AuthSession).order_by(AuthSession.id)).all()
+    assert len(sessions) == 2
+    assert sessions[0].revoked_at is not None
+    assert sessions[1].revoked_at is None
+
+    client.post("/api/v1/auth/logout")
+    old_password = client.post(
+        "/api/v1/auth/login",
+        json={"username": EMAIL, "password": PASSWORD},
+    )
+    new_password = client.post(
+        "/api/v1/auth/login",
+        json={"username": EMAIL, "password": "new-password-123"},
+    )
+    assert old_password.status_code == 401
+    assert new_password.status_code == 200
+
+
+def test_logout_other_devices_keeps_current_session_active(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    app.dependency_overrides[get_settings] = lambda: user_auth_settings()
+    assert (
+        client.post(
+            "/api/v1/auth/register",
+            json={"email": EMAIL, "password": PASSWORD},
+        ).status_code
+        == 201
+    )
+    second_login = client.post(
+        "/api/v1/auth/login",
+        json={"username": EMAIL, "password": PASSWORD},
+    )
+    current_token = second_login.cookies.get("socialpilot_session")
+    assert current_token is not None
+
+    revoked = client.post("/api/v1/auth/sessions/revoke-others")
+    current = client.get("/api/v1/auth/session")
+
+    assert revoked.status_code == 200
+    assert revoked.json() == {"revoked_sessions": 1}
+    assert current.status_code == 200
+    assert current.json()["authenticated"] is True
+    sessions = db_session.scalars(select(AuthSession).order_by(AuthSession.id)).all()
+    assert len(sessions) == 2
+    assert sessions[0].revoked_at is not None
+    assert sessions[1].revoked_at is None
+
+
+def test_login_failures_are_persistently_rate_limited_without_plain_email(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    app.dependency_overrides[get_settings] = lambda: user_auth_settings(
+        user_auth_login_max_failures=3,
+        user_auth_login_window_seconds=900,
+        user_auth_login_lock_seconds=600,
+    )
+    assert (
+        client.post(
+            "/api/v1/auth/register",
+            json={"email": EMAIL, "password": PASSWORD},
+        ).status_code
+        == 201
+    )
+    client.post("/api/v1/auth/logout")
+
+    responses = [
+        client.post(
+            "/api/v1/auth/login",
+            json={"username": EMAIL, "password": "wrong-password"},
+        )
+        for _ in range(3)
+    ]
+    blocked_correct_password = client.post(
+        "/api/v1/auth/login",
+        json={"username": EMAIL, "password": PASSWORD},
+    )
+
+    assert [response.status_code for response in responses] == [401, 401, 429]
+    assert int(responses[-1].headers["retry-after"]) > 0
+    assert blocked_correct_password.status_code == 429
+    throttle = db_session.scalar(select(LoginThrottle))
+    assert throttle is not None
+    assert throttle.failure_count == 3
+    assert throttle.locked_until is not None
+    assert EMAIL not in throttle.scope_hash

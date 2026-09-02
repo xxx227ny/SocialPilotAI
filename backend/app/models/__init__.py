@@ -2,6 +2,7 @@
 
 from app.models.account import (
     AuthSession,
+    LoginThrottle,
     Membership,
     ProviderCredential,
     User,
@@ -62,6 +63,7 @@ __all__ = [
     "GrowthOptimizationExecution",
     "MarketingBrief",
     "MarketingStrategy",
+    "LoginThrottle",
     "Membership",
     "ProviderCredential",
     "Product",

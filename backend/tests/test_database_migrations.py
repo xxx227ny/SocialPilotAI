@@ -957,10 +957,20 @@ def test_stage3f_head_contains_product_media_bridge_columns(tmp_path: Path) -> N
             row[1]
             for row in connection.execute("PRAGMA table_info(provider_credentials)")
         }
+        login_throttle_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(login_throttles)")
+        }
     finally:
         connection.close()
-    assert HEAD_REVISION == "0029_provider_credential_profiles"
+    assert HEAD_REVISION == "0030_login_throttles"
     assert {"provider_region", "provider_workspace_ref"} <= credential_columns
+    assert {
+        "scope_hash",
+        "failure_count",
+        "window_started_at",
+        "locked_until",
+        "updated_at",
+    } <= login_throttle_columns
     assert {
         "content_type",
         "size_bytes",

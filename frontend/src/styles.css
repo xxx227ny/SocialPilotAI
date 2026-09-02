@@ -4436,6 +4436,14 @@ textarea { font: inherit; }
   color: #4939b8;
 }
 
+.settings-error {
+  margin: 0;
+  padding: 0.85rem 1rem;
+  border-radius: 0.75rem;
+  background: #fff0f2;
+  color: #b3263d;
+}
+
 .settings-security-note {
   padding-top: 1rem;
   border-top: 1px solid #edf0f7;

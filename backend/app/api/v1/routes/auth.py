@@ -1,23 +1,33 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.api.auth_dependency import ProductPrincipalDep
 from app.core.config import Settings, get_settings
 from app.db.session import get_db
-from app.schemas.auth import AuthSessionRead, LoginRequest, RegisterRequest
+from app.schemas.auth import (
+    AuthSessionRead,
+    ChangePasswordRequest,
+    LoginRequest,
+    RegisterRequest,
+    SessionRevocationRead,
+)
 from app.services.demo_auth_service import (
     SESSION_COOKIE_NAME,
     create_session_token,
     credentials_are_valid,
     read_session_token,
 )
+from app.services.login_throttle_service import LoginThrottleService
 from app.services.user_auth_service import (
     DuplicateEmailError,
+    change_password,
     login_user,
     read_session,
     register_user,
+    revoke_other_sessions,
     revoke_session,
 )
 
@@ -45,9 +55,7 @@ def _set_session_cookie(
     )
 
 
-def _principal_response(
-    principal, *, registration_enabled: bool
-) -> AuthSessionRead:
+def _principal_response(principal, *, registration_enabled: bool) -> AuthSessionRead:
     return AuthSessionRead(
         enabled=True,
         authenticated=True,
@@ -157,11 +165,26 @@ def register(
 )
 def login(
     payload: LoginRequest,
+    request: Request,
     response: Response,
     settings: SettingsDep,
     db: DbSession,
 ) -> AuthSessionRead:
     if settings.enable_user_auth:
+        throttle = LoginThrottleService(
+            db,
+            max_failures=settings.user_auth_login_max_failures,
+            window_seconds=settings.user_auth_login_window_seconds,
+            lock_seconds=settings.user_auth_login_lock_seconds,
+        )
+        remote_address = request.client.host if request.client is not None else None
+        decision = throttle.check(payload.username, remote_address)
+        if not decision.allowed:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="登录尝试过多，请稍后再试。",
+                headers={"Retry-After": str(decision.retry_after_seconds)},
+            )
         authenticated = login_user(
             db,
             email=payload.username,
@@ -169,11 +192,20 @@ def login(
             session_ttl_seconds=settings.user_auth_session_ttl_seconds,
         )
         if authenticated is None:
+            decision = throttle.record_failure(payload.username, remote_address)
+            db.commit()
+            if not decision.allowed:
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail="登录尝试过多，请稍后再试。",
+                    headers={"Retry-After": str(decision.retry_after_seconds)},
+                )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="账号或密码不正确。",
             )
         principal, token = authenticated
+        throttle.clear(payload.username, remote_address)
         db.commit()
         _set_session_cookie(
             response,
@@ -205,6 +237,70 @@ def login(
         same_site="strict",
     )
     return AuthSessionRead(enabled=True, authenticated=True, username=username)
+
+
+@router.post(
+    "/change-password",
+    response_model=AuthSessionRead,
+    response_model_exclude_unset=True,
+)
+def update_password(
+    payload: ChangePasswordRequest,
+    response: Response,
+    settings: SettingsDep,
+    db: DbSession,
+    principal: ProductPrincipalDep,
+) -> AuthSessionRead:
+    try:
+        token = change_password(
+            db,
+            user_id=principal.user_id,
+            current_password=payload.current_password,
+            new_password=payload.new_password,
+            session_ttl_seconds=settings.user_auth_session_ttl_seconds,
+        )
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="新密码不能与当前密码相同。",
+        ) from exc
+    if token is None:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="当前密码不正确。",
+        )
+    db.commit()
+    _set_session_cookie(
+        response,
+        token=token,
+        max_age=settings.user_auth_session_ttl_seconds,
+        secure=settings.user_auth_cookie_secure,
+        same_site="lax",
+    )
+    return _principal_response(
+        principal,
+        registration_enabled=settings.allow_public_registration,
+    )
+
+
+@router.post("/sessions/revoke-others", response_model=SessionRevocationRead)
+def logout_other_devices(
+    settings: SettingsDep,
+    db: DbSession,
+    principal: ProductPrincipalDep,
+    session_token: Annotated[str | None, Cookie(alias=SESSION_COOKIE_NAME)] = None,
+) -> SessionRevocationRead:
+    if not settings.enable_user_auth or session_token is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+    revoked = revoke_other_sessions(
+        db,
+        user_id=principal.user_id,
+        token=session_token,
+    )
+    db.commit()
+    return SessionRevocationRead(revoked_sessions=revoked)
 
 
 @router.post(
