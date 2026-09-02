@@ -63,3 +63,18 @@ export interface DashboardSnapshot {
   growth: DashboardGrowth;
   pipeline: PipelineStep[];
 }
+
+export interface WorkspaceActivitySummary {
+  data_scope: "current_workspace";
+  ai_calls: 0;
+  api_key_configured: boolean;
+  api_key_verified: boolean;
+  product_count: number;
+  product_asset_count: number;
+  strategy_count: number;
+  copy_matrix_count: number;
+  video_project_count: number;
+  video_artifact_count: number;
+  active_job_count: number;
+  attention_job_count: number;
+}

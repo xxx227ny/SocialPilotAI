@@ -170,6 +170,22 @@ def main() -> None:
             raise RuntimeError("First workspace product list is not isolated")
         require_status(first.get(f"/api/v1/products/{product_b['id']}"), 404)
 
+        first_summary = first.get("/api/v1/dashboard/workspace-summary")
+        second_summary = second.get("/api/v1/dashboard/workspace-summary")
+        require_status(first_summary, 200)
+        require_status(second_summary, 200)
+        for summary in (first_summary.json(), second_summary.json()):
+            if summary.get("data_scope") != "current_workspace":
+                raise RuntimeError("Workspace summary did not declare its data scope")
+            if summary.get("ai_calls") != 0:
+                raise RuntimeError("Workspace summary unexpectedly reported an AI call")
+            if summary.get("product_count") != 1:
+                raise RuntimeError("Workspace summary leaked or omitted a product")
+        if first_summary.json().get("api_key_configured") is not True:
+            raise RuntimeError("First workspace credential was not counted")
+        if second_summary.json().get("api_key_configured") is not True:
+            raise RuntimeError("Second workspace credential was not counted")
+
         require_status(first.post("/api/v1/auth/logout"), 200)
         require_status(second.post("/api/v1/auth/logout"), 200)
         require_status(first.get("/api/v1/products"), 401)

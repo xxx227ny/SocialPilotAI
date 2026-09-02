@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { getDashScopeCredential } from "../api/credentials";
-import { listProducts } from "../api/products";
+import { getWorkspaceActivitySummary } from "../api/dashboard";
 import { useAuth } from "../context/AuthContext";
 import { BusinessValueCalculator } from "../components/dashboard/BusinessValueCalculator";
+import type { WorkspaceActivitySummary } from "../types/dashboard";
 
 const capabilities = [
   {
@@ -42,39 +42,34 @@ const workflow = [
 
 export function DashboardPage() {
   const { authMode, username } = useAuth();
-  const [onboarding, setOnboarding] = useState({
-    loading: authMode === "user",
-    keyVerified: false,
-    productCount: 0,
-    unavailable: false,
-  });
+  const [summary, setSummary] = useState<WorkspaceActivitySummary | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(authMode === "user");
+  const [summaryUnavailable, setSummaryUnavailable] = useState(false);
 
   useEffect(() => {
     if (authMode !== "user") return;
     let active = true;
-    setOnboarding((current) => ({ ...current, loading: true, unavailable: false }));
-    Promise.all([getDashScopeCredential(), listProducts()])
-      .then(([credential, products]) => {
+    setSummaryLoading(true);
+    setSummaryUnavailable(false);
+    getWorkspaceActivitySummary()
+      .then((result) => {
         if (!active) return;
-        setOnboarding({
-          loading: false,
-          keyVerified: credential.verified,
-          productCount: products.length,
-          unavailable: false,
-        });
+        setSummary(result);
+        setSummaryLoading(false);
       })
       .catch(() => {
         if (!active) return;
-        setOnboarding((current) => ({ ...current, loading: false, unavailable: true }));
+        setSummaryLoading(false);
+        setSummaryUnavailable(true);
       });
     return () => { active = false; };
   }, [authMode]);
 
   const onboardingSteps = useMemo(() => [
     { title: "注册独立工作区", complete: true, detail: username || "当前账号已登录", to: "/", action: "已完成" },
-    { title: "绑定并验证 API Key", complete: onboarding.keyVerified, detail: onboarding.keyVerified ? "AI 功能已启用" : "使用你自己的阿里云百炼额度", to: "/settings/api-key", action: onboarding.keyVerified ? "查看设置" : "立即绑定" },
-    { title: "创建第一个商品", complete: onboarding.productCount > 0, detail: onboarding.productCount > 0 ? `当前已有 ${onboarding.productCount} 个商品` : "录入卖点、市场和商品素材", to: "/products", action: onboarding.productCount > 0 ? "查看商品" : "创建商品" },
-  ], [onboarding.keyVerified, onboarding.productCount, username]);
+    { title: "绑定并验证 API Key", complete: Boolean(summary?.api_key_verified), detail: summary?.api_key_verified ? "AI 功能已启用" : "使用你自己的阿里云百炼额度", to: "/settings/api-key", action: summary?.api_key_verified ? "查看设置" : "立即绑定" },
+    { title: "创建第一个商品", complete: Boolean(summary?.product_count), detail: summary?.product_count ? `当前已有 ${summary.product_count} 个商品` : "录入卖点、市场和商品素材", to: "/products", action: summary?.product_count ? "查看商品" : "创建商品" },
+  ], [summary?.api_key_verified, summary?.product_count, username]);
   const completedSteps = onboardingSteps.filter((step) => step.complete).length;
 
   return (
@@ -110,9 +105,9 @@ export function DashboardPage() {
               <h2 id="product-onboarding-title">三步开始独立使用 SocialPilot AI</h2>
               <p>账号、数据和 API Key 均绑定到你的工作区，不与其他用户共享。</p>
             </div>
-            <strong>{onboarding.loading ? "正在检查…" : `${completedSteps}/3 已完成`}</strong>
+            <strong>{summaryLoading ? "正在检查…" : `${completedSteps}/3 已完成`}</strong>
           </header>
-          {onboarding.unavailable && <p className="product-onboarding__warning">暂时无法读取启用状态，请刷新页面后重试。</p>}
+          {summaryUnavailable && <p className="product-onboarding__warning">暂时无法读取启用状态，请刷新页面后重试。</p>}
           <ol>
             {onboardingSteps.map((step, index) => (
               <li className={step.complete ? "is-complete" : ""} key={step.title}>
@@ -122,6 +117,38 @@ export function DashboardPage() {
               </li>
             ))}
           </ol>
+        </section>
+      )}
+
+      {authMode === "user" && summary && (
+        <section className="home-guide__section" aria-labelledby="workspace-activity-title">
+          <header>
+            <span>当前工作区真实进度</span>
+            <h2 id="workspace-activity-title">你的内容生产记录</h2>
+            <p>
+              以下数字只统计当前账号工作区已经保存的记录，读取时不会调用模型，也不会产生费用。
+            </p>
+          </header>
+          <div className="home-guide__summary">
+            <article>
+              <strong>{summary.product_count} 个商品 · {summary.product_asset_count} 份素材</strong>
+              <p>商品资料和图片均只属于当前工作区。</p>
+            </article>
+            <article>
+              <strong>{summary.strategy_count} 份策略 · {summary.copy_matrix_count} 组文案</strong>
+              <p>展示已真正保存的营销内容，不把页面预览计入成果。</p>
+            </article>
+            <article>
+              <strong>{summary.video_project_count} 个视频项目 · {summary.video_artifact_count} 个成片</strong>
+              <p>
+                {summary.active_job_count > 0
+                  ? `${summary.active_job_count} 个任务正在处理。`
+                  : summary.attention_job_count > 0
+                    ? `${summary.attention_job_count} 个任务需要查看失败原因。`
+                    : "当前没有等待处理或需要关注的任务。"}
+              </p>
+            </article>
+          </div>
         </section>
       )}
 

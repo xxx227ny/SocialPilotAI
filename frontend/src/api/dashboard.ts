@@ -1,5 +1,8 @@
 import { apiClient } from "./client";
-import type { DashboardSnapshot } from "../types/dashboard";
+import type {
+  DashboardSnapshot,
+  WorkspaceActivitySummary,
+} from "../types/dashboard";
 
 export async function prepareDemo(): Promise<DashboardSnapshot> {
   const response = await apiClient.post<DashboardSnapshot>("/demo/prepare");
@@ -16,6 +19,13 @@ export async function getProductDashboard(
 ): Promise<DashboardSnapshot> {
   const response = await apiClient.get<DashboardSnapshot>(
     `/dashboard/products/${productId}`,
+  );
+  return response.data;
+}
+
+export async function getWorkspaceActivitySummary(): Promise<WorkspaceActivitySummary> {
+  const response = await apiClient.get<WorkspaceActivitySummary>(
+    "/dashboard/workspace-summary",
   );
   return response.data;
 }

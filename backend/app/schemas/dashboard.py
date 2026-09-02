@@ -73,3 +73,20 @@ class DashboardSnapshotSchema(BaseModel):
     video_project: VideoProjectSchema | None
     growth: DashboardGrowthSchema
     pipeline: list[PipelineStepSchema]
+
+
+class WorkspaceActivitySummarySchema(BaseModel):
+    """Read-only, current-workspace activity totals used by onboarding."""
+
+    data_scope: Literal["current_workspace"] = "current_workspace"
+    ai_calls: Literal[0] = 0
+    api_key_configured: bool
+    api_key_verified: bool
+    product_count: int = Field(ge=0)
+    product_asset_count: int = Field(ge=0)
+    strategy_count: int = Field(ge=0)
+    copy_matrix_count: int = Field(ge=0)
+    video_project_count: int = Field(ge=0)
+    video_artifact_count: int = Field(ge=0)
+    active_job_count: int = Field(ge=0)
+    attention_job_count: int = Field(ge=0)
