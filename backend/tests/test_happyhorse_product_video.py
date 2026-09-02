@@ -79,6 +79,33 @@ class FakeHappyHorse(VisualGenerationProvider):
         )
 
 
+def test_wanx_image_enqueue_rejects_missing_or_shared_server_key(
+    db_session: Session,
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        enable_user_auth=True,
+        enable_real_product_video=True,
+        wanx_api_key="shared-server-key-must-not-be-used",
+    )
+    request = WanxProductImageSubmitRequest(
+        script_version_id=1,
+        scene_sequence=1,
+        reference_product_asset_id=1,
+        reference_product_asset_sha256="a" * 64,
+        idempotency_key="missing-workspace-key",
+        cost_confirmed=True,
+    )
+
+    with pytest.raises(
+        AppError, match="Workspace API Key is missing or unverified"
+    ) as error:
+        WanxProductImageService(db_session, settings).enqueue(1, request)
+
+    assert error.value.status_code == 503
+    assert db_session.query(ExecutionJob).count() == 0
+
+
 def png_bytes(width: int = 1080, height: int = 1920) -> bytes:
     def chunk(kind: bytes, payload: bytes) -> bytes:
         return (
@@ -215,7 +242,7 @@ def test_wanx_job_freezes_and_resolves_exact_product_reference(
     image_path.parent.mkdir(parents=True)
     image_path.write_bytes(content)
     settings = Settings(
-        qwen_api_key="fake-token-plan-key",
+        wanx_api_key="fake-token-plan-key",
         enable_real_product_video=True,
         product_asset_storage_root=str(tmp_path / "images"),
     )

@@ -3,9 +3,11 @@ import io
 import wave
 from pathlib import Path
 
+import pytest
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import Settings
+from app.core.exceptions import AppError
 from app.execution.handlers.voiceover_tts import VoiceoverGenerateV1Handler
 from app.execution.registry import ExecutionHandlerRegistry
 from app.execution.worker import ExecutionWorker, WorkerRunStatus
@@ -195,11 +197,39 @@ def _worker(session: Session, settings: Settings, provider: FakeTts) -> Executio
     )
 
 
+def test_voiceover_enqueue_rejects_missing_or_shared_server_key(
+    db_session: Session,
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        enable_user_auth=True,
+        enable_real_product_video=True,
+        qwen_api_key="shared-server-key-must-not-be-used",
+    )
+    request = VoiceoverSubmitRequest(
+        composition_id=1,
+        script_version_id=1,
+        language="en-US",
+        voice="Cherry",
+        narration_digest="a" * 64,
+        idempotency_key="missing-workspace-key",
+    )
+
+    with pytest.raises(
+        AppError, match="Workspace API Key is missing or unverified"
+    ) as error:
+        VoiceoverGenerationService(db_session, settings).enqueue(1, request)
+
+    assert error.value.status_code == 503
+    assert db_session.query(ExecutionJob).count() == 0
+
+
 def test_short_voiceover_is_padded_by_worker_and_full_timeline_preflight_passes(
     db_session: Session, tmp_path: Path
 ) -> None:
     settings = Settings(
         enable_real_product_video=True,
+        qwen_api_key="test-workspace-key",
         video_artifact_storage_root=str(tmp_path),
     )
     product, composition, version = _source(db_session, tmp_path, "short")
@@ -291,6 +321,7 @@ def test_long_voiceover_fails_once_without_artifact_or_truncation(
 ) -> None:
     settings = Settings(
         enable_real_product_video=True,
+        qwen_api_key="test-workspace-key",
         video_artifact_storage_root=str(tmp_path),
     )
     product, composition, version = _source(db_session, tmp_path, "long")
@@ -341,6 +372,7 @@ def test_tts_explicit_failure_persists_only_safe_category(
 ) -> None:
     settings = Settings(
         enable_real_product_video=True,
+        qwen_api_key="test-workspace-key",
         video_artifact_storage_root=str(tmp_path),
     )
     product, composition, version = _source(db_session, tmp_path, "explicit")

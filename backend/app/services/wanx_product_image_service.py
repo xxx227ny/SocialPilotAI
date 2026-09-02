@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings
 from app.core.exceptions import AppError
 from app.models import ExecutionJob, Product, ProductAsset, VideoScriptVersion
+from app.providers.live_configuration import effective_wanx_api_key
 from app.schemas.execution import ExecutionJobRead
 from app.schemas.product_marketing_video import (
     JobSubmitRead,
@@ -51,6 +52,8 @@ class WanxProductImageService:
     ) -> JobSubmitRead:
         if not self.settings.enable_real_product_video:
             raise AppError("Real product video execution is disabled", 503)
+        if not effective_wanx_api_key(self.settings):
+            raise AppError("Workspace API Key is missing or unverified", 503)
         if not data.cost_confirmed:
             raise AppError("Wanx image cost confirmation is required", 409)
         product, version, scene, reference = self._source(

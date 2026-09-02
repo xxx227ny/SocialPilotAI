@@ -20,6 +20,7 @@ from app.models import (
     VideoProject,
     VideoScriptVersion,
 )
+from app.providers.live_configuration import effective_qwen_api_key
 from app.schemas.execution import ExecutionJobRead
 from app.schemas.product_marketing_video import JobSubmitRead, VoiceoverSubmitRequest
 from app.services.tts_provider import TtsProvider
@@ -41,6 +42,8 @@ class VoiceoverGenerationService:
     def enqueue(self, product_id: int, data: VoiceoverSubmitRequest) -> JobSubmitRead:
         if not self.settings.enable_real_product_video:
             raise AppError("Real product video execution is disabled", 503)
+        if not effective_qwen_api_key(self.settings):
+            raise AppError("Workspace API Key is missing or unverified", 503)
         composition = self.session.get(VideoComposition, data.composition_id)
         version = self.session.get(VideoScriptVersion, data.script_version_id)
         project = (
