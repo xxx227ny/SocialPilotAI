@@ -37,7 +37,9 @@ class DashScopeCredentialVerifier:
         )
         self.transport = transport
 
-    def verify(self, api_key: str) -> CredentialVerificationResult:
+    def verify(
+        self, api_key: str, *, models_endpoint: str = DASHSCOPE_MODEL_LIST_URL
+    ) -> CredentialVerificationResult:
         try:
             with httpx.Client(
                 timeout=self.timeout,
@@ -46,7 +48,7 @@ class DashScopeCredentialVerifier:
                 follow_redirects=False,
             ) as client:
                 response = client.get(
-                    DASHSCOPE_MODEL_LIST_URL,
+                    models_endpoint,
                     params={
                         "capabilities": "TG",
                         "page_no": 1,

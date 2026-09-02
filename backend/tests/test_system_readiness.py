@@ -187,6 +187,44 @@ def test_readiness_explains_missing_local_configuration(
     assert body["execution_worker"]["status"] == "not_running"
 
 
+def test_product_readiness_guides_user_to_personal_api_key_settings(
+    client: TestClient,
+    db_session: Session,
+    tmp_path,
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        enable_user_auth=True,
+        allow_public_registration=True,
+        user_auth_cookie_secure=False,
+        user_credential_encryption_key=Fernet.generate_key().decode("ascii"),
+        video_artifact_storage_root=str(tmp_path),
+        enable_strategy_execution=True,
+        enable_copy_execution=True,
+        enable_video_project_execution=True,
+        enable_video_render_execution=True,
+    )
+    app.dependency_overrides[get_settings] = lambda: settings
+    registered = client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "readiness-user@example.com",
+            "password": "strong-user-password",
+        },
+    )
+    assert registered.status_code == 201
+    mark_database_at_head(db_session)
+
+    response = client.get("/api/v1/system/readiness")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["qwen"]["ready"] is False
+    assert "API Key 设置" in body["qwen"]["message"]
+    assert "backend/.env" not in body["qwen"]["message"]
+    assert "API Key 设置" in body["wanx"]["message"]
+
+
 def test_readiness_reports_unversioned_database_without_path_or_write(
     client: TestClient,
     db_session: Session,

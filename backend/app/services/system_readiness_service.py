@@ -78,9 +78,16 @@ def _process_state(pid: int) -> WorkerProcessState:
 class SystemReadinessService:
     """Report local configuration state without resolving or calling Providers."""
 
-    def __init__(self, session: Session, settings: Settings) -> None:
+    def __init__(
+        self,
+        session: Session,
+        settings: Settings,
+        *,
+        user_managed_provider: bool = False,
+    ) -> None:
         self.session = session
         self.settings = settings
+        self.user_managed_provider = user_managed_provider
 
     def get(self) -> SystemReadinessRead:
         qwen_ready = bool(
@@ -151,8 +158,13 @@ class SystemReadinessService:
                     "Qwen已就绪；Strategy、Copy和Video Blueprint执行前仍需费用确认。"
                     if qwen_ready
                     else (
-                        "Qwen未就绪：请在backend/.env配置QWEN_API_KEY及所需"
-                        "Workspace/Endpoint。"
+                        "Qwen未就绪：请前往“API Key 设置”绑定并验证你自己的"
+                        "阿里云百炼 Key。"
+                        if self.user_managed_provider
+                        else (
+                            "Qwen未就绪：请在backend/.env配置QWEN_API_KEY及所需"
+                            "Workspace/Endpoint。"
+                        )
                     )
                 ),
             ),
@@ -162,8 +174,13 @@ class SystemReadinessService:
                     "Wanx已就绪；创建RenderTask前仍需费用确认。"
                     if wanx_ready
                     else (
-                        "Wanx未就绪：请在backend/.env配置WANX_API_KEY及"
-                        "WANX_WORKSPACE_ID或WANX_ENDPOINT。"
+                        "Wanx未就绪：请前往“API Key 设置”绑定并验证你自己的"
+                        "阿里云百炼 Key。"
+                        if self.user_managed_provider
+                        else (
+                            "Wanx未就绪：请在backend/.env配置WANX_API_KEY及"
+                            "WANX_WORKSPACE_ID或WANX_ENDPOINT。"
+                        )
                     )
                 ),
             ),

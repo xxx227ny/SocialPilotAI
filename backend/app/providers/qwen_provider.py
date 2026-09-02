@@ -15,6 +15,7 @@ from app.providers.live_configuration import (
     audit_live_provider_configuration,
     controlled_qwen_endpoint,
     effective_qwen_api_key,
+    effective_qwen_endpoint,
     metadata_for_http_failure,
     metadata_for_transport_failure,
     provider_error_from_metadata,
@@ -59,12 +60,7 @@ class QwenProvider(TextGenerationProvider):
         )
         self.client = OpenAI(
             api_key=api_key,
-            base_url=(
-                configuration.qwen_endpoint
-                if app_settings.require_live_provider_coherence
-                or app_settings.qwen_endpoint
-                else QWEN_BASE_URL
-            ),
+            base_url=effective_qwen_endpoint(app_settings) or QWEN_BASE_URL,
             timeout=timeout,
             http_client=DefaultHttpxClient(timeout=timeout, trust_env=True),
             max_retries=0,

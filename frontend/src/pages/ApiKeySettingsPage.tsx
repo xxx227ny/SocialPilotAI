@@ -12,6 +12,8 @@ import type { ProviderCredential } from "../types/credentials";
 export function ApiKeySettingsPage() {
   const [credential, setCredential] = useState<ProviderCredential | null>(null);
   const [apiKey, setApiKey] = useState("");
+  const [region, setRegion] = useState<"cn-beijing">("cn-beijing");
+  const [providerWorkspaceId, setProviderWorkspaceId] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -37,7 +39,11 @@ export function ApiKeySettingsPage() {
 
   useEffect(() => {
     getDashScopeCredential()
-      .then(setCredential)
+      .then((saved) => {
+        setCredential(saved);
+        setRegion(saved.region);
+        setProviderWorkspaceId(saved.provider_workspace_id ?? "");
+      })
       .catch(() => setMessage("暂时无法读取 API Key 状态，请稍后重试。"))
       .finally(() => setLoading(false));
   }, []);
@@ -48,7 +54,11 @@ export function ApiKeySettingsPage() {
     setMessage(null);
     let saved: ProviderCredential;
     try {
-      saved = await saveDashScopeCredential(apiKey);
+      saved = await saveDashScopeCredential(
+        apiKey,
+        region,
+        providerWorkspaceId,
+      );
       setCredential(saved);
       setApiKey("");
     } catch (error) {
@@ -83,6 +93,8 @@ export function ApiKeySettingsPage() {
         provider: "DASHSCOPE",
         configured: false,
         key_hint: null,
+        region: "cn-beijing",
+        provider_workspace_id: null,
         verified: false,
         verified_at: null,
         updated_at: null,
@@ -110,11 +122,33 @@ export function ApiKeySettingsPage() {
           <span className={`status-dot${credential?.verified ? " is-ready" : credential?.configured ? " is-pending" : ""}`} />
           <div>
             <strong>{loading ? "正在读取…" : credential?.verified ? "已验证并启用" : credential?.configured ? "已保存，尚未验证" : "尚未绑定"}</strong>
-            <p>{credential?.configured ? `当前 Key：${credential.key_hint}${credential.verified ? "；AI 功能已启用。" : "；AI 功能保持关闭。"}` : "绑定并验证后才能生成文案、图片、语音和视频。"}</p>
+            <p>{credential?.configured ? `当前 Key：${credential.key_hint}；地域：华北2（北京）${credential.provider_workspace_id ? `；业务空间：${credential.provider_workspace_id}` : "；使用兼容入口"}${credential.verified ? "；AI 功能已启用。" : "；AI 功能保持关闭。"}` : "绑定并验证后才能生成文案、图片、语音和视频。"}</p>
           </div>
         </div>
 
         <form onSubmit={submit} className="credential-form">
+          <label>
+            Key 所属地域
+            <select
+              value={region}
+              onChange={(event) => setRegion(event.target.value as "cn-beijing")}
+            >
+              <option value="cn-beijing">华北2（北京）</option>
+            </select>
+          </label>
+          <label>
+            百炼业务空间 ID（选填）
+            <input
+              type="text"
+              autoComplete="off"
+              value={providerWorkspaceId}
+              onChange={(event) => setProviderWorkspaceId(event.target.value)}
+              placeholder="例如：llm-xxxxxxxx"
+              maxLength={63}
+              pattern="[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+            />
+            <small>填写后使用该业务空间的专属接口；暂不填写则使用北京兼容入口。</small>
+          </label>
           <label>
             {credential?.configured ? "输入新 Key 进行替换" : "输入你的百炼 API Key"}
             <input

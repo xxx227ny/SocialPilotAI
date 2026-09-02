@@ -12,10 +12,14 @@ export async function getDashScopeCredential(): Promise<ProviderCredential> {
 
 export async function saveDashScopeCredential(
   apiKey: string,
+  region: "cn-beijing",
+  providerWorkspaceId: string,
 ): Promise<ProviderCredential> {
   return (
     await apiClient.put<ProviderCredential>("/credentials/dashscope", {
       api_key: apiKey,
+      region,
+      provider_workspace_id: providerWorkspaceId.trim() || null,
     })
   ).data;
 }

@@ -108,6 +108,28 @@ class LazyWanxProvider(VisualGenerationProvider):
         return await self.provider_factory(self.settings).fetch(provider_task_id)
 
 
+class LazyTtsProvider:
+    """Construct TTS only after the Worker has bound workspace credentials."""
+
+    provider_name = "qwen_audio"
+
+    def __init__(
+        self,
+        settings: Settings,
+        provider_factory: Callable[[Settings], TtsProvider],
+    ) -> None:
+        self.settings = settings
+        self.provider_factory = provider_factory
+
+    def generate(self, *, text: str, language: str, voice: str, rate: float) -> bytes:
+        return self.provider_factory(self.settings).generate(
+            text=text,
+            language=language,
+            voice=voice,
+            rate=rate,
+        )
+
+
 class LazyYouTubeProvider:
     """Construct the YouTube adapter only inside a claimed Worker Job."""
 
@@ -325,7 +347,7 @@ def build_execution_handler_registry(
         VoiceoverGenerateV1Handler(
             session_factory=session_factory,
             settings=settings,
-            provider=tts_provider_factory(settings),
+            provider=LazyTtsProvider(settings, tts_provider_factory),
         )
     )
     registry.register(

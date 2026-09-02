@@ -18,8 +18,11 @@ API_KEY = "sk-user-owned-dashscope-key-123456"
 
 
 class SuccessfulVerifier:
-    def verify(self, api_key: str) -> CredentialVerificationResult:
+    def verify(
+        self, api_key: str, *, models_endpoint: str
+    ) -> CredentialVerificationResult:
         assert api_key == API_KEY
+        assert models_endpoint == "https://dashscope.aliyuncs.com/api/v1/models"
         return CredentialVerificationResult(
             status="VERIFIED",
             verified=True,
@@ -28,8 +31,11 @@ class SuccessfulVerifier:
 
 
 class InvalidVerifier:
-    def verify(self, api_key: str) -> CredentialVerificationResult:
+    def verify(
+        self, api_key: str, *, models_endpoint: str
+    ) -> CredentialVerificationResult:
         assert api_key == API_KEY
+        assert models_endpoint == "https://dashscope.aliyuncs.com/api/v1/models"
         return CredentialVerificationResult(
             status="INVALID",
             verified=False,
@@ -78,6 +84,8 @@ def test_user_can_bind_read_and_delete_encrypted_dashscope_key(
         "provider": "DASHSCOPE",
         "configured": False,
         "key_hint": None,
+        "region": "cn-beijing",
+        "provider_workspace_id": None,
         "verified": False,
         "verified_at": None,
         "updated_at": None,
@@ -96,6 +104,8 @@ def test_user_can_bind_read_and_delete_encrypted_dashscope_key(
     assert stored.secret_ciphertext != API_KEY
     assert API_KEY not in stored.secret_ciphertext
     assert stored.encryption_key_id == "test-v1"
+    assert stored.provider_region == "cn-beijing"
+    assert stored.provider_workspace_ref is None
     assert CredentialCipher(settings).decrypt(stored.secret_ciphertext) == API_KEY
     assert (
         ProviderCredentialService(db_session, settings).read_verified_dashscope_key(
@@ -249,3 +259,80 @@ def test_invalid_credential_is_rejected_without_echoing_secret(
     assert response.status_code == 422
     assert invalid_secret not in response.text
     assert response.json()["detail"] == "API Key 格式无效。"
+
+
+def test_workspace_profile_is_normalized_and_used_for_verification(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    settings = credential_settings()
+    app.dependency_overrides[get_settings] = lambda: settings
+    observed: dict[str, str] = {}
+
+    class WorkspaceVerifier:
+        def verify(
+            self, api_key: str, *, models_endpoint: str
+        ) -> CredentialVerificationResult:
+            observed["api_key"] = api_key
+            observed["models_endpoint"] = models_endpoint
+            return CredentialVerificationResult(
+                status="VERIFIED",
+                verified=True,
+                message="API Key 验证通过。",
+            )
+
+    app.dependency_overrides[get_dashscope_credential_verifier] = lambda: (
+        WorkspaceVerifier()
+    )
+    account = register(client, "workspace-profile@example.com")
+
+    saved = client.put(
+        "/api/v1/credentials/dashscope",
+        json={
+            "api_key": API_KEY,
+            "region": "cn-beijing",
+            "provider_workspace_id": " My-Workspace-01 ",
+        },
+    )
+    verified = client.post("/api/v1/credentials/dashscope/verify")
+
+    assert saved.status_code == 200
+    assert saved.json()["region"] == "cn-beijing"
+    assert saved.json()["provider_workspace_id"] == "my-workspace-01"
+    assert verified.status_code == 200
+    assert verified.json()["provider_workspace_id"] == "my-workspace-01"
+    assert observed == {
+        "api_key": API_KEY,
+        "models_endpoint": (
+            "https://my-workspace-01.cn-beijing.maas.aliyuncs.com/api/v1/models"
+        ),
+    }
+    stored = db_session.scalar(
+        select(ProviderCredential).where(
+            ProviderCredential.workspace_id == account["workspace_id"]
+        )
+    )
+    assert stored is not None
+    assert stored.provider_workspace_ref == "my-workspace-01"
+
+
+def test_invalid_workspace_profile_is_rejected_without_storing_secret(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    settings = credential_settings()
+    app.dependency_overrides[get_settings] = lambda: settings
+    register(client, "invalid-workspace-profile@example.com")
+
+    response = client.put(
+        "/api/v1/credentials/dashscope",
+        json={
+            "api_key": API_KEY,
+            "region": "cn-beijing",
+            "provider_workspace_id": "https://attacker.invalid/path",
+        },
+    )
+
+    assert response.status_code == 422
+    assert API_KEY not in response.text
+    assert db_session.scalar(select(ProviderCredential)) is None

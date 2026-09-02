@@ -3,6 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from app.api.auth_dependency import SettingsDep as RawSettingsDep
 from app.api.dependencies import WorkspaceProviderSettingsDep
 from app.db.session import get_db
 from app.schemas.system import SystemReadinessRead
@@ -17,5 +18,10 @@ SettingsDep = WorkspaceProviderSettingsDep
 def get_system_readiness(
     db: DbSession,
     app_settings: SettingsDep,
+    raw_settings: RawSettingsDep,
 ) -> SystemReadinessRead:
-    return SystemReadinessService(db, app_settings).get()
+    return SystemReadinessService(
+        db,
+        app_settings,
+        user_managed_provider=raw_settings.enable_user_auth,
+    ).get()

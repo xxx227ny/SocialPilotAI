@@ -953,9 +953,14 @@ def test_stage3f_head_contains_product_media_bridge_columns(tmp_path: Path) -> N
             "SELECT sql FROM sqlite_master WHERE type='table' "
             "AND name='video_composition_audio_artifacts'"
         ).fetchone()[0]
+        credential_columns = {
+            row[1]
+            for row in connection.execute("PRAGMA table_info(provider_credentials)")
+        }
     finally:
         connection.close()
-    assert HEAD_REVISION == "0028_brand_kit_workspaces"
+    assert HEAD_REVISION == "0029_provider_credential_profiles"
+    assert {"provider_region", "provider_workspace_ref"} <= credential_columns
     assert {
         "content_type",
         "size_bytes",

@@ -16,6 +16,7 @@ from app.core.config import Settings
 from app.core.exceptions import SafeProviderFailure
 from app.execution.credential_context import (
     current_execution_api_key,
+    current_execution_provider_runtime,
     execution_api_key_is_bound,
 )
 from app.providers.base import (
@@ -115,18 +116,23 @@ class ProviderFailureMetadata:
 def audit_live_provider_configuration(
     settings: Settings,
 ) -> LiveProviderConfiguration:
-    qwen_endpoint, qwen_endpoint_valid = _resolve_endpoint(
-        explicit=settings.qwen_endpoint,
-        workspace_id=settings.qwen_workspace_id,
-        region=settings.qwen_region,
-        templates=QWEN_REGION_ENDPOINT_TEMPLATES,
-    )
-    wanx_endpoint, wanx_endpoint_valid = _resolve_endpoint(
-        explicit=settings.wanx_endpoint,
-        workspace_id=settings.wanx_workspace_id,
-        region=settings.wanx_region,
-        templates=WANX_REGION_ENDPOINT_TEMPLATES,
-    )
+    runtime = current_execution_provider_runtime()
+    if runtime is not None:
+        qwen_endpoint, qwen_endpoint_valid = runtime.qwen_endpoint, True
+        wanx_endpoint, wanx_endpoint_valid = runtime.native_endpoint, True
+    else:
+        qwen_endpoint, qwen_endpoint_valid = _resolve_endpoint(
+            explicit=settings.qwen_endpoint,
+            workspace_id=settings.qwen_workspace_id,
+            region=settings.qwen_region,
+            templates=QWEN_REGION_ENDPOINT_TEMPLATES,
+        )
+        wanx_endpoint, wanx_endpoint_valid = _resolve_endpoint(
+            explicit=settings.wanx_endpoint,
+            workspace_id=settings.wanx_workspace_id,
+            region=settings.wanx_region,
+            templates=WANX_REGION_ENDPOINT_TEMPLATES,
+        )
     qwen_token_plan = qwen_endpoint == TOKEN_PLAN_QWEN_ENDPOINT
     wanx_token_plan = wanx_endpoint == TOKEN_PLAN_MULTIMODAL_ENDPOINT
     qwen_endpoint_valid = qwen_endpoint_valid or qwen_token_plan
@@ -134,16 +140,32 @@ def audit_live_provider_configuration(
     qwen = _provider_readiness(
         provider="qwen",
         credentials_configured=bool(effective_qwen_api_key(settings)),
-        workspace_configured=bool(_text(settings.qwen_workspace_id)) or qwen_token_plan,
-        region_supported=_text(settings.qwen_region) in SUPPORTED_REGIONS,
+        workspace_configured=(
+            runtime is not None
+            or bool(_text(settings.qwen_workspace_id))
+            or qwen_token_plan
+        ),
+        region_supported=(
+            runtime.region in SUPPORTED_REGIONS
+            if runtime is not None
+            else _text(settings.qwen_region) in SUPPORTED_REGIONS
+        ),
         endpoint_valid=qwen_endpoint_valid,
         model_configured=_text(settings.qwen_model) in QWEN_MODELS,
     )
     wanx = _provider_readiness(
         provider="wanx",
         credentials_configured=bool(effective_wanx_api_key(settings)),
-        workspace_configured=bool(_text(settings.wanx_workspace_id)) or wanx_token_plan,
-        region_supported=_text(settings.wanx_region) in SUPPORTED_REGIONS,
+        workspace_configured=(
+            runtime is not None
+            or bool(_text(settings.wanx_workspace_id))
+            or wanx_token_plan
+        ),
+        region_supported=(
+            runtime.region in SUPPORTED_REGIONS
+            if runtime is not None
+            else _text(settings.wanx_region) in SUPPORTED_REGIONS
+        ),
         endpoint_valid=wanx_endpoint_valid,
         model_configured=_text(settings.wanx_model) in WANX_MODELS,
     )
@@ -229,6 +251,45 @@ def effective_wanx_api_key(settings: Settings) -> str:
         )
     return _secret(settings.wanx_api_key) or _secret_file(
         settings.token_plan_api_key_file
+    )
+
+
+def effective_qwen_endpoint(settings: Settings) -> str:
+    runtime = current_execution_provider_runtime()
+    if runtime is not None:
+        return runtime.qwen_endpoint
+    return audit_live_provider_configuration(settings).qwen_endpoint
+
+
+def effective_wanx_endpoint(settings: Settings) -> str:
+    runtime = current_execution_provider_runtime()
+    if runtime is not None:
+        return runtime.native_endpoint
+    return audit_live_provider_configuration(settings).wanx_endpoint
+
+
+def effective_wanx_image_endpoint(settings: Settings) -> str:
+    runtime = current_execution_provider_runtime()
+    return (
+        runtime.wanx_image_endpoint
+        if runtime is not None
+        else settings.wanx_image_endpoint
+    )
+
+
+def effective_qwen_tts_endpoint(settings: Settings) -> str:
+    runtime = current_execution_provider_runtime()
+    return (
+        runtime.qwen_tts_endpoint if runtime is not None else settings.qwen_tts_endpoint
+    )
+
+
+def effective_happyhorse_endpoint(settings: Settings) -> str:
+    runtime = current_execution_provider_runtime()
+    return (
+        runtime.happyhorse_endpoint
+        if runtime is not None
+        else settings.happyhorse_endpoint
     )
 
 

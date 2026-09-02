@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppError
+from app.core.provider_runtime import WorkspaceProviderRuntime
 from app.execution.contracts import (
     ExecutionContext,
     HandlerResult,
@@ -19,7 +20,9 @@ from app.execution.contracts import (
 )
 from app.execution.credential_context import (
     bind_execution_api_key,
+    bind_execution_provider_runtime,
     reset_execution_api_key,
+    reset_execution_provider_runtime,
 )
 from app.execution.registry import ExecutionHandlerRegistry
 from app.execution.workspace_context import (
@@ -66,7 +69,9 @@ class ExecutionWorker:
         worker_id: str,
         lease_seconds: int = 30,
         heartbeat_interval_seconds: float = 5,
-        workspace_credential_resolver: Callable[[int | None], str | None]
+        workspace_credential_resolver: Callable[
+            [int | None], WorkspaceProviderRuntime | str | None
+        ]
         | None = None,
     ) -> None:
         if len(worker_id) < 8:
@@ -160,13 +165,21 @@ class ExecutionWorker:
         result: HandlerResult | None = None
         lease_was_lost = False
         credential_token = None
+        runtime_token = None
         workspace_token = bind_execution_workspace_id(workspace_id)
         try:
             if self._workspace_credential_resolver is not None:
                 credential_token = bind_execution_api_key(None)
-                api_key = self._workspace_credential_resolver(workspace_id)
+                credential = self._workspace_credential_resolver(workspace_id)
                 reset_execution_api_key(credential_token)
+                runtime = (
+                    credential
+                    if isinstance(credential, WorkspaceProviderRuntime)
+                    else None
+                )
+                api_key = runtime.api_key if runtime else credential
                 credential_token = bind_execution_api_key(api_key)
+                runtime_token = bind_execution_provider_runtime(runtime)
             result = self._invoke_handler(job_type, input_payload, context)
         except LeaseLostError:
             lease_was_lost = True
@@ -187,6 +200,8 @@ class ExecutionWorker:
         finally:
             if credential_token is not None:
                 reset_execution_api_key(credential_token)
+            if runtime_token is not None:
+                reset_execution_provider_runtime(runtime_token)
             reset_execution_workspace_id(workspace_token)
             heartbeat_stop.set()
             heartbeat_thread.join()

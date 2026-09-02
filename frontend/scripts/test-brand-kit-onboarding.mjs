@@ -114,7 +114,8 @@ try {
     state.versionCreationMessage({ version: versionOne, reused: true }),
     /已复用版本 1/,
   );
-  assert.match(state.SAFE_QWEN_CONFIGURATION_GUIDANCE, /QWEN_API_KEY/);
+  assert.match(state.SAFE_QWEN_CONFIGURATION_GUIDANCE, /API Key 设置/);
+  assert.doesNotMatch(state.SAFE_QWEN_CONFIGURATION_GUIDANCE, /QWEN_API_KEY|\.env/);
   assert.doesNotMatch(
     state.SAFE_QWEN_CONFIGURATION_GUIDANCE,
     /sk-|secret\s*=|token\s*=|api[_-]?key\s*=/i,

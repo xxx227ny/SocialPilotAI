@@ -101,7 +101,7 @@ export function deriveOnboardingSteps(
 }
 
 export const SAFE_QWEN_CONFIGURATION_GUIDANCE =
-  "内容生成尚未就绪。请在本机配置 QWEN_API_KEY；如部署要求，再配置 QWEN_WORKSPACE_ID、QWEN_ENDPOINT、QWEN_REGION 和 QWEN_MODEL。不要在网页或聊天中粘贴任何值。";
+  "内容生成尚未就绪。真实产品用户请前往“API Key 设置”，绑定并验证自己的阿里云百炼 Key；演示环境由管理员统一配置。";
 
 export async function runWithSynchronousRequestLock<T>(
   lock: { current: boolean },

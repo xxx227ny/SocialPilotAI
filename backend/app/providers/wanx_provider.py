@@ -17,6 +17,7 @@ from app.providers.live_configuration import (
     audit_live_provider_configuration,
     controlled_wanx_endpoint,
     effective_wanx_api_key,
+    effective_wanx_endpoint,
     metadata_for_http_failure,
     metadata_for_transport_failure,
     provider_error_from_metadata,
@@ -232,6 +233,9 @@ class WanxProvider(VisualGenerationProvider):
 
     @staticmethod
     def _resolve_endpoint(app_settings: Settings) -> str:
+        effective = effective_wanx_endpoint(app_settings)
+        if effective:
+            return effective
         if app_settings.wanx_endpoint:
             audit = audit_live_provider_configuration(app_settings)
             if not audit.wanx.endpoint_valid:

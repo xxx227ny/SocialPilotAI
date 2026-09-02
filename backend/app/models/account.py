@@ -143,3 +143,10 @@ class ProviderCredential(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
     )
+    provider_region: Mapped[str] = mapped_column(
+        String(40),
+        nullable=False,
+        default="cn-beijing",
+        server_default="cn-beijing",
+    )
+    provider_workspace_ref: Mapped[str | None] = mapped_column(String(120))

@@ -62,14 +62,15 @@ def get_workspace_provider_settings(
         if isinstance(principal, AuthenticatedPrincipal)
         else None
     )
-    api_key = (
-        ProviderCredentialService(db, app_settings).read_verified_dashscope_key(
-            workspace_id
+    runtime = (
+        ProviderCredentialService(db, app_settings).read_dashscope_runtime(
+            workspace_id,
+            require_verified=True,
         )
         if workspace_id is not None
         else None
     )
-    secret = SecretStr(api_key) if api_key else None
+    secret = SecretStr(runtime.api_key) if runtime else None
     return app_settings.model_copy(
         update={
             "enable_user_auth": False,
@@ -77,6 +78,11 @@ def get_workspace_provider_settings(
             "dashscope_api_key": None,
             "wanx_api_key": secret,
             "token_plan_api_key_file": "",
+            "qwen_endpoint": runtime.qwen_endpoint if runtime else None,
+            "wanx_endpoint": runtime.native_endpoint if runtime else None,
+            "wanx_image_endpoint": runtime.wanx_image_endpoint if runtime else "",
+            "qwen_tts_endpoint": runtime.qwen_tts_endpoint if runtime else "",
+            "happyhorse_endpoint": runtime.happyhorse_endpoint if runtime else "",
         }
     )
 

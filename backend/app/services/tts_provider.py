@@ -8,7 +8,10 @@ from urllib.parse import urlsplit
 import httpx
 
 from app.core.config import Settings
-from app.providers.live_configuration import effective_qwen_api_key
+from app.providers.live_configuration import (
+    effective_qwen_api_key,
+    effective_qwen_tts_endpoint,
+)
 
 
 class TtsExplicitFailure(RuntimeError):
@@ -67,7 +70,7 @@ class QwenAudioTtsProvider:
                 transport=self.transport,
             ) as client:
                 response = client.post(
-                    self.settings.qwen_tts_endpoint,
+                    effective_qwen_tts_endpoint(self.settings),
                     headers={"Authorization": f"Bearer {self.api_key}"},
                     json=payload,
                 )

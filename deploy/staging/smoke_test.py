@@ -31,15 +31,43 @@ def register(client: httpx.Client, email: str, password: str, name: str) -> dict
     return response.json()
 
 
-def save_key(client: httpx.Client, api_key: str) -> dict:
+def save_key(
+    client: httpx.Client,
+    api_key: str,
+    *,
+    provider_workspace_id: str | None = None,
+) -> dict:
     response = client.put(
         "/api/v1/credentials/dashscope",
-        json={"api_key": api_key},
+        json={
+            "api_key": api_key,
+            "region": "cn-beijing",
+            "provider_workspace_id": provider_workspace_id,
+        },
     )
     require_status(response, 200)
     if api_key in response.text:
         raise RuntimeError("Credential response exposed the API key")
-    return response.json()
+    result = response.json()
+    if result.get("region") != "cn-beijing":
+        raise RuntimeError("Credential region was not preserved")
+    if result.get("provider_workspace_id") != provider_workspace_id:
+        raise RuntimeError("Credential workspace profile was not preserved")
+    return result
+
+
+def reject_arbitrary_provider_host(client: httpx.Client, api_key: str) -> None:
+    response = client.put(
+        "/api/v1/credentials/dashscope",
+        json={
+            "api_key": api_key,
+            "region": "cn-beijing",
+            "provider_workspace_id": "https://attacker.invalid/path",
+        },
+    )
+    require_status(response, 422)
+    if api_key in response.text:
+        raise RuntimeError("Rejected credential response exposed the API key")
 
 
 def verify_invalid_key(client: httpx.Client, api_key: str) -> dict:
@@ -119,8 +147,13 @@ def main() -> None:
         if account_a["workspace_id"] == account_b["workspace_id"]:
             raise RuntimeError("The two users received the same workspace")
 
+        reject_arbitrary_provider_host(first, key_a)
         credential_a = save_key(first, key_a)
-        credential_b = save_key(second, key_b)
+        credential_b = save_key(
+            second,
+            key_b,
+            provider_workspace_id="smoke-workspace-b",
+        )
         if credential_a["key_hint"] == credential_b["key_hint"]:
             raise RuntimeError("Credential hints did not remain user-specific")
         verify_invalid_key(first, key_a)

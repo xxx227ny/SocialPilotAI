@@ -7,6 +7,7 @@ from urllib.parse import quote
 import httpx
 
 from app.core.config import Settings, settings
+from app.execution.credential_context import current_execution_provider_runtime
 from app.providers.base import (
     ProviderAuthenticationError,
     ProviderConfigurationError,
@@ -15,7 +16,10 @@ from app.providers.base import (
     ProviderQuotaError,
     ProviderTimeoutError,
 )
-from app.providers.live_configuration import effective_qwen_api_key
+from app.providers.live_configuration import (
+    effective_happyhorse_endpoint,
+    effective_qwen_api_key,
+)
 from app.providers.visual_base import (
     VisualGenerationProvider,
     VisualGenerationRequest,
@@ -50,8 +54,12 @@ class HappyHorseProvider(VisualGenerationProvider):
             raise ProviderAuthenticationError(
                 "HappyHorse API credentials are not configured"
             )
-        endpoint = app_settings.happyhorse_endpoint.rstrip("/")
-        if endpoint != TOKEN_PLAN_VIDEO_ENDPOINT and transport is None:
+        endpoint = effective_happyhorse_endpoint(app_settings).rstrip("/")
+        if (
+            endpoint != TOKEN_PLAN_VIDEO_ENDPOINT
+            and current_execution_provider_runtime() is None
+            and transport is None
+        ):
             raise ProviderConfigurationError("HappyHorse endpoint is invalid")
         if app_settings.happyhorse_model != HAPPYHORSE_MODEL:
             raise ProviderConfigurationError("HappyHorse model is invalid")

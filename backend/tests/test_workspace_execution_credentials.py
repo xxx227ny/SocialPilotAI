@@ -7,11 +7,20 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import Settings, get_settings
+from app.core.provider_runtime import resolve_workspace_provider_runtime
 from app.execution.contracts import ExecutionContext, HandlerResult
+from app.execution.credential_context import current_execution_provider_runtime
 from app.execution.registry import ExecutionHandlerRegistry
 from app.execution.worker import ExecutionWorker, WorkerRunStatus
 from app.main import app
-from app.providers.live_configuration import effective_qwen_api_key
+from app.providers.live_configuration import (
+    effective_happyhorse_endpoint,
+    effective_qwen_api_key,
+    effective_qwen_endpoint,
+    effective_qwen_tts_endpoint,
+    effective_wanx_endpoint,
+    effective_wanx_image_endpoint,
+)
 from app.schemas.execution import ExecutionJobCreate
 from app.services.execution_queue_service import ExecutionQueueService
 from app.services.provider_credential_service import ProviderCredentialService
@@ -36,6 +45,33 @@ class CredentialProbeHandler:
         del context, payload
         self.observed.append(effective_qwen_api_key(self.settings))
         return HandlerResult.succeeded(provider_name="credential-probe")
+
+
+class ProviderProfileProbeHandler:
+    job_type = "test.workspace-provider-profile"
+    input_schema = CredentialProbeInput
+
+    def __init__(self, settings: Settings, observed: list[dict[str, object]]) -> None:
+        self.settings = settings
+        self.observed = observed
+
+    def execute(self, context: ExecutionContext, payload: BaseModel) -> HandlerResult:
+        del context, payload
+        runtime = current_execution_provider_runtime()
+        self.observed.append(
+            {
+                "api_key": effective_qwen_api_key(self.settings),
+                "qwen": effective_qwen_endpoint(self.settings),
+                "wanx": effective_wanx_endpoint(self.settings),
+                "image": effective_wanx_image_endpoint(self.settings),
+                "tts": effective_qwen_tts_endpoint(self.settings),
+                "happyhorse": effective_happyhorse_endpoint(self.settings),
+                "workspace_id": (
+                    runtime.provider_workspace_id if runtime is not None else None
+                ),
+            }
+        )
+        return HandlerResult.succeeded(provider_name="provider-profile-probe")
 
 
 def product_settings() -> Settings:
@@ -204,6 +240,70 @@ def test_worker_never_uses_unverified_workspace_key_or_shared_fallback(
     assert result.status == WorkerRunStatus.SUCCEEDED
     assert result.job_id == created.job.id
     assert observed == [""]
+    assert effective_qwen_api_key(settings) == ""
+
+
+def test_worker_binds_complete_workspace_profile_and_resets_it_after_job(
+    db_session: Session,
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        enable_user_auth=True,
+        qwen_api_key="shared-key-must-not-be-used",
+        qwen_endpoint="https://shared.invalid/compatible-mode/v1",
+    )
+    sessions = sessionmaker(
+        bind=db_session.get_bind(), autoflush=False, expire_on_commit=False
+    )
+    workspace_id = 902
+    with sessions() as session:
+        session.info["workspace_id"] = workspace_id
+        created = ExecutionQueueService(session).create(
+            ExecutionJobCreate(
+                job_type=ProviderProfileProbeHandler.job_type,
+                source_type="test",
+                source_id=1,
+                input_digest=hashlib.sha256(b"provider-profile-probe").hexdigest(),
+                idempotency_key="workspace-provider-profile-probe",
+                input_payload={"value": "safe"},
+            )
+        )
+
+    runtime = resolve_workspace_provider_runtime(
+        api_key=USER_API_KEY,
+        region="cn-beijing",
+        provider_workspace_id="workspace-902",
+    )
+    observed: list[dict[str, object]] = []
+    registry = ExecutionHandlerRegistry()
+    registry.register(ProviderProfileProbeHandler(settings, observed))
+
+    result = ExecutionWorker(
+        session_factory=sessions,
+        registry=registry,
+        worker_id="provider-profile-worker",
+        lease_seconds=10,
+        heartbeat_interval_seconds=0.1,
+        workspace_credential_resolver=lambda workspace: (
+            runtime if workspace == workspace_id else None
+        ),
+    ).run_once()
+
+    host = "https://workspace-902.cn-beijing.maas.aliyuncs.com"
+    assert result.status == WorkerRunStatus.SUCCEEDED
+    assert result.job_id == created.job.id
+    assert observed == [
+        {
+            "api_key": USER_API_KEY,
+            "qwen": f"{host}/compatible-mode/v1",
+            "wanx": f"{host}/api/v1",
+            "image": (f"{host}/api/v1/services/aigc/multimodal-generation/generation"),
+            "tts": f"{host}/api/v1/services/audio/tts/SpeechSynthesizer",
+            "happyhorse": f"{host}/api/v1",
+            "workspace_id": "workspace-902",
+        }
+    ]
+    assert current_execution_provider_runtime() is None
     assert effective_qwen_api_key(settings) == ""
 
 

@@ -38,6 +38,8 @@ def get_dashscope_credential(
     return ProviderCredentialRead(
         configured=True,
         key_hint=credential.secret_hint,
+        region=credential.provider_region,
+        provider_workspace_id=credential.provider_workspace_ref,
         verified=credential.verified_at is not None,
         verified_at=credential.verified_at,
         updated_at=credential.updated_at,
@@ -55,6 +57,8 @@ def set_dashscope_credential(
         credential = ProviderCredentialService(db, settings).set_dashscope_key(
             principal.workspace_id,
             payload.api_key.get_secret_value(),
+            region=payload.region,
+            provider_workspace_id=payload.provider_workspace_id,
         )
         db.commit()
     except ValueError as exc:
@@ -66,6 +70,8 @@ def set_dashscope_credential(
     return ProviderCredentialRead(
         configured=True,
         key_hint=credential.secret_hint,
+        region=credential.provider_region,
+        provider_workspace_id=credential.provider_workspace_ref,
         verified=False,
         verified_at=None,
         updated_at=credential.updated_at,
@@ -89,13 +95,16 @@ def verify_dashscope_credential(
             status_code=status.HTTP_409_CONFLICT,
             detail="请先保存 API Key，再进行验证。",
         )
-    api_key = service.read_dashscope_key(principal.workspace_id)
-    if api_key is None:
+    runtime = service.read_dashscope_runtime(principal.workspace_id)
+    if runtime is None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="请先保存 API Key，再进行验证。",
         )
-    result = verifier.verify(api_key)
+    result = verifier.verify(
+        runtime.api_key,
+        models_endpoint=runtime.models_endpoint,
+    )
     credential = service.set_dashscope_verified(
         principal.workspace_id,
         verified=result.verified,
@@ -106,6 +115,8 @@ def verify_dashscope_credential(
         status=result.status,
         verified=result.verified,
         key_hint=credential.secret_hint,
+        region=credential.provider_region,
+        provider_workspace_id=credential.provider_workspace_ref,
         verified_at=credential.verified_at,
         message=result.message,
     )

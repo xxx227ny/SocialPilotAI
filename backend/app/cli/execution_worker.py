@@ -15,6 +15,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.config import settings
+from app.core.provider_runtime import WorkspaceProviderRuntime
 from app.execution.runtime_registry import build_execution_handler_registry
 from app.execution.worker import ExecutionWorker, WorkerRunStatus
 from app.services.database_migration_service import (
@@ -153,13 +154,14 @@ def _workspace_credential(
     session_factory,
     app_settings,
     workspace_id: int | None,
-) -> str | None:
+) -> WorkspaceProviderRuntime | None:
     if not app_settings.enable_user_auth or workspace_id is None:
         return None
     with session_factory() as session:
-        return ProviderCredentialService(
-            session, app_settings
-        ).read_verified_dashscope_key(workspace_id)
+        return ProviderCredentialService(session, app_settings).read_dashscope_runtime(
+            workspace_id,
+            require_verified=True,
+        )
 
 
 if __name__ == "__main__":
