@@ -41,6 +41,13 @@ class FailingAccountEmailSender(FakeAccountEmailSender):
         raise AccountEmailDeliveryError("simulated delivery failure")
 
 
+class FailingVerificationEmailSender(FakeAccountEmailSender):
+    def send_email_verification(self, recipient: str, token: str) -> None:
+        from app.services.account_email_service import AccountEmailDeliveryError
+
+        raise AccountEmailDeliveryError("simulated verification delivery failure")
+
+
 def user_auth_settings(**overrides: object) -> Settings:
     values: dict[str, object] = {
         "enable_user_auth": True,
@@ -373,7 +380,9 @@ def test_password_reset_is_private_one_time_and_revokes_existing_sessions(
     recipient, token = sender.password_resets[0]
     assert recipient == EMAIL
     assert token not in known.text
-    stored = db_session.scalar(select(AccountActionToken))
+    stored = db_session.scalar(
+        select(AccountActionToken).where(AccountActionToken.purpose == "PASSWORD_RESET")
+    )
     assert stored is not None
     assert stored.token_hash == hashlib.sha256(token.encode()).hexdigest()
     assert token not in stored.token_hash
@@ -413,17 +422,20 @@ def test_email_verification_marks_user_and_token_is_one_time(
     sender = FakeAccountEmailSender()
     app.dependency_overrides[get_settings] = lambda: user_auth_settings()
     app.dependency_overrides[get_account_email_sender] = lambda: sender
-    client.post(
+    registered = client.post(
         "/api/v1/auth/register",
         json={"email": EMAIL, "password": PASSWORD},
     )
 
-    requested = client.post("/api/v1/auth/email-verification/request")
-    assert requested.status_code == 202
+    assert registered.status_code == 201
     assert len(sender.email_verifications) == 1
     recipient, token = sender.email_verifications[0]
     assert recipient == EMAIL
-    assert token not in requested.text
+    assert token not in registered.text
+
+    requested = client.post("/api/v1/auth/email-verification/request")
+    assert requested.status_code == 429
+    assert len(sender.email_verifications) == 1
 
     verified = client.post(
         "/api/v1/auth/email-verification/complete",
@@ -462,6 +474,30 @@ def test_unconfigured_email_delivery_is_safe_and_explicit_for_signed_in_user(
     assert "令牌" not in reset.text
     assert verification.status_code == 503
     assert verification.json()["detail"] == "系统邮件服务尚未配置，请联系管理员。"
+    assert db_session.scalar(
+        select(AccountActionToken).where(AccountActionToken.purpose == "PASSWORD_RESET")
+    ) is None
+
+
+def test_failed_registration_verification_delivery_keeps_account_but_no_token(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    app.dependency_overrides[get_settings] = lambda: user_auth_settings()
+    app.dependency_overrides[get_account_email_sender] = (
+        lambda: FailingVerificationEmailSender()
+    )
+
+    registered = client.post(
+        "/api/v1/auth/register",
+        json={"email": EMAIL, "password": PASSWORD},
+    )
+
+    assert registered.status_code == 201
+    assert registered.json()["authenticated"] is True
+    assert db_session.scalar(select(User).where(User.email == EMAIL)) is not None
+    assert db_session.scalar(select(Workspace)) is not None
+    assert db_session.scalar(select(AuthSession)) is not None
     assert db_session.scalar(select(AccountActionToken)) is None
 
 
@@ -490,4 +526,6 @@ def test_failed_password_reset_delivery_does_not_leave_token_or_cooldown(
 
     assert first.status_code == second.status_code == 202
     assert first.json() == second.json()
-    assert db_session.scalar(select(AccountActionToken)) is None
+    assert db_session.scalar(
+        select(AccountActionToken).where(AccountActionToken.purpose == "PASSWORD_RESET")
+    ) is None

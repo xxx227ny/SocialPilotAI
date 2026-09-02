@@ -138,6 +138,7 @@ def register(
     response: Response,
     settings: SettingsDep,
     db: DbSession,
+    email_sender: AccountEmailSenderDep,
 ) -> AuthSessionRead:
     if not settings.enable_user_auth or not settings.allow_public_registration:
         raise HTTPException(
@@ -178,6 +179,28 @@ def register(
         secure=settings.user_auth_cookie_secure,
         same_site="lax",
     )
+    # Registration is never rolled back merely because the external mail
+    # server is unavailable.  When delivery is configured, create and deliver
+    # the verification token in a second transaction so a successful signup
+    # remains usable and a failed email leaves neither a dead token nor a
+    # resend cooldown behind.
+    if email_sender.configured:
+        verification_token = issue_account_action_token(
+            db,
+            user_id=principal.user_id,
+            purpose=EMAIL_VERIFICATION,
+            ttl_seconds=settings.email_verification_token_ttl_seconds,
+            cooldown_seconds=settings.account_email_request_cooldown_seconds,
+        )
+        if verification_token is not None:
+            try:
+                email_sender.send_email_verification(
+                    principal.email, verification_token
+                )
+            except AccountEmailDeliveryError:
+                db.rollback()
+            else:
+                db.commit()
     return _principal_response(
         principal,
         registration_enabled=settings.allow_public_registration,
