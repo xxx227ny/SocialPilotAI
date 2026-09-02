@@ -12,6 +12,7 @@ from app.models import (
     VideoScriptVersion,
     VideoStoryboardSceneVersion,
 )
+from app.repositories.batch_video import BatchVideoRepository
 from app.repositories.video_script_version import VideoScriptVersionRepository
 from app.schemas.video_script_version import (
     QwenScriptPreflightRead,
@@ -324,7 +325,7 @@ class VideoScriptVersionService:
         )
 
     def _variant(self, variant_id: int) -> BatchVideoVariant:
-        item = self.session.get(BatchVideoVariant, variant_id)
+        item = BatchVideoRepository(self.session).get_variant(variant_id)
         if item is None:
             raise AppError("Script version was not found", 404)
         return item

@@ -9,11 +9,12 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.core.exceptions import AppError
-from app.models import BatchVideoJob, BatchVideoVariant, VideoScriptVersion
+from app.models import BatchVideoVariant, VideoScriptVersion
 from app.providers.happyhorse_provider import (
     HAPPYHORSE_MODEL,
     TOKEN_PLAN_VIDEO_ENDPOINT,
 )
+from app.repositories.batch_video import BatchVideoRepository
 from app.schemas.batch_video import (
     BatchQwenScriptCreateRead,
     BatchQwenScriptCreateRequest,
@@ -198,14 +199,13 @@ class BatchQwenScriptService:
     def _variants(
         self, batch_id: int, data: BatchQwenScriptRequest
     ) -> list[BatchVideoVariant]:
-        batch = self.session.get(BatchVideoJob, batch_id)
+        repository = BatchVideoRepository(self.session)
+        batch = repository.get_batch(batch_id)
         if batch is None:
             raise AppError("Batch Qwen script resource was not found", 404)
         if len(set(data.variant_ids)) != 3:
             raise AppError("Batch Qwen script Variants must be unique", 422)
-        variants = [
-            self.session.get(BatchVideoVariant, item) for item in data.variant_ids
-        ]
+        variants = [repository.get_variant(item) for item in data.variant_ids]
         if any(item is None for item in variants):
             raise AppError("Batch Qwen script resource was not found", 404)
         exact = [item for item in variants if item is not None]

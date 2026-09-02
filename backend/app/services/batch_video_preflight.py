@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.core.exceptions import AppError
 from app.models import Product
 from app.models.product import utc_now
+from app.repositories.workspace_scope import current_workspace_id
 from app.schemas.batch_video import (
     BatchVideoPreflightRead,
     BatchVideoRequest,
@@ -72,13 +73,19 @@ class BatchVideoPreflightService:
             raise AppError("Batch variant limit exceeded", 422)
         if data.max_concurrency > total:
             raise AppError("Maximum concurrency exceeds variant count", 422)
+        product_statement = (
+            select(Product)
+            .options(selectinload(Product.brand_kit_version))
+            .where(Product.id.in_(product_ids))
+            .order_by(Product.id)
+        )
+        workspace_id = current_workspace_id(self.session)
+        if workspace_id is not None:
+            product_statement = product_statement.where(
+                Product.workspace_id == workspace_id
+            )
         products = list(
-            self.session.scalars(
-                select(Product)
-                .options(selectinload(Product.brand_kit_version))
-                .where(Product.id.in_(product_ids))
-                .order_by(Product.id)
-            ).all()
+            self.session.scalars(product_statement).all()
         )
         if [product.id for product in products] != product_ids:
             raise AppError("One or more products were not found", 404)

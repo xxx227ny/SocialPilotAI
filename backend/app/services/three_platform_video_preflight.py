@@ -17,6 +17,7 @@ from app.providers.live_configuration import (
     effective_qwen_api_key,
     effective_wanx_api_key,
 )
+from app.repositories.product import ProductRepository
 from app.schemas.product_marketing_video import (
     PlatformVideoProductionEstimate,
     ThreePlatformVideoPreflightRead,
@@ -37,6 +38,8 @@ class ThreePlatformVideoPreflightService:
     def run(
         self, product_id: int, data: ThreePlatformVideoPreflightRequest
     ) -> ThreePlatformVideoPreflightRead:
+        if ProductRepository(self.session).get(product_id) is None:
+            raise AppError("Product was not found", 404)
         reference = self.session.get(ProductAsset, data.reference_product_asset_id)
         if (
             reference is None

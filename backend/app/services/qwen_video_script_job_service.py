@@ -9,8 +9,9 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings
 from app.core.exceptions import AppError
 from app.execution.handlers.qwen_video_script import QWEN_VIDEO_SCRIPT_GENERATE_V1
-from app.models.batch_video import BatchVideoJob, BatchVideoVariant
+from app.models.batch_video import BatchVideoJob
 from app.models.execution import ExecutionJob
+from app.repositories.batch_video import BatchVideoRepository
 from app.schemas.execution import (
     ExecutionJobCreate,
     ExecutionJobCreateRead,
@@ -37,6 +38,9 @@ class QwenVideoScriptJobService:
     def enqueue(
         self, variant_id: int, data: QwenScriptJobCreateRequest
     ) -> ExecutionJobCreateRead:
+        owned_variant = BatchVideoRepository(self.session).get_variant(variant_id)
+        if owned_variant is None:
+            raise AppError("Qwen script generation was not found", 404)
         job_key = self._job_key(variant_id, data.idempotency_key)
         existing = self._recover_existing(job_key, variant_id, data.frozen_input_digest)
         if existing is not None:
@@ -115,9 +119,7 @@ class QwenVideoScriptJobService:
             cost_confirmed=True,
             max_attempts=1,
         )
-        variant = self.session.get(BatchVideoVariant, variant_id)
-        if variant is None:
-            raise AppError("Qwen script generation was not found", 404)
+        variant = owned_variant
         reserved = self.session.scalar(
             update(BatchVideoJob)
             .where(

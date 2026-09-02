@@ -14,11 +14,12 @@ from app.models import (
     BrandKitVersion,
     CopyMatrix,
     MarketingStrategy,
-    Product,
     VideoProject,
 )
 from app.models.product import utc_now
 from app.models.video_script_version import VideoScriptVersion
+from app.repositories.batch_video import BatchVideoRepository
+from app.repositories.product import ProductRepository
 from app.schemas.video_script_version import (
     VideoScriptDraftRequest,
     VideoScriptPreflightRead,
@@ -50,7 +51,7 @@ class VideoScriptPreflightService:
         *,
         expires_at: datetime | None = None,
     ) -> VideoScriptPreflightRead:
-        variant = self.session.get(BatchVideoVariant, variant_id)
+        variant = BatchVideoRepository(self.session).get_variant(variant_id)
         if variant is None:
             raise AppError("Script version was not found", 404)
         if variant.status != "READY_FOR_SCRIPT":
@@ -66,7 +67,7 @@ class VideoScriptPreflightService:
             )
             if parent is None:
                 raise AppError("Script version was not found", 404)
-        product = self.session.get(Product, variant.product_id)
+        product = ProductRepository(self.session).get(variant.product_id)
         if product is None:
             raise AppError("Script source is unavailable", 409)
         product_digest = stable_digest(

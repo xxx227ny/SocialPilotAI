@@ -9,14 +9,14 @@ from app.core.config import Settings
 from app.core.exceptions import AppError
 from app.models import (
     BatchVideoJob,
-    BatchVideoVariant,
     BrandKitVersion,
     CopyMatrix,
     MarketingStrategy,
-    Product,
 )
 from app.models.product import utc_now
 from app.models.video_script_version import VideoScriptVersion
+from app.repositories.batch_video import BatchVideoRepository
+from app.repositories.product import ProductRepository
 from app.schemas.video_script_version import (
     QwenScriptPreflightRead,
     QwenScriptPreflightRequest,
@@ -41,7 +41,7 @@ class QwenVideoScriptPreflightService:
     ) -> QwenScriptPreflightRead:
         if not self.settings.enable_qwen_video_script_generation:
             raise AppError("Qwen script generation is unavailable", 404)
-        variant = self.session.get(BatchVideoVariant, variant_id)
+        variant = BatchVideoRepository(self.session).get_variant(variant_id)
         if variant is None:
             raise AppError("Qwen script generation was not found", 404)
         if variant.status != "READY_FOR_SCRIPT":
@@ -49,7 +49,7 @@ class QwenVideoScriptPreflightService:
         if variant.duration_seconds != 15 or variant.aspect_ratio != "9:16":
             raise AppError("Variant does not match the Qwen script contract", 409)
         batch = self.session.get(BatchVideoJob, variant.batch_video_job_id)
-        product = self.session.get(Product, variant.product_id)
+        product = ProductRepository(self.session).get(variant.product_id)
         if batch is None or product is None:
             raise AppError("Qwen script source is unavailable", 409)
 
@@ -223,8 +223,8 @@ class QwenVideoScriptPreflightService:
         )
 
     def prompt_snapshot(self, checked: QwenScriptPreflightRead) -> dict[str, object]:
-        variant = self.session.get(BatchVideoVariant, checked.variant_id)
-        product = self.session.get(Product, checked.product_id)
+        variant = BatchVideoRepository(self.session).get_variant(checked.variant_id)
+        product = ProductRepository(self.session).get(checked.product_id)
         strategy = self.session.get(MarketingStrategy, checked.strategy_id)
         if variant is None or product is None or strategy is None:
             raise AppError("Frozen Qwen script source changed", 409)

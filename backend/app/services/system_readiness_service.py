@@ -23,9 +23,9 @@ from app.schemas.system import (
     SystemComponentRead,
     SystemReadinessRead,
 )
+from app.services.account_email_service import SMTPAccountEmailSender
 from app.services.database_migration_service import HEAD_REVISION
 from app.services.instagram_media_probe import instagram_media_probe_available
-from app.services.account_email_service import SMTPAccountEmailSender
 from app.services.social_security import TokenCipher
 from app.services.tiktok_media_probe import FFprobeTikTokMediaProbe
 

@@ -9,6 +9,7 @@ from app.api.dependencies import WorkspaceProviderSettingsDep
 from app.core.exceptions import AppError
 from app.db.session import get_db
 from app.models import BatchVideoVariant, VideoScriptVersion
+from app.repositories.product import ProductRepository
 from app.schemas.product_marketing_video import (
     HappyHorseVideoPreflightRead,
     HappyHorseVideoPreflightRequest,
@@ -56,6 +57,8 @@ def list_product_video_sources(
 ) -> list[ProductVideoSourceRead]:
     if not settings.enable_real_product_video:
         raise AppError("Real product video execution is disabled", 503)
+    if ProductRepository(db).get(product_id) is None:
+        raise AppError("Product was not found", 404)
     variants = (
         db.query(BatchVideoVariant)
         .filter_by(product_id=product_id, status="READY_FOR_SCRIPT")
