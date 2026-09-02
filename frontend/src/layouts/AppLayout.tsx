@@ -19,7 +19,7 @@ const navItems = [
 
 export function AppLayout() {
   const { isPresentation } = usePresentationMode();
-  const { authMode, enabled: authEnabled, logout, username } = useAuth();
+  const { authMode, enabled: authEnabled, loggingOut, logout, username } = useAuth();
   const navigate = useNavigate();
 
   const handleLogout = async () => {
@@ -74,7 +74,13 @@ export function AppLayout() {
             {authEnabled && <div className="account-menu">
               <span className="avatar" aria-hidden="true">SP</span>
               <span className="account-menu__name">{username}</span>
-              <button type="button" onClick={handleLogout}>退出登录</button>
+              <button
+                type="button"
+                onClick={() => void handleLogout()}
+                disabled={loggingOut}
+              >
+                {loggingOut ? "正在退出…" : "退出登录"}
+              </button>
             </div>}
             {!authEnabled && <span className="avatar">SP</span>}
           </div>

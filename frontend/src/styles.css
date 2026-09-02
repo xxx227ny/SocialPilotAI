@@ -4677,10 +4677,18 @@ textarea { font: inherit; }
 }
 
 .account-menu button {
+  position: relative;
+  z-index: 2;
   min-height: 2.2rem;
   padding: 0 0.85rem;
   background: rgba(111, 92, 255, 0.16);
   color: #cfc8ff;
+  pointer-events: auto;
+}
+
+.account-menu button:disabled {
+  cursor: wait;
+  opacity: 0.7;
 }
 
 @media (max-width: 720px) {

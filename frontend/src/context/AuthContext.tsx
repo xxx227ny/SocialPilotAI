@@ -19,6 +19,7 @@ import { clearCopyWorkspaceCache } from "../components/product/copyWorkspaceCach
 
 type AuthState = {
   checking: boolean;
+  loggingOut: boolean;
   enabled: boolean;
   authenticated: boolean;
   username: string | null;
@@ -33,9 +34,11 @@ type AuthState = {
 };
 
 const AuthContext = createContext<AuthState | null>(null);
+const LOGOUT_PENDING_KEY = "socialpilot:logout-pending";
 
 export function AuthProvider({ children }: PropsWithChildren) {
   const [checking, setChecking] = useState(true);
+  const [loggingOut, setLoggingOut] = useState(false);
   const [enabled, setEnabled] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [username, setUsername] = useState<string | null>(null);
@@ -43,6 +46,15 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [registrationEnabled, setRegistrationEnabled] = useState(false);
   const [emailVerified, setEmailVerified] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const applyLocalLogout = useCallback((nextError: string | null = null) => {
+    clearReadResources();
+    clearCopyWorkspaceCache();
+    setAuthenticated(false);
+    setUsername(null);
+    setEmailVerified(false);
+    setError(nextError);
+  }, []);
 
   const applySession = useCallback(
     (session: {
@@ -68,14 +80,23 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
   useEffect(() => {
     let active = true;
-    getAuthSession()
+    const logoutWasPending = window.sessionStorage.getItem(LOGOUT_PENDING_KEY) === "1";
+    const request = logoutWasPending ? logoutRequest() : getAuthSession();
+    request
       .then((session) => {
-        if (active) applySession(session);
+        if (active) {
+          if (logoutWasPending) window.sessionStorage.removeItem(LOGOUT_PENDING_KEY);
+          applySession(session);
+        }
       })
       .catch(() => {
         if (active) {
-          setError("暂时无法连接登录服务，请确认本机服务已启动。");
-          setAuthenticated(false);
+          if (logoutWasPending) {
+            applyLocalLogout("已退出当前页面；服务器退出请求尚未确认，刷新时将继续完成。");
+          } else {
+            setError("暂时无法连接登录服务，请确认本机服务已启动。");
+            setAuthenticated(false);
+          }
         }
       })
       .finally(() => {
@@ -84,7 +105,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     return () => {
       active = false;
     };
-  }, [applySession]);
+  }, [applyLocalLogout, applySession]);
 
   const refresh = useCallback(async () => {
     const session = await getAuthSession();
@@ -110,19 +131,32 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const login = useCallback(
     async (nextUsername: string, password: string) => {
       const session = await loginRequest(nextUsername, password);
+      window.sessionStorage.removeItem(LOGOUT_PENDING_KEY);
       applySession(session);
     },
     [applySession],
   );
 
   const logout = useCallback(async () => {
-    const session = await logoutRequest();
-    applySession(session);
-  }, [applySession]);
+    if (loggingOut) return;
+    setLoggingOut(true);
+    window.sessionStorage.setItem(LOGOUT_PENDING_KEY, "1");
+    applyLocalLogout();
+    try {
+      const session = await logoutRequest();
+      window.sessionStorage.removeItem(LOGOUT_PENDING_KEY);
+      applySession(session);
+    } catch {
+      applyLocalLogout("已退出当前页面；服务器退出请求尚未确认，刷新时将继续完成。");
+    } finally {
+      setLoggingOut(false);
+    }
+  }, [applyLocalLogout, applySession, loggingOut]);
 
   const register = useCallback(
     async (email: string, password: string, workspaceName?: string) => {
       const session = await registerRequest(email, password, workspaceName);
+      window.sessionStorage.removeItem(LOGOUT_PENDING_KEY);
       applySession(session);
     },
     [applySession],
@@ -131,6 +165,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const value = useMemo(
     () => ({
       checking,
+      loggingOut,
       enabled,
       authenticated,
       username,
@@ -145,6 +180,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     }),
     [
       checking,
+      loggingOut,
       enabled,
       authenticated,
       username,

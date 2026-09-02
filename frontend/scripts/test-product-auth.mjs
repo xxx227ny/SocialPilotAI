@@ -6,6 +6,7 @@ const credentialApi = readFileSync(new URL("../src/api/credentials.ts", import.m
 const accountSecurity = readFileSync(new URL("../src/pages/AccountSecurityPage.tsx", import.meta.url), "utf8");
 const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
 const context = readFileSync(new URL("../src/context/AuthContext.tsx", import.meta.url), "utf8");
+const layout = readFileSync(new URL("../src/layouts/AppLayout.tsx", import.meta.url), "utf8");
 const login = readFileSync(new URL("../src/pages/LoginPage.tsx", import.meta.url), "utf8");
 const settings = readFileSync(new URL("../src/pages/ApiKeySettingsPage.tsx", import.meta.url), "utf8");
 const dashboard = readFileSync(new URL("../src/pages/DashboardPage.tsx", import.meta.url), "utf8");
@@ -53,5 +54,11 @@ assert.match(app, /settings\/social-accounts/);
 assert.doesNotMatch(onboarding, /QWEN_API_KEY/);
 assert.doesNotMatch(settings, /localStorage|sessionStorage/);
 assert.doesNotMatch(credentialApi, /localStorage|sessionStorage/);
+assert.match(context, /LOGOUT_PENDING_KEY/);
+assert.match(context, /applyLocalLogout\(\)/);
+assert.match(context, /logoutWasPending \? logoutRequest\(\) : getAuthSession\(\)/);
+assert.match(context, /服务器退出请求尚未确认，刷新时将继续完成/);
+assert.match(layout, /disabled=\{loggingOut\}/);
+assert.match(layout, /正在退出…/);
 
-console.log("Product auth frontend checks passed: 44 assertions.");
+console.log("Product auth frontend checks passed: 50 assertions.");
