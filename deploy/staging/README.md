@@ -23,8 +23,20 @@ It must not contain shared Qwen, DashScope, or Wanx provider keys. Customer keys
 are stored encrypted per workspace.
 
 Run `configure_runtime.py` with the staging virtual environment to create this
-configuration. Re-running it preserves the existing credential-encryption key,
-so stored customer credentials remain decryptable.
+configuration. Re-running it preserves the existing credential-encryption key
+and the allowlisted `ACCOUNT_SMTP_*` delivery settings, so stored customer
+credentials remain decryptable and configured account email keeps working.
+Shared Qwen, DashScope, or Wanx keys are deliberately never preserved: AI
+generation continues to require each workspace's independently encrypted Key.
+
+To enable verification and password-recovery email later, run
+`configure_account_email.py` interactively on the server. Pass the public
+origin, From address, SMTP host/port, username and transport mode as ordinary
+options; the SMTP authorization code is requested through hidden terminal
+input and is never accepted on the command line or printed. The tool preserves
+the rest of the runtime JSON, writes an automatic rollback copy, and does not
+send a test message. Restart only `socialpilot-staging-api`, then confirm the
+`account_email` item on `/api/v1/system/readiness` before enabling user tests.
 
 Before changing the staging `current` symlink, record its target and create a
 SQLite online backup. Rollback consists of restoring the previous symlink,

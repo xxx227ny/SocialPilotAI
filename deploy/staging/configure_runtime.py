@@ -1,6 +1,5 @@
 """Create the isolated staging runtime configuration without provider keys."""
 
-import grp
 import json
 import os
 from pathlib import Path
@@ -14,20 +13,35 @@ CONFIG_PATH = Path(
     )
 )
 PUBLIC_ORIGIN = "https://staging.47.242.222.177.nip.io"
+PRESERVED_ACCOUNT_EMAIL_KEYS = (
+    "ACCOUNT_EMAIL_FROM",
+    "ACCOUNT_SMTP_HOST",
+    "ACCOUNT_SMTP_PORT",
+    "ACCOUNT_SMTP_USERNAME",
+    "ACCOUNT_SMTP_PASSWORD",
+    "ACCOUNT_SMTP_SECURITY",
+    "ACCOUNT_SMTP_TIMEOUT_SECONDS",
+)
 
 
-def load_encryption_key() -> str:
-    if CONFIG_PATH.is_file():
-        existing = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-        value = str(existing.get("USER_CREDENTIAL_ENCRYPTION_KEY", "")).strip()
-        if value:
-            Fernet(value.encode("ascii"))
-            return value
+def load_existing_config() -> dict[str, object]:
+    if not CONFIG_PATH.is_file():
+        return {}
+    loaded = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+    if not isinstance(loaded, dict):
+        raise ValueError("Existing runtime configuration must be a JSON object")
+    return loaded
+
+
+def load_encryption_key(existing: dict[str, object]) -> str:
+    value = str(existing.get("USER_CREDENTIAL_ENCRYPTION_KEY", "")).strip()
+    if value:
+        Fernet(value.encode("ascii"))
+        return value
     return Fernet.generate_key().decode("ascii")
 
 
-def main() -> None:
-    CONFIG_PATH.parent.mkdir(mode=0o750, parents=True, exist_ok=True)
+def build_runtime_config(existing: dict[str, object]) -> dict[str, object]:
     config = {
         "APP_NAME": "socialpilot-product-staging",
         "APP_VERSION": "0.1.0-staging",
@@ -40,7 +54,7 @@ def main() -> None:
         "ALLOW_PUBLIC_REGISTRATION": "true",
         "USER_AUTH_SESSION_TTL_SECONDS": "604800",
         "USER_AUTH_COOKIE_SECURE": "true",
-        "USER_CREDENTIAL_ENCRYPTION_KEY": load_encryption_key(),
+        "USER_CREDENTIAL_ENCRYPTION_KEY": load_encryption_key(existing),
         "USER_CREDENTIAL_ENCRYPTION_KEY_ID": "v1",
         "ENABLE_DEMO_AUTH": "false",
         "REQUIRE_LIVE_PROVIDER_COHERENCE": "false",
@@ -72,7 +86,23 @@ def main() -> None:
         "EXECUTION_WORKER_STATUS_FILE": "/var/lib/socialpilot-staging/worker-status.json",
         "SOCIALPILOT_PUBLIC_ORIGIN": PUBLIC_ORIGIN,
         "SOCIAL_FRONTEND_BASE_URL": PUBLIC_ORIGIN,
+        "ACCOUNT_PUBLIC_WEB_ORIGIN": PUBLIC_ORIGIN,
     }
+    # Email delivery belongs to the server, while Qwen/Wanx credentials belong
+    # to each user workspace. Preserve only the explicit SMTP allowlist when a
+    # runtime file is regenerated; never copy shared Provider credentials.
+    for key in PRESERVED_ACCOUNT_EMAIL_KEYS:
+        value = existing.get(key)
+        if value is not None and str(value).strip():
+            config[key] = value
+    return config
+
+
+def main() -> None:
+    import grp
+
+    CONFIG_PATH.parent.mkdir(mode=0o750, parents=True, exist_ok=True)
+    config = build_runtime_config(load_existing_config())
     temporary = CONFIG_PATH.with_suffix(".json.new")
     temporary.write_text(
         json.dumps(config, ensure_ascii=False, indent=2) + "\n",
