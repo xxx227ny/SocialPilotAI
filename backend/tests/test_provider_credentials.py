@@ -334,5 +334,36 @@ def test_invalid_workspace_profile_is_rejected_without_storing_secret(
     )
 
     assert response.status_code == 422
+    assert response.json()["detail"].startswith("百炼业务空间 ID 格式无效")
     assert API_KEY not in response.text
     assert db_session.scalar(select(ProviderCredential)) is None
+
+
+def test_full_workspace_hostname_is_normalized_before_storage(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    settings = credential_settings()
+    app.dependency_overrides[get_settings] = lambda: settings
+    account = register(client, "workspace-hostname@example.com")
+
+    response = client.put(
+        "/api/v1/credentials/dashscope",
+        json={
+            "api_key": API_KEY,
+            "region": "cn-beijing",
+            "provider_workspace_id": (
+                "WS-Example-9.cn-beijing.maas.aliyuncs.com"
+            ),
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["provider_workspace_id"] == "ws-example-9"
+    stored = db_session.scalar(
+        select(ProviderCredential).where(
+            ProviderCredential.workspace_id == account["workspace_id"]
+        )
+    )
+    assert stored is not None
+    assert stored.provider_workspace_ref == "ws-example-9"

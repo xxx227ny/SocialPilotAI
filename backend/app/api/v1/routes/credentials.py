@@ -63,9 +63,14 @@ def set_dashscope_credential(
         db.commit()
     except ValueError as exc:
         db.rollback()
+        detail = (
+            "百炼业务空间 ID 格式无效；请填写 ws-... 标识，或留空使用北京兼容入口。"
+            if str(exc) == "Provider workspace ID is invalid"
+            else "API Key 格式无效。"
+        )
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="API Key 格式无效。",
+            detail=detail,
         ) from exc
     return ProviderCredentialRead(
         configured=True,

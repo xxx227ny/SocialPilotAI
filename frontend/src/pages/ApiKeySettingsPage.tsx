@@ -4,6 +4,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import {
   deleteDashScopeCredential,
   getDashScopeCredential,
+  normalizeProviderWorkspaceIdInput,
   saveDashScopeCredential,
   verifyDashScopeCredential,
 } from "../api/credentials";
@@ -143,11 +144,13 @@ export function ApiKeySettingsPage() {
               autoComplete="off"
               value={providerWorkspaceId}
               onChange={(event) => setProviderWorkspaceId(event.target.value)}
-              placeholder="例如：llm-xxxxxxxx"
-              maxLength={63}
-              pattern="[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+              onBlur={() => setProviderWorkspaceId(
+                normalizeProviderWorkspaceIdInput(providerWorkspaceId),
+              )}
+              placeholder="例如：ws-xxxxxxxx（没有则留空）"
+              maxLength={120}
             />
-            <small>填写后使用该业务空间的专属接口；暂不填写则使用北京兼容入口。</small>
+            <small>只需填写 ws-... 标识；粘贴完整的 .cn-beijing.maas.aliyuncs.com 域名时会自动提取。没有业务空间则留空，使用北京兼容入口。</small>
           </label>
           <label>
             {credential?.configured ? "输入新 Key 进行替换" : "输入你的百炼 API Key"}

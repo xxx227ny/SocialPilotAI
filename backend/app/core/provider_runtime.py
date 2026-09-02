@@ -6,6 +6,7 @@ from dataclasses import dataclass
 DEFAULT_PROVIDER_REGION = "cn-beijing"
 SUPPORTED_PROVIDER_REGIONS = frozenset({DEFAULT_PROVIDER_REGION})
 _WORKSPACE_ID_PATTERN = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
+_BEIJING_WORKSPACE_HOST_SUFFIX = ".cn-beijing.maas.aliyuncs.com"
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,6 +62,9 @@ def _normalize_workspace_id(value: str | None) -> str | None:
     normalized = (value or "").strip()
     if not normalized:
         return None
+    lowered = normalized.lower()
+    if lowered.endswith(_BEIJING_WORKSPACE_HOST_SUFFIX):
+        normalized = normalized[: -len(_BEIJING_WORKSPACE_HOST_SUFFIX)]
     if not _WORKSPACE_ID_PATTERN.fullmatch(normalized):
         raise ValueError("Provider workspace ID is invalid")
     return normalized.lower()

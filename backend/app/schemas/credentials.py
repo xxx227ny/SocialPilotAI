@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, SecretStr, field_validator
 class DashScopeCredentialWrite(BaseModel):
     api_key: SecretStr
     region: Literal["cn-beijing"] = "cn-beijing"
-    provider_workspace_id: str | None = Field(default=None, max_length=63)
+    provider_workspace_id: str | None = Field(default=None, max_length=120)
 
     @field_validator("provider_workspace_id")
     @classmethod

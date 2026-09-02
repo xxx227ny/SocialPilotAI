@@ -38,6 +38,21 @@ def test_workspace_profile_builds_only_allowlisted_provider_hosts() -> None:
     )
 
 
+def test_workspace_profile_accepts_full_beijing_workspace_hostname() -> None:
+    runtime = resolve_workspace_provider_runtime(
+        api_key="sk-user-key",
+        region="cn-beijing",
+        provider_workspace_id=(
+            "WS-Example-9.cn-beijing.maas.aliyuncs.com"
+        ),
+    )
+
+    assert runtime.provider_workspace_id == "ws-example-9"
+    assert runtime.native_endpoint == (
+        "https://ws-example-9.cn-beijing.maas.aliyuncs.com/api/v1"
+    )
+
+
 @pytest.mark.parametrize(
     "workspace_id",
     [
