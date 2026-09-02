@@ -295,6 +295,7 @@ def expected_schema_fingerprint(revision: str) -> str:
         EXECUTION_JOB_WORKSPACES_REVISION,
         PRODUCT_WORKSPACES_REVISION,
         SOCIAL_WORKSPACE_ISOLATION_REVISION,
+        BRAND_KIT_WORKSPACES_REVISION,
         HEAD_REVISION,
     }:
         raise ValueError(f"Unknown expected revision: {revision}")
@@ -686,6 +687,7 @@ def get_database_migration_status(database_path: Path) -> DatabaseMigrationStatu
             EXECUTION_JOB_WORKSPACES_REVISION,
             PRODUCT_WORKSPACES_REVISION,
             SOCIAL_WORKSPACE_ISOLATION_REVISION,
+            BRAND_KIT_WORKSPACES_REVISION,
             HEAD_REVISION,
         }:
             raise IncompatibleSchemaError("Unsupported Alembic revision")
@@ -729,6 +731,7 @@ def get_database_migration_status(database_path: Path) -> DatabaseMigrationStatu
             EXECUTION_JOB_WORKSPACES_REVISION: "execution_job_workspaces_runtime",
             PRODUCT_WORKSPACES_REVISION: "product_workspaces_runtime",
             SOCIAL_WORKSPACE_ISOLATION_REVISION: "social_workspace_isolation_runtime",
+            BRAND_KIT_WORKSPACES_REVISION: "brand_kit_workspaces_runtime",
         }
         return DatabaseMigrationStatus(
             state=state_by_revision[revision],
@@ -819,6 +822,7 @@ def _upgrade_sqlite_database_unlocked(
                     EXECUTION_JOB_WORKSPACES_REVISION,
                     PRODUCT_WORKSPACES_REVISION,
                     SOCIAL_WORKSPACE_ISOLATION_REVISION,
+                    BRAND_KIT_WORKSPACES_REVISION,
                     HEAD_REVISION,
                 }:
                     raise IncompatibleSchemaError(

@@ -978,6 +978,30 @@ def test_stage3f_head_contains_product_media_bridge_columns(tmp_path: Path) -> N
     assert "ck_composition_audio_natural_duration" in audio_schema
 
 
+def test_0028_database_is_safely_upgraded_to_provider_profile_head(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "provider-profile-0028.db"
+    backups = tmp_path / "backups"
+    migration_service._run_alembic(  # noqa: SLF001
+        database,
+        "upgrade",
+        "0028_brand_kit_workspaces",
+    )
+
+    before = get_database_migration_status(database)
+    assert before.state == "brand_kit_workspaces_runtime"
+    assert before.revision == "0028_brand_kit_workspaces"
+    assert before.upgrade_required is True
+
+    result = upgrade_sqlite_database(database, backups)
+
+    assert result.previous_revision == "0028_brand_kit_workspaces"
+    assert result.current_revision == HEAD_REVISION
+    assert result.backup_manifest_path is not None
+    assert get_database_migration_status(database).state == "head"
+
+
 def test_0021_runtime_is_recognized_and_safely_upgraded_to_0022(
     tmp_path: Path,
 ) -> None:
