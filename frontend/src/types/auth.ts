@@ -7,8 +7,13 @@ export type AuthSession = {
   workspace_id?: number | null;
   auth_mode?: "disabled" | "demo" | "user" | null;
   registration_enabled?: boolean | null;
+  email_verified?: boolean | null;
 };
 
 export type SessionRevocation = {
   revoked_sessions: number;
+};
+
+export type AccountAction = {
+  message: string;
 };

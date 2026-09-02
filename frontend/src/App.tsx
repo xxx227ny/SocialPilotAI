@@ -20,6 +20,10 @@ export default function App() {
   if (checking) {
     return <main className="auth-loading" aria-live="polite">正在检查登录状态…</main>;
   }
+  const accountAction = new URLSearchParams(location.search).get("action");
+  if (accountAction === "reset-password" || accountAction === "verify-email") {
+    return <LoginPage />;
+  }
   if (!authenticated) {
     return <LoginPage />;
   }

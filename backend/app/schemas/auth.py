@@ -24,6 +24,28 @@ class ChangePasswordRequest(BaseModel):
     new_password: str = Field(min_length=10, max_length=256)
 
 
+class PasswordResetRequest(BaseModel):
+    email: str = Field(min_length=5, max_length=320)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        return value.strip().casefold()
+
+
+class PasswordResetCompleteRequest(BaseModel):
+    token: str = Field(min_length=32, max_length=512)
+    new_password: str = Field(min_length=10, max_length=256)
+
+
+class EmailVerificationCompleteRequest(BaseModel):
+    token: str = Field(min_length=32, max_length=512)
+
+
+class AccountActionRead(BaseModel):
+    message: str
+
+
 class SessionRevocationRead(BaseModel):
     revoked_sessions: int = Field(ge=0)
 
@@ -37,3 +59,4 @@ class AuthSessionRead(BaseModel):
     workspace_id: int | None = None
     auth_mode: Literal["disabled", "demo", "user"] | None = None
     registration_enabled: bool | None = None
+    email_verified: bool | None = None

@@ -24,10 +24,12 @@ type AuthState = {
   username: string | null;
   authMode: "disabled" | "demo" | "user" | null;
   registrationEnabled: boolean;
+  emailVerified: boolean;
   error: string | null;
   login: (username: string, password: string) => Promise<void>;
   register: (email: string, password: string, workspaceName?: string) => Promise<void>;
   logout: () => Promise<void>;
+  refresh: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -39,6 +41,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [username, setUsername] = useState<string | null>(null);
   const [authMode, setAuthMode] = useState<"disabled" | "demo" | "user" | null>(null);
   const [registrationEnabled, setRegistrationEnabled] = useState(false);
+  const [emailVerified, setEmailVerified] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const applySession = useCallback(
@@ -48,6 +51,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       username: string | null;
       registration_enabled?: boolean | null;
       auth_mode?: "disabled" | "demo" | "user" | null;
+      email_verified?: boolean | null;
     }) => {
       clearReadResources();
       clearCopyWorkspaceCache();
@@ -56,6 +60,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       setUsername(session.username);
       setAuthMode(session.auth_mode ?? null);
       setRegistrationEnabled(Boolean(session.registration_enabled));
+      setEmailVerified(Boolean(session.email_verified));
       setError(null);
     },
     [],
@@ -81,6 +86,11 @@ export function AuthProvider({ children }: PropsWithChildren) {
     };
   }, [applySession]);
 
+  const refresh = useCallback(async () => {
+    const session = await getAuthSession();
+    applySession(session);
+  }, [applySession]);
+
   useEffect(() => {
     const handleUnauthorized = () => {
       if (enabled) {
@@ -88,6 +98,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         clearCopyWorkspaceCache();
         setAuthenticated(false);
         setUsername(null);
+        setEmailVerified(false);
       }
     };
     window.addEventListener("socialpilot:unauthorized", handleUnauthorized);
@@ -125,10 +136,12 @@ export function AuthProvider({ children }: PropsWithChildren) {
       username,
       authMode,
       registrationEnabled,
+      emailVerified,
       error,
       login,
       register,
       logout,
+      refresh,
     }),
     [
       checking,
@@ -137,10 +150,12 @@ export function AuthProvider({ children }: PropsWithChildren) {
       username,
       authMode,
       registrationEnabled,
+      emailVerified,
       error,
       login,
       register,
       logout,
+      refresh,
     ],
   );
 

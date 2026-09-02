@@ -1,18 +1,45 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Cookie,
+    Depends,
+    HTTPException,
+    Request,
+    Response,
+    status,
+)
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.auth_dependency import ProductPrincipalDep
 from app.core.config import Settings, get_settings
 from app.db.session import get_db
+from app.models import User
 from app.schemas.auth import (
+    AccountActionRead,
     AuthSessionRead,
     ChangePasswordRequest,
+    EmailVerificationCompleteRequest,
     LoginRequest,
+    PasswordResetCompleteRequest,
+    PasswordResetRequest,
     RegisterRequest,
     SessionRevocationRead,
+)
+from app.services.account_action_service import (
+    EMAIL_VERIFICATION,
+    PASSWORD_RESET,
+    find_active_user_by_email,
+    issue_account_action_token,
+    reset_password_with_token,
+    verify_email_with_token,
+)
+from app.services.account_email_service import (
+    AccountEmailDeliveryError,
+    AccountEmailSender,
+    AccountEmailSenderDep,
 )
 from app.services.demo_auth_service import (
     SESSION_COOKIE_NAME,
@@ -34,6 +61,17 @@ from app.services.user_auth_service import (
 router = APIRouter(prefix="/auth")
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 DbSession = Annotated[Session, Depends(get_db)]
+
+
+def _send_password_reset_safely(
+    email_sender: AccountEmailSender,
+    recipient: str,
+    token: str,
+) -> None:
+    try:
+        email_sender.send_password_reset(recipient, token)
+    except AccountEmailDeliveryError:
+        return
 
 
 def _set_session_cookie(
@@ -65,6 +103,7 @@ def _principal_response(principal, *, registration_enabled: bool) -> AuthSession
         workspace_id=principal.workspace_id,
         auth_mode="user",
         registration_enabled=registration_enabled,
+        email_verified=principal.email_verified,
     )
 
 
@@ -301,6 +340,162 @@ def logout_other_devices(
     )
     db.commit()
     return SessionRevocationRead(revoked_sessions=revoked)
+
+
+@router.post(
+    "/password-reset/request",
+    response_model=AccountActionRead,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def request_password_reset(
+    payload: PasswordResetRequest,
+    background_tasks: BackgroundTasks,
+    settings: SettingsDep,
+    db: DbSession,
+    email_sender: AccountEmailSenderDep,
+) -> AccountActionRead:
+    generic = AccountActionRead(
+        message="如果该邮箱已注册且邮件服务可用，我们会发送密码重置链接。"
+    )
+    if not settings.enable_user_auth:
+        return generic
+    user = find_active_user_by_email(db, payload.email)
+    if user is None or not email_sender.configured:
+        return generic
+    token = issue_account_action_token(
+        db,
+        user_id=user.id,
+        purpose=PASSWORD_RESET,
+        ttl_seconds=settings.password_reset_token_ttl_seconds,
+        cooldown_seconds=settings.account_email_request_cooldown_seconds,
+    )
+    if token is None:
+        db.rollback()
+        return generic
+    db.commit()
+    background_tasks.add_task(
+        _send_password_reset_safely,
+        email_sender,
+        user.email,
+        token,
+    )
+    return generic
+
+
+@router.post(
+    "/password-reset/complete",
+    response_model=AccountActionRead,
+)
+def complete_password_reset(
+    payload: PasswordResetCompleteRequest,
+    response: Response,
+    settings: SettingsDep,
+    db: DbSession,
+) -> AccountActionRead:
+    if not settings.enable_user_auth:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="当前环境未启用用户账号。",
+        )
+    result = reset_password_with_token(
+        db,
+        token=payload.token,
+        new_password=payload.new_password,
+    )
+    if result == "INVALID":
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="重置链接无效或已过期，请重新申请。",
+        )
+    if result == "UNCHANGED":
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="新密码不能与当前密码相同。",
+        )
+    db.commit()
+    response.delete_cookie(
+        key=SESSION_COOKIE_NAME,
+        httponly=True,
+        secure=settings.user_auth_cookie_secure,
+        samesite="lax",
+        path="/",
+    )
+    return AccountActionRead(message="密码已重置，请使用新密码登录。")
+
+
+@router.post(
+    "/email-verification/request",
+    response_model=AccountActionRead,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def request_email_verification(
+    settings: SettingsDep,
+    db: DbSession,
+    principal: ProductPrincipalDep,
+    email_sender: AccountEmailSenderDep,
+) -> AccountActionRead:
+    user = db.get(User, principal.user_id)
+    if user is None or user.status != "ACTIVE":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+    if user.email_verified_at is not None:
+        return AccountActionRead(message="邮箱已经验证，无需重复操作。")
+    if not email_sender.configured:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="系统邮件服务尚未配置，请联系管理员。",
+        )
+    token = issue_account_action_token(
+        db,
+        user_id=user.id,
+        purpose=EMAIL_VERIFICATION,
+        ttl_seconds=settings.email_verification_token_ttl_seconds,
+        cooldown_seconds=settings.account_email_request_cooldown_seconds,
+    )
+    if token is None:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="验证邮件已发送，请稍后再试。",
+            headers={
+                "Retry-After": str(settings.account_email_request_cooldown_seconds)
+            },
+        )
+    try:
+        email_sender.send_email_verification(user.email, token)
+    except AccountEmailDeliveryError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="验证邮件发送失败，请稍后重试。",
+        ) from exc
+    db.commit()
+    return AccountActionRead(message="验证邮件已发送，请前往邮箱完成验证。")
+
+
+@router.post(
+    "/email-verification/complete",
+    response_model=AccountActionRead,
+)
+def complete_email_verification(
+    payload: EmailVerificationCompleteRequest,
+    settings: SettingsDep,
+    db: DbSession,
+) -> AccountActionRead:
+    if not settings.enable_user_auth:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="当前环境未启用用户账号。",
+        )
+    if not verify_email_with_token(db, payload.token):
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="验证链接无效或已过期，请重新申请。",
+        )
+    db.commit()
+    return AccountActionRead(message="邮箱验证成功，现在可以返回工作台。")
 
 
 @router.post(

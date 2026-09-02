@@ -28,6 +28,7 @@ class AuthenticatedPrincipal:
     workspace_id: int
     email: str
     role: str
+    email_verified: bool
 
 
 def normalize_email(email: str) -> str:
@@ -73,6 +74,7 @@ def register_user(
             workspace_id=workspace.id,
             email=user.email,
             role=membership.role,
+            email_verified=user.email_verified_at is not None,
         ),
         token,
     )
@@ -120,6 +122,7 @@ def login_user(
             workspace_id=membership.workspace_id,
             email=user.email,
             role=membership.role,
+            email_verified=user.email_verified_at is not None,
         ),
         token,
     )
@@ -184,6 +187,7 @@ def read_session(db: Session, token: str | None) -> AuthenticatedPrincipal | Non
         workspace_id=workspace.id,
         email=user.email,
         role=membership.role,
+        email_verified=user.email_verified_at is not None,
     )
 
 

@@ -29,6 +29,23 @@ class Settings(BaseSettings):
     user_auth_login_max_failures: int = Field(default=5, ge=3, le=20)
     user_auth_login_window_seconds: int = Field(default=900, ge=60, le=86_400)
     user_auth_login_lock_seconds: int = Field(default=900, ge=60, le=86_400)
+    account_public_web_origin: str | None = None
+    account_email_from: str | None = None
+    account_smtp_host: str | None = None
+    account_smtp_port: int = Field(default=587, ge=1, le=65_535)
+    account_smtp_username: str | None = None
+    account_smtp_password: SecretStr | None = None
+    account_smtp_security: str = Field(
+        default="starttls", pattern=r"^(starttls|tls|none)$"
+    )
+    account_smtp_timeout_seconds: float = Field(default=15, gt=0, le=60)
+    password_reset_token_ttl_seconds: int = Field(default=1800, ge=300, le=86_400)
+    email_verification_token_ttl_seconds: int = Field(
+        default=86_400, ge=900, le=604_800
+    )
+    account_email_request_cooldown_seconds: int = Field(
+        default=60, ge=30, le=3600
+    )
     user_credential_encryption_key: SecretStr | None = None
     user_credential_encryption_key_id: str = "v1"
     enable_demo_auth: bool = False
@@ -223,6 +240,11 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "Production user authentication forbids shared provider keys"
                 )
+        if bool((self.account_smtp_username or "").strip()) != (
+            self.account_smtp_password is not None
+            and bool(self.account_smtp_password.get_secret_value().strip())
+        ):
+            raise ValueError("SMTP username and password must be configured together")
         return self
 
 

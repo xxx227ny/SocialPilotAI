@@ -4495,6 +4495,23 @@ textarea { font: inherit; }
   color: #ffbec7;
 }
 
+.login-success {
+  margin: 0;
+  padding: 0.85rem 1rem;
+  border-radius: 0.75rem;
+  background: rgba(30, 170, 116, 0.16);
+  color: #a8f0d4;
+}
+
+.login-card .login-link-button {
+  min-height: auto;
+  padding: 0.5rem 0;
+  margin-top: 0.75rem;
+  background: transparent;
+  color: #bdb5ff;
+  text-align: left;
+}
+
 .login-note {
   margin: 1.25rem 0 0;
   font-size: 0.82rem;

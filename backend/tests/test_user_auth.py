@@ -1,13 +1,37 @@
+import hashlib
+
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
 from app.main import app
-from app.models import AuthSession, LoginThrottle, Membership, User, Workspace
+from app.models import (
+    AccountActionToken,
+    AuthSession,
+    LoginThrottle,
+    Membership,
+    User,
+    Workspace,
+)
+from app.services.account_email_service import get_account_email_sender
 
 EMAIL = "owner@example.com"
 PASSWORD = "strong-user-password"
+
+
+class FakeAccountEmailSender:
+    configured = True
+
+    def __init__(self) -> None:
+        self.password_resets: list[tuple[str, str]] = []
+        self.email_verifications: list[tuple[str, str]] = []
+
+    def send_password_reset(self, recipient: str, token: str) -> None:
+        self.password_resets.append((recipient, token))
+
+    def send_email_verification(self, recipient: str, token: str) -> None:
+        self.email_verifications.append((recipient, token))
 
 
 def user_auth_settings(**overrides: object) -> Settings:
@@ -48,6 +72,7 @@ def test_registration_creates_isolated_account_and_secure_session(
     assert payload["workspace_id"] > 0
     assert payload["auth_mode"] == "user"
     assert payload["registration_enabled"] is True
+    assert payload["email_verified"] is False
     assert session.json() == payload
     assert protected.status_code == 200
 
@@ -282,3 +307,122 @@ def test_login_failures_are_persistently_rate_limited_without_plain_email(
     assert throttle.failure_count == 3
     assert throttle.locked_until is not None
     assert EMAIL not in throttle.scope_hash
+
+
+def test_password_reset_is_private_one_time_and_revokes_existing_sessions(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    sender = FakeAccountEmailSender()
+    app.dependency_overrides[get_settings] = lambda: user_auth_settings()
+    app.dependency_overrides[get_account_email_sender] = lambda: sender
+    assert client.post(
+        "/api/v1/auth/register",
+        json={"email": EMAIL, "password": PASSWORD},
+    ).status_code == 201
+
+    known = client.post(
+        "/api/v1/auth/password-reset/request",
+        json={"email": EMAIL},
+    )
+    unknown = client.post(
+        "/api/v1/auth/password-reset/request",
+        json={"email": "unknown@example.com"},
+    )
+
+    assert known.status_code == unknown.status_code == 202
+    assert known.json() == unknown.json()
+    assert len(sender.password_resets) == 1
+    recipient, token = sender.password_resets[0]
+    assert recipient == EMAIL
+    assert token not in known.text
+    stored = db_session.scalar(select(AccountActionToken))
+    assert stored is not None
+    assert stored.token_hash == hashlib.sha256(token.encode()).hexdigest()
+    assert token not in stored.token_hash
+
+    reset = client.post(
+        "/api/v1/auth/password-reset/complete",
+        json={"token": token, "new_password": "replacement-password-123"},
+    )
+    repeated = client.post(
+        "/api/v1/auth/password-reset/complete",
+        json={"token": token, "new_password": "another-password-123"},
+    )
+    session = client.get("/api/v1/auth/session")
+    old_login = client.post(
+        "/api/v1/auth/login",
+        json={"username": EMAIL, "password": PASSWORD},
+    )
+    new_login = client.post(
+        "/api/v1/auth/login",
+        json={"username": EMAIL, "password": "replacement-password-123"},
+    )
+
+    assert reset.status_code == 200
+    assert repeated.status_code == 400
+    assert session.json()["authenticated"] is False
+    assert old_login.status_code == 401
+    assert new_login.status_code == 200
+    assert stored.consumed_at is not None
+    sessions = db_session.scalars(select(AuthSession).order_by(AuthSession.id)).all()
+    assert sessions[0].revoked_at is not None
+
+
+def test_email_verification_marks_user_and_token_is_one_time(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    sender = FakeAccountEmailSender()
+    app.dependency_overrides[get_settings] = lambda: user_auth_settings()
+    app.dependency_overrides[get_account_email_sender] = lambda: sender
+    client.post(
+        "/api/v1/auth/register",
+        json={"email": EMAIL, "password": PASSWORD},
+    )
+
+    requested = client.post("/api/v1/auth/email-verification/request")
+    assert requested.status_code == 202
+    assert len(sender.email_verifications) == 1
+    recipient, token = sender.email_verifications[0]
+    assert recipient == EMAIL
+    assert token not in requested.text
+
+    verified = client.post(
+        "/api/v1/auth/email-verification/complete",
+        json={"token": token},
+    )
+    repeated = client.post(
+        "/api/v1/auth/email-verification/complete",
+        json={"token": token},
+    )
+    session = client.get("/api/v1/auth/session")
+    user = db_session.scalar(select(User).where(User.email == EMAIL))
+
+    assert verified.status_code == 200
+    assert repeated.status_code == 400
+    assert session.json()["email_verified"] is True
+    assert user is not None and user.email_verified_at is not None
+
+
+def test_unconfigured_email_delivery_is_safe_and_explicit_for_signed_in_user(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    app.dependency_overrides[get_settings] = lambda: user_auth_settings()
+    client.post(
+        "/api/v1/auth/register",
+        json={"email": EMAIL, "password": PASSWORD},
+    )
+
+    reset = client.post(
+        "/api/v1/auth/password-reset/request",
+        json={"email": EMAIL},
+    )
+    verification = client.post("/api/v1/auth/email-verification/request")
+
+    assert reset.status_code == 202
+    assert "令牌" not in reset.text
+    assert verification.status_code == 503
+    assert verification.json()["detail"] == "系统邮件服务尚未配置，请联系管理员。"
+    assert db_session.scalar(select(AccountActionToken)) is None

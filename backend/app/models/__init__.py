@@ -1,6 +1,7 @@
 """SQLAlchemy business models."""
 
 from app.models.account import (
+    AccountActionToken,
     AuthSession,
     LoginThrottle,
     Membership,
@@ -47,6 +48,7 @@ from app.models.video_script_version import (
 )
 
 __all__ = [
+    "AccountActionToken",
     "AdCampaign",
     "AuthSession",
     "BrandKit",

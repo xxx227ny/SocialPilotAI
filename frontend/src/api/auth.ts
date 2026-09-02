@@ -1,5 +1,5 @@
 import { apiClient } from "./client";
-import type { AuthSession, SessionRevocation } from "../types/auth";
+import type { AccountAction, AuthSession, SessionRevocation } from "../types/auth";
 
 export async function getAuthSession(): Promise<AuthSession> {
   return (await apiClient.get<AuthSession>("/auth/session")).data;
@@ -47,5 +47,35 @@ export async function changePassword(
 export async function revokeOtherSessions(): Promise<SessionRevocation> {
   return (
     await apiClient.post<SessionRevocation>("/auth/sessions/revoke-others")
+  ).data;
+}
+
+export async function requestPasswordReset(email: string): Promise<AccountAction> {
+  return (
+    await apiClient.post<AccountAction>("/auth/password-reset/request", { email })
+  ).data;
+}
+
+export async function completePasswordReset(
+  token: string,
+  newPassword: string,
+): Promise<AccountAction> {
+  return (
+    await apiClient.post<AccountAction>("/auth/password-reset/complete", {
+      token,
+      new_password: newPassword,
+    })
+  ).data;
+}
+
+export async function requestEmailVerification(): Promise<AccountAction> {
+  return (
+    await apiClient.post<AccountAction>("/auth/email-verification/request")
+  ).data;
+}
+
+export async function completeEmailVerification(token: string): Promise<AccountAction> {
+  return (
+    await apiClient.post<AccountAction>("/auth/email-verification/complete", { token })
   ).data;
 }

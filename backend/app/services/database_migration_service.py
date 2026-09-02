@@ -48,7 +48,8 @@ SOCIAL_WORKSPACE_ISOLATION_REVISION = "0027_social_workspace_isolation"
 BRAND_KIT_WORKSPACES_REVISION = "0028_brand_kit_workspaces"
 PROVIDER_CREDENTIAL_PROFILES_REVISION = "0029_provider_credential_profiles"
 LOGIN_THROTTLES_REVISION = "0030_login_throttles"
-HEAD_REVISION = LOGIN_THROTTLES_REVISION
+ACCOUNT_ACTION_TOKENS_REVISION = "0031_account_action_tokens"
+HEAD_REVISION = ACCOUNT_ACTION_TOKENS_REVISION
 UNVERSIONED = "unversioned"
 MANIFEST_VERSION = 1
 ALEMBIC_INI = Path(__file__).resolve().parents[2] / "alembic.ini"
@@ -298,6 +299,7 @@ def expected_schema_fingerprint(revision: str) -> str:
         SOCIAL_WORKSPACE_ISOLATION_REVISION,
         BRAND_KIT_WORKSPACES_REVISION,
         PROVIDER_CREDENTIAL_PROFILES_REVISION,
+        LOGIN_THROTTLES_REVISION,
         HEAD_REVISION,
     }:
         raise ValueError(f"Unknown expected revision: {revision}")
@@ -691,6 +693,7 @@ def get_database_migration_status(database_path: Path) -> DatabaseMigrationStatu
             SOCIAL_WORKSPACE_ISOLATION_REVISION,
             BRAND_KIT_WORKSPACES_REVISION,
             PROVIDER_CREDENTIAL_PROFILES_REVISION,
+            LOGIN_THROTTLES_REVISION,
             HEAD_REVISION,
         }:
             raise IncompatibleSchemaError("Unsupported Alembic revision")
@@ -735,6 +738,10 @@ def get_database_migration_status(database_path: Path) -> DatabaseMigrationStatu
             PRODUCT_WORKSPACES_REVISION: "product_workspaces_runtime",
             SOCIAL_WORKSPACE_ISOLATION_REVISION: "social_workspace_isolation_runtime",
             BRAND_KIT_WORKSPACES_REVISION: "brand_kit_workspaces_runtime",
+            PROVIDER_CREDENTIAL_PROFILES_REVISION: (
+                "provider_credential_profiles_runtime"
+            ),
+            LOGIN_THROTTLES_REVISION: "login_throttles_runtime",
         }
         return DatabaseMigrationStatus(
             state=state_by_revision[revision],
@@ -827,6 +834,7 @@ def _upgrade_sqlite_database_unlocked(
                     SOCIAL_WORKSPACE_ISOLATION_REVISION,
                     BRAND_KIT_WORKSPACES_REVISION,
                     PROVIDER_CREDENTIAL_PROFILES_REVISION,
+                    LOGIN_THROTTLES_REVISION,
                     HEAD_REVISION,
                 }:
                     raise IncompatibleSchemaError(

@@ -1,14 +1,21 @@
 import axios from "axios";
 import { type FormEvent, useState } from "react";
 
-import { changePassword, revokeOtherSessions } from "../api/auth";
+import {
+  changePassword,
+  requestEmailVerification,
+  revokeOtherSessions,
+} from "../api/auth";
+import { useAuth } from "../context/AuthContext";
 
 export function AccountSecurityPage() {
+  const { emailVerified, username } = useAuth();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [revoking, setRevoking] = useState(false);
+  const [sendingVerification, setSendingVerification] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -62,6 +69,26 @@ export function AccountSecurityPage() {
     }
   };
 
+  const sendVerification = async () => {
+    setMessage(null);
+    setError(null);
+    setSendingVerification(true);
+    try {
+      const result = await requestEmailVerification();
+      setMessage(result.message);
+    } catch (caught) {
+      if (axios.isAxiosError(caught) && caught.response?.status === 503) {
+        setError(caught.response.data?.detail || "系统邮件服务尚未配置。");
+      } else if (axios.isAxiosError(caught) && caught.response?.status === 429) {
+        setError("验证邮件已经发送，请稍后再试。");
+      } else {
+        setError("验证邮件发送失败，请稍后重试。");
+      }
+    } finally {
+      setSendingVerification(false);
+    }
+  };
+
   return (
     <section className="settings-page" aria-labelledby="account-security-title">
       <header className="page-heading">
@@ -73,6 +100,25 @@ export function AccountSecurityPage() {
       </header>
 
       <article className="settings-card">
+        <div className="credential-status">
+          <span className={`status-dot ${emailVerified ? "is-ready" : "is-pending"}`} />
+          <div>
+            <strong>{emailVerified ? "邮箱已验证" : "邮箱尚未验证"}</strong>
+            <p>{username || "当前账号"}</p>
+          </div>
+        </div>
+        {!emailVerified && (
+          <div className="settings-actions">
+            <button
+              type="button"
+              disabled={sendingVerification}
+              onClick={sendVerification}
+            >
+              {sendingVerification ? "正在发送…" : "发送验证邮件"}
+            </button>
+          </div>
+        )}
+
         <div className="credential-status">
           <span className="status-dot is-ready" />
           <div>
@@ -118,13 +164,16 @@ export function AccountSecurityPage() {
             />
           </label>
           <div className="settings-actions">
-            <button type="submit" disabled={submitting || revoking}>
+            <button
+              type="submit"
+              disabled={submitting || revoking || sendingVerification}
+            >
               {submitting ? "正在更新…" : "更新密码"}
             </button>
             <button
               type="button"
               className="button-secondary"
-              disabled={submitting || revoking}
+              disabled={submitting || revoking || sendingVerification}
               onClick={revokeOthers}
             >
               {revoking ? "正在处理…" : "退出其他设备"}

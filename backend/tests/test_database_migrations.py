@@ -960,9 +960,15 @@ def test_stage3f_head_contains_product_media_bridge_columns(tmp_path: Path) -> N
         login_throttle_columns = {
             row[1] for row in connection.execute("PRAGMA table_info(login_throttles)")
         }
+        account_action_token_columns = {
+            row[1]
+            for row in connection.execute(
+                "PRAGMA table_info(account_action_tokens)"
+            )
+        }
     finally:
         connection.close()
-    assert HEAD_REVISION == "0030_login_throttles"
+    assert HEAD_REVISION == "0031_account_action_tokens"
     assert {"provider_region", "provider_workspace_ref"} <= credential_columns
     assert {
         "scope_hash",
@@ -971,6 +977,14 @@ def test_stage3f_head_contains_product_media_bridge_columns(tmp_path: Path) -> N
         "locked_until",
         "updated_at",
     } <= login_throttle_columns
+    assert {
+        "user_id",
+        "purpose",
+        "token_hash",
+        "expires_at",
+        "consumed_at",
+        "created_at",
+    } <= account_action_token_columns
     assert {
         "content_type",
         "size_bytes",
@@ -1007,6 +1021,30 @@ def test_0028_database_is_safely_upgraded_to_provider_profile_head(
     result = upgrade_sqlite_database(database, backups)
 
     assert result.previous_revision == "0028_brand_kit_workspaces"
+    assert result.current_revision == HEAD_REVISION
+    assert result.backup_manifest_path is not None
+    assert get_database_migration_status(database).state == "head"
+
+
+def test_0030_database_is_safely_upgraded_to_account_action_token_head(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "login-throttles-0030.db"
+    backups = tmp_path / "backups"
+    migration_service._run_alembic(  # noqa: SLF001
+        database,
+        "upgrade",
+        "0030_login_throttles",
+    )
+
+    before = get_database_migration_status(database)
+    assert before.state == "login_throttles_runtime"
+    assert before.revision == "0030_login_throttles"
+    assert before.upgrade_required is True
+
+    result = upgrade_sqlite_database(database, backups)
+
+    assert result.previous_revision == "0030_login_throttles"
     assert result.current_revision == HEAD_REVISION
     assert result.backup_manifest_path is not None
     assert get_database_migration_status(database).state == "head"
