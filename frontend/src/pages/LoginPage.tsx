@@ -252,7 +252,11 @@ export function LoginPage() {
           ) : (
             <button type="submit" disabled={submitting}>
               {submitting
-                ? "正在处理…"
+                ? mode === "register"
+                  ? emailDeliveryAvailable
+                    ? "正在创建账号并发送验证邮件…"
+                    : "正在创建独立工作区…"
+                  : "正在处理…"
                 : mode === "register"
                   ? "注册并创建独立工作区"
                   : mode === "forgot"

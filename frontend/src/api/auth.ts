@@ -1,6 +1,11 @@
 import { apiClient } from "./client";
 import type { AccountAction, AuthSession, SessionRevocation } from "../types/auth";
 
+// SMTP delivery can legitimately take longer than the default 5-second API read
+// timeout. Keep account-email mutations single-submit and wait for the Backend's
+// definitive response instead of reporting an uncertain failure too early.
+export const ACCOUNT_EMAIL_REQUEST_TIMEOUT_MS = 25_000;
+
 export async function getAuthSession(): Promise<AuthSession> {
   return (await apiClient.get<AuthSession>("/auth/session")).data;
 }
@@ -24,7 +29,7 @@ export async function register(
       email,
       password,
       workspace_name: workspaceName?.trim() || null,
-    })
+    }, { timeout: ACCOUNT_EMAIL_REQUEST_TIMEOUT_MS })
   ).data;
 }
 
@@ -52,7 +57,11 @@ export async function revokeOtherSessions(): Promise<SessionRevocation> {
 
 export async function requestPasswordReset(email: string): Promise<AccountAction> {
   return (
-    await apiClient.post<AccountAction>("/auth/password-reset/request", { email })
+    await apiClient.post<AccountAction>(
+      "/auth/password-reset/request",
+      { email },
+      { timeout: ACCOUNT_EMAIL_REQUEST_TIMEOUT_MS },
+    )
   ).data;
 }
 
@@ -70,7 +79,11 @@ export async function completePasswordReset(
 
 export async function requestEmailVerification(): Promise<AccountAction> {
   return (
-    await apiClient.post<AccountAction>("/auth/email-verification/request")
+    await apiClient.post<AccountAction>(
+      "/auth/email-verification/request",
+      undefined,
+      { timeout: ACCOUNT_EMAIL_REQUEST_TIMEOUT_MS },
+    )
   ).data;
 }
 

@@ -47,6 +47,10 @@ assert.match(authApi, /\/auth\/password-reset\/request/);
 assert.match(authApi, /\/auth\/password-reset\/complete/);
 assert.match(authApi, /\/auth\/email-verification\/request/);
 assert.match(authApi, /\/auth\/email-verification\/complete/);
+assert.match(authApi, /ACCOUNT_EMAIL_REQUEST_TIMEOUT_MS = 25_000/);
+assert.match(authApi, /password-reset\/request[\s\S]*ACCOUNT_EMAIL_REQUEST_TIMEOUT_MS/);
+assert.match(authApi, /email-verification\/request[\s\S]*ACCOUNT_EMAIL_REQUEST_TIMEOUT_MS/);
+assert.match(login, /正在创建账号并发送验证邮件/);
 assert.match(login, /忘记密码？/);
 assert.match(login, /找回密码（邮件服务待配置）/);
 assert.match(login, /disabled=\{!emailDeliveryAvailable\}/);
@@ -78,4 +82,4 @@ assert.match(backendAuth, /registration_enabled=settings\.allow_public_registrat
 assert.match(styles, /\.account-menu button[\s\S]*color:\s*#b71935/);
 assert.match(styles, /\.account-menu button:hover[\s\S]*background:\s*#ffe2e8/);
 
-console.log("Product auth frontend checks passed: 62 assertions.");
+console.log("Product auth frontend checks passed: 66 assertions.");
