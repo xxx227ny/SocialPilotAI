@@ -38,6 +38,7 @@ from app.services.account_action_service import (
 from app.services.account_email_service import (
     AccountEmailDeliveryError,
     AccountEmailSenderDep,
+    account_email_delivery_configured,
 )
 from app.services.demo_auth_service import (
     SESSION_COOKIE_NAME,
@@ -80,7 +81,12 @@ def _set_session_cookie(
     )
 
 
-def _principal_response(principal, *, registration_enabled: bool) -> AuthSessionRead:
+def _principal_response(
+    principal,
+    *,
+    registration_enabled: bool,
+    email_delivery_available: bool,
+) -> AuthSessionRead:
     return AuthSessionRead(
         enabled=True,
         authenticated=True,
@@ -91,6 +97,7 @@ def _principal_response(principal, *, registration_enabled: bool) -> AuthSession
         auth_mode="user",
         registration_enabled=registration_enabled,
         email_verified=principal.email_verified,
+        email_delivery_available=email_delivery_available,
     )
 
 
@@ -112,10 +119,12 @@ def get_auth_session(
                 authenticated=False,
                 auth_mode="user",
                 registration_enabled=settings.allow_public_registration,
+                email_delivery_available=account_email_delivery_configured(settings),
             )
         return _principal_response(
             principal,
             registration_enabled=settings.allow_public_registration,
+            email_delivery_available=account_email_delivery_configured(settings),
         )
     if not settings.enable_demo_auth:
         return AuthSessionRead(enabled=False, authenticated=True, username=None)
@@ -204,6 +213,7 @@ def register(
     return _principal_response(
         principal,
         registration_enabled=settings.allow_public_registration,
+        email_delivery_available=account_email_delivery_configured(settings),
     )
 
 
@@ -266,6 +276,7 @@ def login(
         return _principal_response(
             principal,
             registration_enabled=settings.allow_public_registration,
+            email_delivery_available=account_email_delivery_configured(settings),
         )
     if not settings.enable_demo_auth:
         raise HTTPException(
@@ -331,6 +342,7 @@ def update_password(
     return _principal_response(
         principal,
         registration_enabled=settings.allow_public_registration,
+        email_delivery_available=account_email_delivery_configured(settings),
     )
 
 
@@ -540,6 +552,7 @@ def logout(
             auth_mode="user",
             registration_enabled=settings.allow_public_registration,
             email_verified=False,
+            email_delivery_available=account_email_delivery_configured(settings),
         )
     if settings.enable_demo_auth:
         return AuthSessionRead(

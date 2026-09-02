@@ -16,6 +16,7 @@ export function LoginPage() {
   const location = useLocation();
   const {
     authenticated,
+    emailDeliveryAvailable,
     error: serviceError,
     login,
     refresh,
@@ -254,8 +255,11 @@ export function LoginPage() {
           <button
             type="button"
             className="login-link-button"
+            disabled={!emailDeliveryAvailable}
             onClick={() => selectMode("forgot")}
-          >忘记密码？</button>
+          >
+            {emailDeliveryAvailable ? "忘记密码？" : "找回密码（邮件服务待配置）"}
+          </button>
         )}
         {["forgot", "reset", "verify"].includes(mode) && (
           <button type="button" className="login-link-button" onClick={finishAction}>
@@ -265,6 +269,8 @@ export function LoginPage() {
         <p className="login-note">
           {mode === "forgot"
             ? "若未收到邮件，请检查垃圾箱；邮件服务尚未配置时请联系管理员。"
+            : registrationEnabled && !emailDeliveryAvailable
+              ? "注册与登录可正常使用；邮箱验证和找回密码将在管理员配置发件邮箱后启用。"
             : registrationEnabled
               ? "注册成功后将直接进入 API Key 设置，完成绑定后再创建商品。"
               : "测试账号由项目管理员配置，不开放公开注册。"}

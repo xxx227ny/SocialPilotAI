@@ -4768,6 +4768,12 @@ textarea { font: inherit; }
   text-align: left;
 }
 
+.login-card .login-link-button:disabled {
+  color: #a9a3cf;
+  cursor: not-allowed;
+  opacity: 0.85;
+}
+
 .login-note {
   margin: 1.25rem 0 0;
   font-size: 0.82rem;

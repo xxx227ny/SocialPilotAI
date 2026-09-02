@@ -35,8 +35,9 @@ assert.match(settings, /API Key 已就绪/);
 assert.match(settings, /to="\/products"/);
 assert.match(dashboard, /三步开始独立使用 SocialPilot AI/);
 assert.match(dashboard, /authMode === "user"/);
-assert.match(dashboard, /getDashScopeCredential/);
-assert.match(dashboard, /listProducts/);
+assert.match(dashboard, /getWorkspaceActivitySummary/);
+assert.doesNotMatch(dashboard, /getDashScopeCredential/);
+assert.doesNotMatch(dashboard, /listProducts/);
 assert.match(onboarding, /API Key 设置/);
 assert.match(authApi, /\/auth\/change-password/);
 assert.match(authApi, /\/auth\/sessions\/revoke-others/);
@@ -47,6 +48,10 @@ assert.match(authApi, /\/auth\/password-reset\/complete/);
 assert.match(authApi, /\/auth\/email-verification\/request/);
 assert.match(authApi, /\/auth\/email-verification\/complete/);
 assert.match(login, /忘记密码？/);
+assert.match(login, /找回密码（邮件服务待配置）/);
+assert.match(login, /disabled=\{!emailDeliveryAvailable\}/);
+assert.match(context, /emailDeliveryAvailable/);
+assert.match(backendAuth, /email_delivery_available/);
 assert.match(login, /确认重置密码/);
 assert.match(login, /确认验证邮箱/);
 assert.match(accountSecurity, /邮箱尚未验证/);
@@ -70,4 +75,4 @@ assert.match(backendAuth, /registration_enabled=settings\.allow_public_registrat
 assert.match(styles, /\.account-menu button[\s\S]*color:\s*#b71935/);
 assert.match(styles, /\.account-menu button:hover[\s\S]*background:\s*#ffe2e8/);
 
-console.log("Product auth frontend checks passed: 54 assertions.");
+console.log("Product auth frontend checks passed: 59 assertions.");

@@ -87,6 +87,7 @@ def test_registration_creates_isolated_account_and_secure_session(
     assert payload["auth_mode"] == "user"
     assert payload["registration_enabled"] is True
     assert payload["email_verified"] is False
+    assert payload["email_delivery_available"] is False
     assert session.json() == payload
     assert protected.status_code == 200
 
@@ -420,7 +421,11 @@ def test_email_verification_marks_user_and_token_is_one_time(
     db_session: Session,
 ) -> None:
     sender = FakeAccountEmailSender()
-    app.dependency_overrides[get_settings] = lambda: user_auth_settings()
+    app.dependency_overrides[get_settings] = lambda: user_auth_settings(
+        account_public_web_origin="https://example.com",
+        account_email_from="noreply@example.com",
+        account_smtp_host="smtp.example.com",
+    )
     app.dependency_overrides[get_account_email_sender] = lambda: sender
     registered = client.post(
         "/api/v1/auth/register",
@@ -428,6 +433,7 @@ def test_email_verification_marks_user_and_token_is_one_time(
     )
 
     assert registered.status_code == 201
+    assert registered.json()["email_delivery_available"] is True
     assert len(sender.email_verifications) == 1
     recipient, token = sender.email_verifications[0]
     assert recipient == EMAIL

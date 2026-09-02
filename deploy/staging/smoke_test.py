@@ -129,6 +129,7 @@ def main() -> None:
             "authenticated": False,
             "auth_mode": "user",
             "registration_enabled": True,
+            "email_delivery_available": False,
         }:
             raise RuntimeError("Unexpected anonymous session state")
 

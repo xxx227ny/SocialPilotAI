@@ -26,6 +26,7 @@ type AuthState = {
   authMode: "disabled" | "demo" | "user" | null;
   registrationEnabled: boolean;
   emailVerified: boolean;
+  emailDeliveryAvailable: boolean;
   error: string | null;
   login: (username: string, password: string) => Promise<void>;
   register: (email: string, password: string, workspaceName?: string) => Promise<void>;
@@ -45,6 +46,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [authMode, setAuthMode] = useState<"disabled" | "demo" | "user" | null>(null);
   const [registrationEnabled, setRegistrationEnabled] = useState(false);
   const [emailVerified, setEmailVerified] = useState(false);
+  const [emailDeliveryAvailable, setEmailDeliveryAvailable] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const applyLocalLogout = useCallback((nextError: string | null = null) => {
@@ -64,6 +66,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       registration_enabled?: boolean | null;
       auth_mode?: "disabled" | "demo" | "user" | null;
       email_verified?: boolean | null;
+      email_delivery_available?: boolean | null;
     }) => {
       clearReadResources();
       clearCopyWorkspaceCache();
@@ -73,6 +76,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       setAuthMode(session.auth_mode ?? null);
       setRegistrationEnabled(Boolean(session.registration_enabled));
       setEmailVerified(Boolean(session.email_verified));
+      setEmailDeliveryAvailable(Boolean(session.email_delivery_available));
       setError(null);
     },
     [],
@@ -172,6 +176,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       authMode,
       registrationEnabled,
       emailVerified,
+      emailDeliveryAvailable,
       error,
       login,
       register,
@@ -187,6 +192,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       authMode,
       registrationEnabled,
       emailVerified,
+      emailDeliveryAvailable,
       error,
       login,
       register,

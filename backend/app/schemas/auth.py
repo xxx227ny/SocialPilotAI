@@ -60,3 +60,4 @@ class AuthSessionRead(BaseModel):
     auth_mode: Literal["disabled", "demo", "user"] | None = None
     registration_enabled: bool | None = None
     email_verified: bool | None = None
+    email_delivery_available: bool | None = None

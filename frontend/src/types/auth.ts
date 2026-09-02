@@ -8,6 +8,7 @@ export type AuthSession = {
   auth_mode?: "disabled" | "demo" | "user" | null;
   registration_enabled?: boolean | null;
   email_verified?: boolean | null;
+  email_delivery_available?: boolean | null;
 };
 
 export type SessionRevocation = {

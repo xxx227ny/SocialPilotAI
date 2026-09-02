@@ -30,13 +30,7 @@ class SMTPAccountEmailSender:
 
     @property
     def configured(self) -> bool:
-        return all(
-            (
-                (self._settings.account_public_web_origin or "").strip(),
-                (self._settings.account_email_from or "").strip(),
-                (self._settings.account_smtp_host or "").strip(),
-            )
-        )
+        return account_email_delivery_configured(self._settings)
 
     def send_password_reset(self, recipient: str, token: str) -> None:
         url = self._action_url("reset-password", token)
@@ -125,3 +119,15 @@ def get_account_email_sender(
 
 
 AccountEmailSenderDep = Annotated[AccountEmailSender, Depends(get_account_email_sender)]
+
+
+def account_email_delivery_configured(settings: Settings) -> bool:
+    """Report delivery availability without opening a network connection."""
+
+    return all(
+        (
+            (settings.account_public_web_origin or "").strip(),
+            (settings.account_email_from or "").strip(),
+            (settings.account_smtp_host or "").strip(),
+        )
+    )
