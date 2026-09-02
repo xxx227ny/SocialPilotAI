@@ -4682,9 +4682,17 @@ textarea { font: inherit; }
   z-index: 2;
   min-height: 2.2rem;
   padding: 0 0.85rem;
-  background: rgba(111, 92, 255, 0.16);
-  color: #cfc8ff;
+  border: 1px solid #ef9aa9;
+  background: #fff0f3;
+  color: #b71935;
   pointer-events: auto;
+}
+
+.account-menu button:hover,
+.account-menu button:focus-visible {
+  border-color: #d93450;
+  background: #ffe2e8;
+  color: #98132b;
 }
 
 .account-menu button:disabled {

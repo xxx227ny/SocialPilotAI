@@ -12,6 +12,7 @@ const settings = readFileSync(new URL("../src/pages/ApiKeySettingsPage.tsx", imp
 const dashboard = readFileSync(new URL("../src/pages/DashboardPage.tsx", import.meta.url), "utf8");
 const onboarding = readFileSync(new URL("../src/components/product/brandKitOnboardingState.ts", import.meta.url), "utf8");
 const backendAuth = readFileSync(new URL("../../backend/app/api/v1/routes/auth.py", import.meta.url), "utf8");
+const styles = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
 
 assert.match(authApi, /\/auth\/register/);
 assert.match(context, /registrationEnabled/);
@@ -63,5 +64,7 @@ assert.match(layout, /disabled=\{loggingOut\}/);
 assert.match(layout, /正在退出…/);
 assert.match(backendAuth, /auth_mode="user"/);
 assert.match(backendAuth, /registration_enabled=settings\.allow_public_registration/);
+assert.match(styles, /\.account-menu button[\s\S]*color:\s*#b71935/);
+assert.match(styles, /\.account-menu button:hover[\s\S]*background:\s*#ffe2e8/);
 
-console.log("Product auth frontend checks passed: 52 assertions.");
+console.log("Product auth frontend checks passed: 54 assertions.");
