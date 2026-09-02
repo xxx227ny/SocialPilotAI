@@ -10,6 +10,13 @@ This deployment is deliberately isolated from the competition Demo.
 - Runtime configuration: `/etc/socialpilot-staging/runtime.json`
 - Services: `socialpilot-staging-api`, `socialpilot-staging-worker`
 
+Nginx serves the built frontend directly from the active release and proxies
+only `/api/` requests to the application listener.  This keeps the login page
+and hashed assets available while the API is restarted during a release, and
+prevents large JavaScript/CSS responses from consuming application-worker
+capacity.  `index.html` is always revalidated; hashed assets are cached for one
+year.
+
 The runtime configuration must enable user authentication and public
 registration, require secure cookies, and contain a newly generated Fernet key.
 It must not contain shared Qwen, DashScope, or Wanx provider keys. Customer keys
