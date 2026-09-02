@@ -1,5 +1,6 @@
 import axios from "axios";
 import { type FormEvent, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 
 import {
   deleteDashScopeCredential,
@@ -178,6 +179,15 @@ export function ApiKeySettingsPage() {
           </div>
         </form>
         {message && <p className="settings-message" role="status">{message}</p>}
+        {credential?.verified && (
+          <div className="settings-next-step">
+            <div>
+              <strong>API Key 已就绪</strong>
+              <p>下一步创建第一个商品，开始生成平台文案和营销视频。</p>
+            </div>
+            <Link to="/products">前往商品中心<span aria-hidden="true">→</span></Link>
+          </div>
+        )}
         <p className="settings-security-note">安全说明：验证只读取阿里云百炼模型列表，不生成内容；服务器只保存加密密文和末四位提示，接口响应、任务记录和日志均不返回完整 Key。只有验证通过的 Key 才能被 AI 任务使用。</p>
       </article>
     </section>

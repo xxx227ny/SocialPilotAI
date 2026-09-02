@@ -1,9 +1,11 @@
 import axios from "axios";
 import { type FormEvent, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { useAuth } from "../context/AuthContext";
 
 export function LoginPage() {
+  const navigate = useNavigate();
   const { error: serviceError, login, register, registrationEnabled } = useAuth();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [username, setUsername] = useState("");
@@ -19,6 +21,7 @@ export function LoginPage() {
     try {
       if (mode === "register") {
         await register(username, password, workspaceName);
+        navigate("/settings/api-key", { replace: true });
       } else {
         await login(username, password);
       }
@@ -114,7 +117,7 @@ export function LoginPage() {
         </form>
         <p className="login-note">
           {registrationEnabled
-            ? "注册后请前往“API Key 设置”，绑定你自己的阿里云百炼 Key。"
+            ? "注册成功后将直接进入 API Key 设置，完成绑定后再创建商品。"
             : "测试账号由项目管理员配置，不开放公开注册。"}
         </p>
       </section>

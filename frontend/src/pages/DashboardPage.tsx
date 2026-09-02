@@ -1,4 +1,9 @@
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+
+import { getDashScopeCredential } from "../api/credentials";
+import { listProducts } from "../api/products";
+import { useAuth } from "../context/AuthContext";
 
 const capabilities = [
   {
@@ -35,6 +40,42 @@ const workflow = [
 ];
 
 export function DashboardPage() {
+  const { authMode, username } = useAuth();
+  const [onboarding, setOnboarding] = useState({
+    loading: authMode === "user",
+    keyVerified: false,
+    productCount: 0,
+    unavailable: false,
+  });
+
+  useEffect(() => {
+    if (authMode !== "user") return;
+    let active = true;
+    setOnboarding((current) => ({ ...current, loading: true, unavailable: false }));
+    Promise.all([getDashScopeCredential(), listProducts()])
+      .then(([credential, products]) => {
+        if (!active) return;
+        setOnboarding({
+          loading: false,
+          keyVerified: credential.verified,
+          productCount: products.length,
+          unavailable: false,
+        });
+      })
+      .catch(() => {
+        if (!active) return;
+        setOnboarding((current) => ({ ...current, loading: false, unavailable: true }));
+      });
+    return () => { active = false; };
+  }, [authMode]);
+
+  const onboardingSteps = useMemo(() => [
+    { title: "注册独立工作区", complete: true, detail: username || "当前账号已登录", to: "/", action: "已完成" },
+    { title: "绑定并验证 API Key", complete: onboarding.keyVerified, detail: onboarding.keyVerified ? "AI 功能已启用" : "使用你自己的阿里云百炼额度", to: "/settings/api-key", action: onboarding.keyVerified ? "查看设置" : "立即绑定" },
+    { title: "创建第一个商品", complete: onboarding.productCount > 0, detail: onboarding.productCount > 0 ? `当前已有 ${onboarding.productCount} 个商品` : "录入卖点、市场和商品素材", to: "/products", action: onboarding.productCount > 0 ? "查看商品" : "创建商品" },
+  ], [onboarding.keyVerified, onboarding.productCount, username]);
+  const completedSteps = onboardingSteps.filter((step) => step.complete).length;
+
   return (
     <div className="home-guide">
       <section className="home-guide__hero">
@@ -59,6 +100,29 @@ export function DashboardPage() {
           </ol>
         </aside>
       </section>
+
+      {authMode === "user" && (
+        <section className="product-onboarding" aria-labelledby="product-onboarding-title">
+          <header>
+            <div>
+              <span>新用户启用进度</span>
+              <h2 id="product-onboarding-title">三步开始独立使用 SocialPilot AI</h2>
+              <p>账号、数据和 API Key 均绑定到你的工作区，不与其他用户共享。</p>
+            </div>
+            <strong>{onboarding.loading ? "正在检查…" : `${completedSteps}/3 已完成`}</strong>
+          </header>
+          {onboarding.unavailable && <p className="product-onboarding__warning">暂时无法读取启用状态，请刷新页面后重试。</p>}
+          <ol>
+            {onboardingSteps.map((step, index) => (
+              <li className={step.complete ? "is-complete" : ""} key={step.title}>
+                <span aria-hidden="true">{step.complete ? "✓" : index + 1}</span>
+                <div><strong>{step.title}</strong><p>{step.detail}</p></div>
+                <Link to={step.to}>{step.action}</Link>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
 
       <section className="home-guide__section" aria-labelledby="product-introduction">
         <header>

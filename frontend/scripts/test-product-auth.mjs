@@ -6,11 +6,13 @@ const credentialApi = readFileSync(new URL("../src/api/credentials.ts", import.m
 const context = readFileSync(new URL("../src/context/AuthContext.tsx", import.meta.url), "utf8");
 const login = readFileSync(new URL("../src/pages/LoginPage.tsx", import.meta.url), "utf8");
 const settings = readFileSync(new URL("../src/pages/ApiKeySettingsPage.tsx", import.meta.url), "utf8");
+const dashboard = readFileSync(new URL("../src/pages/DashboardPage.tsx", import.meta.url), "utf8");
 const onboarding = readFileSync(new URL("../src/components/product/brandKitOnboardingState.ts", import.meta.url), "utf8");
 
 assert.match(authApi, /\/auth\/register/);
 assert.match(context, /registrationEnabled/);
 assert.match(login, /注册并创建独立工作区/);
+assert.match(login, /navigate\("\/settings\/api-key", \{ replace: true \}\)/);
 assert.match(credentialApi, /\/credentials\/dashscope/);
 assert.match(credentialApi, /api_key: apiKey/);
 assert.match(credentialApi, /provider_workspace_id/);
@@ -24,9 +26,15 @@ assert.match(settings, /只有验证通过的 Key/);
 assert.match(settings, /百炼业务空间 ID/);
 assert.match(settings, /粘贴完整的 \.cn-beijing\.maas\.aliyuncs\.com 域名时会自动提取/);
 assert.match(settings, /华北2（北京）/);
+assert.match(settings, /API Key 已就绪/);
+assert.match(settings, /to="\/products"/);
+assert.match(dashboard, /三步开始独立使用 SocialPilot AI/);
+assert.match(dashboard, /authMode === "user"/);
+assert.match(dashboard, /getDashScopeCredential/);
+assert.match(dashboard, /listProducts/);
 assert.match(onboarding, /API Key 设置/);
 assert.doesNotMatch(onboarding, /QWEN_API_KEY/);
 assert.doesNotMatch(settings, /localStorage|sessionStorage/);
 assert.doesNotMatch(credentialApi, /localStorage|sessionStorage/);
 
-console.log("Product auth frontend checks passed: 21 assertions.");
+console.log("Product auth frontend checks passed: 29 assertions.");
