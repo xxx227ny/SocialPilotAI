@@ -23,6 +23,7 @@ class SystemReadinessRead(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     backend: SystemComponentRead
+    account_email: SystemComponentRead
     qwen: SystemComponentRead
     wanx: SystemComponentRead
     google_youtube: SystemComponentRead

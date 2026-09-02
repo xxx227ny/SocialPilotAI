@@ -20,6 +20,7 @@ export interface ExecutionWorkerReadinessItem extends SystemReadinessItem {
 
 export interface SystemReadinessResponse {
   backend: SystemReadinessItem;
+  account_email: SystemReadinessItem;
   qwen: SystemReadinessItem;
   wanx: SystemReadinessItem;
   google_youtube: SystemReadinessItem;

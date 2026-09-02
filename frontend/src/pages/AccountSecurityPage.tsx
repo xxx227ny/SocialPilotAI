@@ -6,10 +6,14 @@ import {
   requestEmailVerification,
   revokeOtherSessions,
 } from "../api/auth";
+import { getSystemReadiness } from "../api/health";
 import { useAuth } from "../context/AuthContext";
+import { useReadResource } from "../hooks/useReadResource";
 
 export function AccountSecurityPage() {
   const { emailVerified, username } = useAuth();
+  const readiness = useReadResource("system-readiness", getSystemReadiness);
+  const emailDeliveryReady = readiness.data?.account_email.ready === true;
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
@@ -108,14 +112,40 @@ export function AccountSecurityPage() {
           </div>
         </div>
         {!emailVerified && (
-          <div className="settings-actions">
-            <button
-              type="button"
-              disabled={sendingVerification}
-              onClick={sendVerification}
-            >
-              {sendingVerification ? "正在发送…" : "发送验证邮件"}
-            </button>
+          <div className="email-verification-actions">
+            {readiness.loading && !readiness.data ? (
+              <p className="settings-information" role="status">
+                正在检查邮件服务…
+              </p>
+            ) : !emailDeliveryReady ? (
+              <p className="settings-warning" role="status">
+                发件邮箱尚未完成授权，当前不能发送验证邮件。管理员完成 SMTP
+                配置后此按钮会自动启用；修改密码和退出其他设备不受影响。
+              </p>
+            ) : null}
+            <div className="settings-actions">
+              <button
+                type="button"
+                disabled={sendingVerification || !emailDeliveryReady}
+                onClick={sendVerification}
+              >
+                {sendingVerification
+                  ? "正在发送…"
+                  : emailDeliveryReady
+                    ? "发送验证邮件"
+                    : "邮件服务待配置"}
+              </button>
+              {!emailDeliveryReady && (
+                <button
+                  type="button"
+                  className="button-secondary"
+                  disabled={readiness.loading}
+                  onClick={readiness.refresh}
+                >
+                  {readiness.loading ? "检查中…" : "重新检查"}
+                </button>
+              )}
+            </div>
           </div>
         )}
 

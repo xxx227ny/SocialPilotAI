@@ -25,6 +25,7 @@ from app.schemas.system import (
 )
 from app.services.database_migration_service import HEAD_REVISION
 from app.services.instagram_media_probe import instagram_media_probe_available
+from app.services.account_email_service import SMTPAccountEmailSender
 from app.services.social_security import TokenCipher
 from app.services.tiktok_media_probe import FFprobeTikTokMediaProbe
 
@@ -146,11 +147,23 @@ class SystemReadinessService:
             and FFprobeTikTokMediaProbe(self.settings).available()
             and worker_ready
         )
+        account_email_ready = SMTPAccountEmailSender(self.settings).configured
 
         return SystemReadinessRead(
             backend=SystemComponentRead(
                 ready=True,
                 message="Backend已启动；外部操作仍需网页显式确认。",
+            ),
+            account_email=SystemComponentRead(
+                ready=account_email_ready,
+                message=(
+                    "账号邮件已就绪；验证邮箱和找回密码邮件可发送。"
+                    if account_email_ready
+                    else (
+                        "账号邮件尚未配置：管理员需设置公网地址、发件邮箱、"
+                        "SMTP服务器和邮箱授权凭证。"
+                    )
+                ),
             ),
             qwen=SystemComponentRead(
                 ready=qwen_ready,

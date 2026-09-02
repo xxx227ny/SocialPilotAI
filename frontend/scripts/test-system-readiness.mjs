@@ -13,6 +13,7 @@ const types = readFileSync(join(root, "src", "types", "health.ts"), "utf8");
 
 for (const label of [
   "后端服务",
+  "账号邮件",
   "千问",
   "万象",
   "谷歌 / YouTube",
@@ -35,6 +36,7 @@ assert.match(layout, /!isPresentation && <SystemReadinessPanel/);
 assert.doesNotMatch(types, /api_key|client_secret|access_token|refresh_token/i);
 assert.match(types, /provider_calls: 0/);
 assert.match(types, /meta_instagram: SystemReadinessItem/);
+assert.match(types, /account_email: SystemReadinessItem/);
 assert.match(types, /tiktok: SystemReadinessItem/);
 assert.match(types, /pinterest: SystemReadinessItem/);
 assert.match(types, /instagram_publishing: SystemReadinessItem/);

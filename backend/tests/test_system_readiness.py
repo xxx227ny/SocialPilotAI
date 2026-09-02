@@ -47,6 +47,11 @@ def ready_settings(artifact_root: str) -> Settings:
     )
     return Settings(
         _env_file=None,
+        account_public_web_origin="https://product.example",
+        account_email_from="SocialPilot AI <account@example.com>",
+        account_smtp_host="smtp.example.com",
+        account_smtp_username="account@example.com",
+        account_smtp_password="fake-smtp-authorization-code",
         qwen_api_key="fake-qwen-readiness-key",
         wanx_api_key="fake-wanx-readiness-key",
         wanx_endpoint="https://safe-workspace.cn-beijing.maas.aliyuncs.com/api/v1",
@@ -115,6 +120,7 @@ def test_readiness_is_provider_free_read_only_and_secret_safe(
         body[key]["ready"] is True
         for key in (
             "backend",
+            "account_email",
             "qwen",
             "wanx",
             "google_youtube",
@@ -145,6 +151,7 @@ def test_readiness_is_provider_free_read_only_and_secret_safe(
         "fake-tiktok-client-secret",
         "fake-pinterest-client-id",
         "fake-pinterest-client-secret",
+        "fake-smtp-authorization-code",
         settings.social_token_encryption_key.get_secret_value(),
     ):
         assert secret not in serialized
@@ -173,6 +180,7 @@ def test_readiness_explains_missing_local_configuration(
     assert response.status_code == 200
     body = response.json()
     assert body["backend"]["ready"] is True
+    assert body["account_email"]["ready"] is False
     assert body["database"]["ready"] is True
     assert body["qwen"]["ready"] is False
     assert "QWEN_API_KEY" in body["qwen"]["message"]

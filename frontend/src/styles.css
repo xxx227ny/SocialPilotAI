@@ -4589,6 +4589,30 @@ textarea { font: inherit; }
   color: #b3263d;
 }
 
+.email-verification-actions {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.settings-information,
+.settings-warning {
+  margin: 0;
+  padding: 0.85rem 1rem;
+  border-radius: 0.75rem;
+  line-height: 1.6;
+}
+
+.settings-information {
+  color: #4939b8;
+  background: #f1efff;
+}
+
+.settings-warning {
+  color: #8a5710;
+  background: #fff7e7;
+  border: 1px solid #f3d899;
+}
+
 .settings-security-note {
   padding-top: 1rem;
   border-top: 1px solid #edf0f7;

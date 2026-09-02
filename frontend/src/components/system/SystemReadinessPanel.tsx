@@ -7,6 +7,7 @@ import type { SystemReadinessResponse } from "../../types/health";
 type LoadState = "loading" | "ready" | "failed";
 type ComponentKey =
   | "backend"
+  | "account_email"
   | "qwen"
   | "wanx"
   | "google_youtube"
@@ -21,6 +22,7 @@ type ComponentKey =
 
 const COMPONENTS: Array<{ key: ComponentKey; label: string }> = [
   { key: "backend", label: "后端服务" },
+  { key: "account_email", label: "账号邮件" },
   { key: "qwen", label: "千问" },
   { key: "wanx", label: "万象" },
   { key: "google_youtube", label: "谷歌 / YouTube" },
