@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { getDashScopeCredential } from "../api/credentials";
 import { listProducts } from "../api/products";
 import { useAuth } from "../context/AuthContext";
+import { BusinessValueCalculator } from "../components/dashboard/BusinessValueCalculator";
 
 const capabilities = [
   {
@@ -171,6 +172,8 @@ export function DashboardPage() {
           ))}
         </ol>
       </section>
+
+      <BusinessValueCalculator />
 
       <section className="home-guide__tip">
         <div><span>演示建议</span><strong>第一次体验时，先选择一个资料完整且已绑定品牌版本的商品。</strong></div>
