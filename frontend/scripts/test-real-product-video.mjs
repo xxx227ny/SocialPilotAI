@@ -394,6 +394,7 @@ try {
     /preflight_expires_at:\s*preflight\.expires_at/,
   );
   assert.ok(apiClient.includes("export function apiContentUrl"));
+  assert.ok(apiClient.includes("当前工作区的商品素材存储已达到上限"));
   assert.ok(enhancementApi.includes("apiContentUrl("));
   assert.ok(productVideoApi.includes("apiContentUrl("));
   assert.ok(productVideoApi.includes("/download"));

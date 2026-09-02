@@ -158,6 +158,11 @@ class Settings(BaseSettings):
     enable_real_product_video: bool = False
     product_asset_storage_root: str | None = None
     product_asset_max_bytes: int = Field(default=15_000_000, gt=0, le=50_000_000)
+    product_asset_workspace_max_bytes: int = Field(
+        default=250_000_000,
+        gt=0,
+        le=10_000_000_000,
+    )
     qwen_tts_endpoint: str = (
         "https://token-plan.cn-beijing.maas.aliyuncs.com/api/v1/"
         "services/audio/tts/SpeechSynthesizer"

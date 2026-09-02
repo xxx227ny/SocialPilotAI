@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import MetaData, Table, inspect, select
+from sqlalchemy import MetaData, Table, func, inspect, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.execution.workspace_context import current_execution_workspace_id
@@ -85,6 +85,17 @@ class ProductRepository:
         self.session.commit()
         self.session.refresh(asset)
         return asset
+
+    def workspace_asset_usage_bytes(self) -> int:
+        workspace_id = self.workspace_id
+        if workspace_id is None:
+            return 0
+        value = self.session.scalar(
+            select(func.coalesce(func.sum(ProductAsset.size_bytes), 0))
+            .join(Product, Product.id == ProductAsset.product_id)
+            .where(Product.workspace_id == workspace_id)
+        )
+        return int(value or 0)
 
     def referencing_tables(
         self,

@@ -80,6 +80,7 @@ def build_runtime_config(existing: dict[str, object]) -> dict[str, object]:
         "ENABLE_TIKTOK_PUBLISHING": "false",
         "VIDEO_ARTIFACT_STORAGE_ROOT": "/var/lib/socialpilot-staging/artifacts",
         "PRODUCT_ASSET_STORAGE_ROOT": "/var/lib/socialpilot-staging/product-assets",
+        "PRODUCT_ASSET_WORKSPACE_MAX_BYTES": "250000000",
         "VIDEO_COMPOSITION_TEMP_ROOT": "/var/lib/socialpilot-staging/composition-temp",
         "VIDEO_ARTIFACT_MAX_BYTES": "500000000",
         "ENABLE_VIDEO_PREVIEW_PREWARM": "true",

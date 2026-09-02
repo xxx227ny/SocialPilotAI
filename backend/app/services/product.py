@@ -48,6 +48,7 @@ class ProductService:
         content: bytes,
         storage_root: Path,
         max_bytes: int,
+        workspace_max_bytes: int | None = None,
         ffmpeg_path: str = "ffmpeg",
         ffprobe_path: str = "ffprobe",
         process_timeout: float = 60,
@@ -64,6 +65,17 @@ class ProductService:
         existing = self.repository.get_asset_by_sha(product_id, normalized.sha256)
         if existing is not None:
             return existing, True
+        if (
+            workspace_max_bytes is not None
+            and self.repository.workspace_id is not None
+            and self.repository.workspace_asset_usage_bytes()
+            + len(normalized.content)
+            > workspace_max_bytes
+        ):
+            raise AppError(
+                "当前工作区的商品素材存储已达到上限；请删除未被任务引用的旧素材后重试。",
+                413,
+            )
         # Asset ownership and deletion are per product. A global content hash
         # path collides with the unique storage_identity of another product.
         # Keep existing assets immutable; namespace only newly uploaded files.

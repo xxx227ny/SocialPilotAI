@@ -1,6 +1,9 @@
 import hashlib
 
-from app.models import ProductAsset
+import pytest
+
+from app.core.exceptions import AppError
+from app.models import ProductAsset, Workspace
 from app.schemas.product import ProductCreate
 from app.services.product import ProductService
 from app.services.product_asset_storage import ProductAssetStorage, StoredProductImage
@@ -95,3 +98,51 @@ def test_legacy_identity_remains_immutable_when_image_reused(
     assert (
         storage.resolve(legacy.storage_identity, legacy.sha256).read_bytes() == content
     )
+
+
+def test_workspace_asset_quota_is_scoped_and_checked_before_file_write(
+    db_session, tmp_path, monkeypatch, product_payload
+):
+    install_normalized_image(monkeypatch)
+    first_workspace = Workspace(name="First workspace")
+    second_workspace = Workspace(name="Second workspace")
+    db_session.add_all((first_workspace, second_workspace))
+    db_session.commit()
+
+    db_session.info["workspace_id"] = first_workspace.id
+    first_service = ProductService(db_session)
+    first_product = first_service.create(ProductCreate(**product_payload))
+    common = {
+        "file_name": "image.png",
+        "content_type": "image/png",
+        "storage_root": tmp_path,
+        "max_bytes": 10_000,
+        "workspace_max_bytes": 25,
+    }
+    first_service.upload_asset(
+        first_product.id,
+        content=b"first-workspace-image",
+        **common,
+    )
+    with pytest.raises(AppError, match="存储已达到上限") as error:
+        first_service.upload_asset(
+            first_product.id,
+            content=b"another-image",
+            **common,
+        )
+    assert error.value.status_code == 413
+    assert len(list(tmp_path.rglob("*.png"))) == 1
+
+    db_session.info["workspace_id"] = second_workspace.id
+    second_service = ProductService(db_session)
+    second_product = second_service.create(
+        ProductCreate(**{**product_payload, "name": "Second workspace product"})
+    )
+    second_asset, reused = second_service.upload_asset(
+        second_product.id,
+        content=b"another-image",
+        **common,
+    )
+    assert reused is False
+    assert second_asset.size_bytes == len(b"another-image")
+    assert len(list(tmp_path.rglob("*.png"))) == 2

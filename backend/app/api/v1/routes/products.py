@@ -89,6 +89,7 @@ async def upload_product_image(
         content=content,
         storage_root=Path(settings.product_asset_storage_root or ""),
         max_bytes=settings.product_asset_max_bytes,
+        workspace_max_bytes=settings.product_asset_workspace_max_bytes,
         ffmpeg_path=settings.video_composition_ffmpeg_path,
         ffprobe_path=settings.video_composition_ffprobe_path,
         process_timeout=settings.video_composition_process_timeout,

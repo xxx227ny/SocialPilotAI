@@ -54,6 +54,8 @@ export function apiContentUrl(path: string): string {
 }
 
 const SAFE_PROVIDER_MESSAGES: Record<string, string> = {
+  "当前工作区的商品素材存储已达到上限；请删除未被任务引用的旧素材后重试。":
+    "当前工作区的商品素材存储已达到上限；请删除未被任务引用的旧素材后重试。",
   "Workspace API Key is missing or unverified":
     "请先前往“API Key 设置”，绑定并验证你自己的阿里云百炼 API Key。",
   "Qwen provider authentication failed":
