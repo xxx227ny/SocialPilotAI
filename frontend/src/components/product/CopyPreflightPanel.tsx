@@ -467,6 +467,11 @@ export function CopyPreflightPanel({
             生成结果将与当前营销策略精确关联；当前营销任务关系会作为结果证据返回。
           </p>
           <p className="strategy-execution-gate">{preflight.cost_notice}</p>
+          {!copyExecutionEnabled ? (
+            <p className="form-feedback form-feedback--error" role="status">
+              当前网页构建未开启文案执行功能，请使用产品开发版或联系管理员更新前端版本。
+            </p>
+          ) : null}
           {!job ? (
             <>
               <label className="strategy-preflight__acknowledgement">

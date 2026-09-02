@@ -9,7 +9,10 @@ export const strategyExecutionEnabled = import.meta.env.PROD || isEnabledFeature
   import.meta.env.VITE_ENABLE_STRATEGY_EXECUTION,
 );
 
-export const copyExecutionEnabled = isEnabledFeatureFlag(
+// Copy generation is the next supported step after a production strategy job.
+// Provider credentials, frozen inputs and cost confirmation remain enforced by
+// the backend before the user's own Qwen key can be used.
+export const copyExecutionEnabled = import.meta.env.PROD || isEnabledFeatureFlag(
   import.meta.env.VITE_ENABLE_COPY_EXECUTION,
 );
 

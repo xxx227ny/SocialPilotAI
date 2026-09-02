@@ -110,6 +110,8 @@ try {
   const taskConfig = read("src", "components", "product", "MarketingTaskConfig.tsx");
   const copyPage = read("src", "pages", "CopyMatrixPage.tsx");
   const copyTypes = read("src", "types", "copy.ts");
+  const features = read("src", "config", "features.ts");
+  const styles = read("src", "styles.css");
   assert.match(component, /enqueueCopyJob/);
   assert.match(component, /listCopyJobs/);
   assert.match(component, /getCopyExecutionJob/);
@@ -135,6 +137,7 @@ try {
   assert.match(component, /regeneration_key/);
   assert.match(component, /crypto\.randomUUID/);
   assert.match(component, /原文案矩阵仍完整保留/);
+  assert.match(component, /当前网页构建未开启文案执行功能/);
   assert.doesNotMatch(component, /generateTaskBoundCopyMatrix/);
   assert.doesNotMatch(component, /getLatestCopyForStrategy/);
   assert.match(taskConfig, /Pinterest/);
@@ -146,6 +149,11 @@ try {
   assert.match(copyPage, /socialpilot\.copyMatrix\.platformDrafts/);
   assert.match(copyPage, /restoredPlatformDrafts/);
   assert.match(copyTypes, /"Pinterest"/);
+  assert.match(
+    features,
+    /copyExecutionEnabled\s*=\s*import\.meta\.env\.PROD\s*\|\|/,
+  );
+  assert.match(styles, /\.copy-preflight__heading \.eyebrow[^}]*color:\s*#72551f/);
 
   workspaceCache.clearCopyWorkspaceCache();
   workspaceCache.setLatestTaskSnapshot(1, { id: 7, product_id: 1 });
@@ -159,7 +167,7 @@ try {
   assert.match(api, /\/copies\/\$\{copyMatrixId\}/);
   assert.match(api, /regeneration_key\?: string/);
 
-  console.log("Copy queue frontend checks passed: 46 scenarios");
+  console.log("Copy queue frontend checks passed: 49 scenarios");
 } finally {
   await server.close();
 }
