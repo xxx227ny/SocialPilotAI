@@ -9,7 +9,19 @@ import type {
   BatchVideoPreflight,
   BatchVideoRequest,
   BatchVideoVariant,
+  ProductVideoWorkflowContext,
 } from "../types/batchVideo";
+
+export async function getProductVideoWorkflowContext(
+  productId: number,
+  signal?: AbortSignal,
+) {
+  const response = await apiClient.get<ProductVideoWorkflowContext>(
+    `/products/${productId}/video-workflow-context`,
+    { signal },
+  );
+  return response.data;
+}
 
 export async function preflightBatchQwenScripts(
   batchId: number,

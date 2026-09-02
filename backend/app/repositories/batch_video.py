@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models import Product
@@ -63,6 +63,24 @@ class BatchVideoRepository:
             self.session,
         )
         return list(self.session.scalars(statement).all())
+
+    def get_latest_three_platform_batch(
+        self, product_id: int
+    ) -> BatchVideoJob | None:
+        statement = (
+            select(BatchVideoJob)
+            .join(BatchVideoVariant)
+            .where(
+                BatchVideoVariant.product_id == product_id,
+                BatchVideoVariant.status == "READY_FOR_SCRIPT",
+                BatchVideoVariant.platform.in_({"youtube", "tiktok", "instagram"}),
+            )
+            .group_by(BatchVideoJob.id)
+            .having(func.count(func.distinct(BatchVideoVariant.platform)) == 3)
+            .order_by(BatchVideoJob.created_at.desc(), BatchVideoJob.id.desc())
+            .limit(1)
+        )
+        return self.session.scalar(self._scope_batch(statement))
 
     def _scope_batch(self, statement):
         workspace_id = current_workspace_id(self.session)

@@ -74,6 +74,16 @@ export interface BatchVideoCreateResult {
   reused: boolean;
 }
 
+export interface ProductVideoWorkflowContext {
+  product_id: number;
+  batch_id: number | null;
+  strategy_id: number | null;
+  copy_matrix_id: number | null;
+  reference_asset_id: number | null;
+  ready: boolean;
+  missing_requirements: string[];
+}
+
 export interface BatchProductOption {
   id: number;
   name: string;

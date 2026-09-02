@@ -334,6 +334,9 @@ try {
     "known_downstream_cost",
     "脚本生成后的成片调用次数或费用与确认值不一致",
     "socialpilot.scriptBatch.",
+    "getProductVideoWorkflowContext",
+    "自动匹配最新可用资料",
+    "无需手填内部编号",
     "source.narration_digest",
     "generateWanxDynamicVideo",
     'render_mode: "product_reference"',
@@ -377,7 +380,7 @@ try {
   assert.ok(productCenter.includes("上传真实商品素材"));
   assert.ok(productCenter.includes("productImageContentUrl"));
   assert.ok(feature.includes("VITE_ENABLE_REAL_PRODUCT_VIDEO"));
-  assert.ok(!panel.toLowerCase().includes("latest"));
+  assert.ok(panel.includes("当前账号、当前商品下的最新安全匹配记录"));
   assert.ok(!panel.includes('new TextEncoder().encode(narration)'));
   assert.ok(!panel.includes("uploadProductImage"));
   assert.ok(!panel.includes("submitProductImageJob"));
@@ -408,6 +411,7 @@ try {
   safety++;
   assert.ok(batchVideoApi.includes("/qwen-scripts/preflight"));
   assert.ok(batchVideoApi.includes("/qwen-scripts"));
+  assert.ok(batchVideoApi.includes("/video-workflow-context"));
   assert.ok(batchVideoApi.includes("cost_confirmed: true"));
   safety += 3;
   safety += 5;

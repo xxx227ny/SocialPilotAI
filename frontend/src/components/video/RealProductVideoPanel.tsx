@@ -7,6 +7,7 @@ import {
 } from "../../api/client";
 import {
   createOrRecoverBatchQwenScripts,
+  getProductVideoWorkflowContext,
   listBatchVideoVariants,
   preflightBatchQwenScripts,
 } from "../../api/batchVideoJobs";
@@ -86,6 +87,7 @@ const MOTIONS = ["zoom_in", "pan_right", "zoom_out", "pan_left"] as const;
 export function RealProductVideoPanel({ product }: { product: Product }) {
   const { isPresentation } = usePresentationMode();
   const operation = useRef(new RealProductVideoOperation());
+  const workflowContextOperation = useRef(new RealProductVideoOperation());
   const [sources, setSources] = useState<ProductVideoSource[]>([]);
   const [sourceId, setSourceId] = useState(0);
   const [phase, setPhase] = useState<RealProductVideoPhase>("IDLE");
@@ -106,6 +108,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
   const [production, setProduction] =
     useState<ProductVideoProductionResult | null>(null);
   const [productionBatchId, setProductionBatchId] = useState("");
+  const [workflowContextLoading, setWorkflowContextLoading] = useState(false);
   const referenceAssets = useMemo(
     () =>
       product.assets.filter(
@@ -179,6 +182,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
         "",
     );
     if (!realProductVideoEnabled || isPresentation) return;
+    void refreshWorkflowContext(true);
     const active = operation.current.begin();
     listProductVideoSources(product.id, active.signal)
       .then((items) => {
@@ -199,7 +203,10 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
           setMessage(getApiErrorMessage(error, "可用Variant读取失败。"));
         }
     });
-    return () => operation.current.stop();
+    return () => {
+      operation.current.stop();
+      workflowContextOperation.current.stop();
+    };
   }, [isPresentation, product.id]);
 
   useEffect(() => {
@@ -250,6 +257,67 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
   }, [referenceAssetId, sources]);
 
   if (!realProductVideoEnabled || isPresentation) return null;
+
+  async function refreshWorkflowContext(silent = false) {
+    const active = workflowContextOperation.current.begin();
+    setWorkflowContextLoading(true);
+    if (!silent) setMessage("正在自动匹配当前商品的最新可用生产资料……");
+    try {
+      const context = await getProductVideoWorkflowContext(
+        product.id,
+        active.signal,
+      );
+      if (!workflowContextOperation.current.current(active.id)) return;
+      setScriptBatchId(context.batch_id ? String(context.batch_id) : "");
+      setStrategyId(context.strategy_id ?? 0);
+      setCopyMatrixId(context.copy_matrix_id);
+      setReferenceAssetId(context.reference_asset_id ?? 0);
+      saveWorkflowContextValue(
+        `socialpilot.scriptBatch.${product.id}`,
+        context.batch_id,
+      );
+      saveWorkflowContextValue(
+        `socialpilot.videoStrategy.${product.id}`,
+        context.strategy_id,
+      );
+      saveWorkflowContextValue(
+        `socialpilot.videoCopyMatrix.${product.id}`,
+        context.copy_matrix_id,
+      );
+      saveWorkflowContextValue(
+        `socialpilot.videoReference.${product.id}`,
+        context.reference_asset_id,
+      );
+      setOneClickRequest(null);
+      setOneClickPreflight(null);
+      setOneClickCostConfirmed(false);
+      const missingLabels: Record<string, string> = {
+        three_platform_batch: "三平台批量任务",
+        marketing_strategy: "营销策略",
+        reference_image: "商品主参考图",
+      };
+      setMessage(
+        context.ready
+          ? "已自动匹配最新三平台批次、营销策略和商品主图，无需手填内部编号。"
+          : `自动匹配完成；请先补齐：${context.missing_requirements
+              .map((item) => missingLabels[item] ?? item)
+              .join("、")}。`,
+      );
+    } catch (error) {
+      if (workflowContextOperation.current.current(active.id)) {
+        setMessage(
+          getApiErrorMessage(
+            error,
+            "自动匹配生产资料失败，仍可手动填写精确编号。",
+          ),
+        );
+      }
+    } finally {
+      if (workflowContextOperation.current.current(active.id)) {
+        setWorkflowContextLoading(false);
+      }
+    }
+  }
 
   async function generate() {
     if (!source || !referenceAsset?.sha256) return;
@@ -1268,6 +1336,14 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
           Reels 第一个“等待生成脚本”变体；首次执行不需要预先选择已激活脚本，
           系统会自动生成并激活精确版本。所有记录均按精确编号固定。
         </p>
+        <button
+          type="button"
+          disabled={workflowContextLoading || productionActive}
+          onClick={() => void refreshWorkflowContext()}
+        >
+          {workflowContextLoading ? "正在自动匹配……" : "自动匹配最新可用资料"}
+        </button>
+        <p>系统优先自动选择当前账号、当前商品下的最新安全匹配记录；高级用户仍可手动调整精确编号。</p>
         <label>
           精确批次编号
           <input
@@ -1623,6 +1699,14 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
       {message && <p role="status">{message}</p>}
     </section>
   );
+}
+
+function saveWorkflowContextValue(key: string, value: number | null) {
+  if (value) {
+    window.localStorage.setItem(key, String(value));
+  } else {
+    window.localStorage.removeItem(key);
+  }
 }
 
 function phaseLabel(phase: RealProductVideoPhase) {

@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from app.core.config import Settings, get_settings
 from app.main import app
+from app.models import BatchVideoVariant, MarketingStrategy, ProductAsset
 
 
 def user_settings() -> Settings:
@@ -44,10 +45,14 @@ def create_product(client: TestClient, name: str) -> int:
     return int(response.json()["id"])
 
 
-def create_batch(client: TestClient, product_id: int) -> tuple[int, int]:
+def create_batch(
+    client: TestClient,
+    product_id: int,
+    platforms: list[str] | None = None,
+) -> tuple[int, int]:
     request = {
         "product_ids": [product_id],
-        "platforms": ["youtube"],
+        "platforms": platforms or ["youtube"],
         "variants_per_platform": 1,
         "duration_seconds": 15,
         "aspect_ratio": "9:16",
@@ -129,3 +134,60 @@ def test_batch_and_variant_exact_ids_are_private_to_owning_workspace(
         },
     )
     assert qwen_preflight.status_code == 404
+
+
+def test_video_workflow_context_selects_owned_latest_sources_and_stays_private(
+    client: TestClient, db_session
+) -> None:
+    app.dependency_overrides[get_settings] = user_settings
+    register(client, "workflow-owner-a@example.com")
+    product_id = create_product(client, "Workflow context product")
+    batch_id, _ = create_batch(
+        client, product_id, ["youtube", "tiktok", "instagram"]
+    )
+    variants = db_session.query(BatchVideoVariant).filter_by(
+        batch_video_job_id=batch_id
+    )
+    for variant in variants:
+        variant.status = "READY_FOR_SCRIPT"
+    strategy = MarketingStrategy(
+        product_id=product_id,
+        positioning="Owned strategy",
+        audience_insights=["Owned audience"],
+        angles=["Owned angle"],
+        risks=["Owned risk"],
+        evidence=["Owned product record"],
+    )
+    asset = ProductAsset(
+        product_id=product_id,
+        file_name="owned-product.webp",
+        file_path="products/owned-product.webp",
+        file_type="image",
+        content_type="image/webp",
+        size_bytes=128,
+        sha256="a" * 64,
+        storage_identity="owned-product-image",
+    )
+    db_session.add_all([strategy, asset])
+    db_session.commit()
+
+    response = client.get(
+        f"/api/v1/products/{product_id}/video-workflow-context"
+    )
+    assert response.status_code == 200
+    assert response.json() == {
+        "product_id": product_id,
+        "batch_id": batch_id,
+        "strategy_id": strategy.id,
+        "copy_matrix_id": None,
+        "reference_asset_id": asset.id,
+        "ready": True,
+        "missing_requirements": [],
+    }
+
+    assert client.post("/api/v1/auth/logout").status_code == 200
+    register(client, "workflow-owner-b@example.com")
+    denied = client.get(
+        f"/api/v1/products/{product_id}/video-workflow-context"
+    )
+    assert denied.status_code == 404

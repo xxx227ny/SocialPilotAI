@@ -121,6 +121,16 @@ class BatchVideoCreateRead(BaseModel):
     reused: bool
 
 
+class ProductVideoWorkflowContextRead(BaseModel):
+    product_id: int
+    batch_id: int | None
+    strategy_id: int | None
+    copy_matrix_id: int | None
+    reference_asset_id: int | None
+    ready: bool
+    missing_requirements: list[str]
+
+
 class BatchQwenScriptRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

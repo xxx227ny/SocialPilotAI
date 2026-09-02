@@ -16,14 +16,28 @@ from app.schemas.batch_video import (
     BatchVideoPreflightRead,
     BatchVideoRequest,
     BatchVideoVariantRead,
+    ProductVideoWorkflowContextRead,
 )
 from app.services.batch_qwen_script_service import BatchQwenScriptService
 from app.services.batch_video_job_service import BatchVideoJobService
 from app.services.batch_video_preflight import BatchVideoPreflightService
+from app.services.product_video_workflow_context_service import (
+    ProductVideoWorkflowContextService,
+)
 
 router = APIRouter()
 Db = Annotated[Session, Depends(get_db)]
 SettingsDep = WorkspaceProviderSettingsDep
+
+
+@router.get(
+    "/products/{product_id}/video-workflow-context",
+    response_model=ProductVideoWorkflowContextRead,
+)
+def get_product_video_workflow_context(
+    product_id: int, db: Db
+) -> ProductVideoWorkflowContextRead:
+    return ProductVideoWorkflowContextService(db).get(product_id)
 
 
 @router.post("/batch-video-jobs/preflight", response_model=BatchVideoPreflightRead)
