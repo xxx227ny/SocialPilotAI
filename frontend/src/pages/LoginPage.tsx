@@ -42,6 +42,7 @@ export function LoginPage() {
   const [confirmation, setConfirmation] = useState("");
   const [workspaceName, setWorkspaceName] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
@@ -111,6 +112,19 @@ export function LoginPage() {
   const finishAction = () => {
     navigate("/", { replace: true });
     selectMode("login");
+  };
+
+  const reconnect = async () => {
+    setReconnecting(true);
+    setMessage(null);
+    setSuccess(false);
+    try {
+      await refresh();
+    } catch {
+      setMessage("仍无法连接登录服务，请确认 VPN 或代理已关闭后再试。");
+    } finally {
+      setReconnecting(false);
+    }
   };
 
   const title = mode === "forgot"
@@ -251,6 +265,16 @@ export function LoginPage() {
             </button>
           )}
         </form>
+        {serviceError && (
+          <button
+            type="button"
+            className="login-link-button login-reconnect-button"
+            disabled={reconnecting}
+            onClick={reconnect}
+          >
+            {reconnecting ? "正在重新连接…" : "重新连接登录服务"}
+          </button>
+        )}
         {registrationEnabled && mode === "login" && (
           <button
             type="button"

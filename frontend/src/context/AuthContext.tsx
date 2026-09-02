@@ -98,7 +98,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
           if (logoutWasPending) {
             applyLocalLogout("已退出当前页面；服务器退出请求尚未确认，刷新时将继续完成。");
           } else {
-            setError("暂时无法连接登录服务，请确认本机服务已启动。");
+            setError("暂时无法连接登录服务，请检查网络、代理或 VPN 后重新连接。");
             setAuthenticated(false);
           }
         }

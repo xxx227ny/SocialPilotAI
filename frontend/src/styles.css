@@ -4774,6 +4774,11 @@ textarea { font: inherit; }
   opacity: 0.85;
 }
 
+.login-card .login-reconnect-button {
+  color: #ffbec7;
+  font-weight: 900;
+}
+
 .login-note {
   margin: 1.25rem 0 0;
   font-size: 0.82rem;
