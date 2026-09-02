@@ -49,9 +49,7 @@ class ProviderCredentialService:
             )
         )
 
-    def set_dashscope_key(
-        self, workspace_id: int, api_key: str
-    ) -> ProviderCredential:
+    def set_dashscope_key(self, workspace_id: int, api_key: str) -> ProviderCredential:
         normalized = api_key.strip()
         if len(normalized) < 8 or len(normalized) > 512:
             raise ValueError("API Key length is invalid")
@@ -83,6 +81,23 @@ class ProviderCredentialService:
         if credential is None:
             return None
         return self.cipher.decrypt(credential.secret_ciphertext)
+
+    def read_verified_dashscope_key(self, workspace_id: int) -> str | None:
+        credential = self.get(workspace_id)
+        if credential is None or credential.verified_at is None:
+            return None
+        return self.cipher.decrypt(credential.secret_ciphertext)
+
+    def set_dashscope_verified(
+        self, workspace_id: int, *, verified: bool
+    ) -> ProviderCredential | None:
+        credential = self.get(workspace_id)
+        if credential is None:
+            return None
+        credential.verified_at = utc_now() if verified else None
+        credential.updated_at = utc_now()
+        self.db.flush()
+        return credential
 
     def delete_dashscope_key(self, workspace_id: int) -> bool:
         credential = self.get(workspace_id)

@@ -4239,6 +4239,11 @@ textarea { font: inherit; }
   box-shadow: 0 0 0 0.35rem rgba(30, 170, 116, 0.14);
 }
 
+.status-dot.is-pending {
+  background: #e29a23;
+  box-shadow: 0 0 0 0.35rem rgba(226, 154, 35, 0.15);
+}
+
 .credential-form,
 .credential-form label {
   display: grid;
@@ -4283,6 +4288,11 @@ textarea { font: inherit; }
 .settings-actions .button-danger {
   background: #fff0f2;
   color: #b3263d;
+}
+
+.settings-actions .button-secondary {
+  background: #eef0ff;
+  color: #4939b8;
 }
 
 .settings-message {

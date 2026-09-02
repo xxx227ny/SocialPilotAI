@@ -42,6 +42,17 @@ def save_key(client: httpx.Client, api_key: str) -> dict:
     return response.json()
 
 
+def verify_invalid_key(client: httpx.Client, api_key: str) -> dict:
+    response = client.post("/api/v1/credentials/dashscope/verify")
+    require_status(response, 200)
+    if api_key in response.text:
+        raise RuntimeError("Credential verification response exposed the API key")
+    result = response.json()
+    if result.get("status") != "INVALID" or result.get("verified") is not False:
+        raise RuntimeError("Synthetic API key was not rejected safely")
+    return result
+
+
 def create_product(client: httpx.Client, name: str) -> dict:
     response = client.post(
         "/api/v1/products",
@@ -112,6 +123,7 @@ def main() -> None:
         credential_b = save_key(second, key_b)
         if credential_a["key_hint"] == credential_b["key_hint"]:
             raise RuntimeError("Credential hints did not remain user-specific")
+        verify_invalid_key(first, key_a)
 
         product_a = create_product(first, "Smoke Product A " + run_id)
         if second.get("/api/v1/products").json() != []:

@@ -1,13 +1,29 @@
-from fastapi import APIRouter, HTTPException, Response, status
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from app.api.auth_dependency import DbSession, ProductPrincipalDep, SettingsDep
 from app.schemas.credentials import (
     DashScopeCredentialWrite,
     ProviderCredentialRead,
+    ProviderCredentialVerificationRead,
 )
 from app.services.provider_credential_service import ProviderCredentialService
+from app.services.provider_credential_verifier import (
+    DashScopeCredentialVerifier,
+)
 
 router = APIRouter(prefix="/credentials")
+
+
+def get_dashscope_credential_verifier() -> DashScopeCredentialVerifier:
+    return DashScopeCredentialVerifier()
+
+
+DashScopeVerifierDep = Annotated[
+    DashScopeCredentialVerifier,
+    Depends(get_dashscope_credential_verifier),
+]
 
 
 @router.get("/dashscope", response_model=ProviderCredentialRead)
@@ -23,6 +39,7 @@ def get_dashscope_credential(
         configured=True,
         key_hint=credential.secret_hint,
         verified=credential.verified_at is not None,
+        verified_at=credential.verified_at,
         updated_at=credential.updated_at,
     )
 
@@ -50,7 +67,47 @@ def set_dashscope_credential(
         configured=True,
         key_hint=credential.secret_hint,
         verified=False,
+        verified_at=None,
         updated_at=credential.updated_at,
+    )
+
+
+@router.post(
+    "/dashscope/verify",
+    response_model=ProviderCredentialVerificationRead,
+)
+def verify_dashscope_credential(
+    principal: ProductPrincipalDep,
+    settings: SettingsDep,
+    db: DbSession,
+    verifier: DashScopeVerifierDep,
+) -> ProviderCredentialVerificationRead:
+    service = ProviderCredentialService(db, settings)
+    credential = service.get(principal.workspace_id)
+    if credential is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="请先保存 API Key，再进行验证。",
+        )
+    api_key = service.read_dashscope_key(principal.workspace_id)
+    if api_key is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="请先保存 API Key，再进行验证。",
+        )
+    result = verifier.verify(api_key)
+    credential = service.set_dashscope_verified(
+        principal.workspace_id,
+        verified=result.verified,
+    )
+    db.commit()
+    assert credential is not None
+    return ProviderCredentialVerificationRead(
+        status=result.status,
+        verified=result.verified,
+        key_hint=credential.secret_hint,
+        verified_at=credential.verified_at,
+        message=result.message,
     )
 
 
@@ -60,8 +117,6 @@ def delete_dashscope_credential(
     settings: SettingsDep,
     db: DbSession,
 ) -> Response:
-    ProviderCredentialService(db, settings).delete_dashscope_key(
-        principal.workspace_id
-    )
+    ProviderCredentialService(db, settings).delete_dashscope_key(principal.workspace_id)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

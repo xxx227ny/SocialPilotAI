@@ -1,5 +1,8 @@
 import { apiClient } from "./client";
-import type { ProviderCredential } from "../types/credentials";
+import type {
+  CredentialVerification,
+  ProviderCredential,
+} from "../types/credentials";
 
 export async function getDashScopeCredential(): Promise<ProviderCredential> {
   return (
@@ -19,4 +22,12 @@ export async function saveDashScopeCredential(
 
 export async function deleteDashScopeCredential(): Promise<void> {
   await apiClient.delete("/credentials/dashscope");
+}
+
+export async function verifyDashScopeCredential(): Promise<CredentialVerification> {
+  return (
+    await apiClient.post<CredentialVerification>(
+      "/credentials/dashscope/verify",
+    )
+  ).data;
 }

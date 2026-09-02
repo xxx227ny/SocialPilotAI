@@ -14,6 +14,7 @@ from app.main import app
 from app.providers.live_configuration import effective_qwen_api_key
 from app.schemas.execution import ExecutionJobCreate
 from app.services.execution_queue_service import ExecutionQueueService
+from app.services.provider_credential_service import ProviderCredentialService
 
 PASSWORD = "strong-user-password"
 USER_API_KEY = "sk-workspace-owned-key-123456"
@@ -31,9 +32,7 @@ class CredentialProbeHandler:
         self.settings = settings
         self.observed = observed
 
-    def execute(
-        self, context: ExecutionContext, payload: BaseModel
-    ) -> HandlerResult:
+    def execute(self, context: ExecutionContext, payload: BaseModel) -> HandlerResult:
         del context, payload
         self.observed.append(effective_qwen_api_key(self.settings))
         return HandlerResult.succeeded(provider_name="credential-probe")
@@ -90,9 +89,7 @@ def test_users_can_create_same_idempotency_key_without_seeing_each_others_jobs(
     assert first_account["workspace_id"] != second_account["workspace_id"]
     assert first_job.json()["job"]["workspace_id"] == first_account["workspace_id"]
     assert second_job.json()["job"]["workspace_id"] == second_account["workspace_id"]
-    assert [job["id"] for job in second_list.json()] == [
-        second_job.json()["job"]["id"]
-    ]
+    assert [job["id"] for job in second_list.json()] == [second_job.json()["job"]["id"]]
     assert first_job_from_second_user.status_code == 404
 
 
@@ -143,6 +140,70 @@ def test_worker_uses_job_workspace_key_and_never_shared_fallback(
     assert result.job_id == created.job.id
     assert resolved_workspaces == [workspace_id]
     assert observed == [USER_API_KEY]
+    assert effective_qwen_api_key(settings) == ""
+
+
+def test_worker_never_uses_unverified_workspace_key_or_shared_fallback(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    encryption_key = Fernet.generate_key().decode("ascii")
+    settings = Settings(
+        _env_file=None,
+        enable_user_auth=True,
+        allow_public_registration=True,
+        user_auth_session_ttl_seconds=3600,
+        user_credential_encryption_key=encryption_key,
+        qwen_api_key="shared-key-must-not-be-used",
+    )
+    app.dependency_overrides[get_settings] = lambda: settings
+    account = register(client, "unverified@example.com")
+    workspace_id = int(account["workspace_id"])
+
+    ProviderCredentialService(db_session, settings).set_dashscope_key(
+        workspace_id, USER_API_KEY
+    )
+    db_session.commit()
+    sessions = sessionmaker(
+        bind=db_session.get_bind(), autoflush=False, expire_on_commit=False
+    )
+    with sessions() as session:
+        session.info["workspace_id"] = workspace_id
+        created = ExecutionQueueService(session).create(
+            ExecutionJobCreate(
+                job_type=CredentialProbeHandler.job_type,
+                source_type="test",
+                source_id=1,
+                input_digest=hashlib.sha256(b"unverified-probe").hexdigest(),
+                idempotency_key="unverified-credential-probe",
+                input_payload={"value": "safe"},
+            )
+        )
+
+    observed: list[str] = []
+    registry = ExecutionHandlerRegistry()
+    registry.register(CredentialProbeHandler(settings, observed))
+
+    def resolve(workspace: int | None) -> str | None:
+        if workspace is None:
+            return None
+        with sessions() as session:
+            return ProviderCredentialService(
+                session, settings
+            ).read_verified_dashscope_key(workspace)
+
+    result = ExecutionWorker(
+        session_factory=sessions,
+        registry=registry,
+        worker_id="unverified-credential-worker",
+        lease_seconds=10,
+        heartbeat_interval_seconds=0.1,
+        workspace_credential_resolver=resolve,
+    ).run_once()
+
+    assert result.status == WorkerRunStatus.SUCCEEDED
+    assert result.job_id == created.job.id
+    assert observed == [""]
     assert effective_qwen_api_key(settings) == ""
 
 

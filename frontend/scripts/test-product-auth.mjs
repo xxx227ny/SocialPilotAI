@@ -12,9 +12,11 @@ assert.match(context, /registrationEnabled/);
 assert.match(login, /注册并创建独立工作区/);
 assert.match(credentialApi, /\/credentials\/dashscope/);
 assert.match(credentialApi, /api_key: apiKey/);
+assert.match(credentialApi, /\/credentials\/dashscope\/verify/);
 assert.match(settings, /type="password"/);
 assert.match(settings, /页面不会再次显示完整内容/);
+assert.match(settings, /只有验证通过的 Key/);
 assert.doesNotMatch(settings, /localStorage|sessionStorage/);
 assert.doesNotMatch(credentialApi, /localStorage|sessionStorage/);
 
-console.log("Product auth frontend checks passed: 9 assertions.");
+console.log("Product auth frontend checks passed: 11 assertions.");

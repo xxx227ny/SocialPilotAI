@@ -3,13 +3,38 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.v1.routes.credentials import get_dashscope_credential_verifier
 from app.core.config import Settings, get_settings
 from app.main import app
 from app.models import ProviderCredential
-from app.services.provider_credential_service import CredentialCipher
+from app.services.provider_credential_service import (
+    CredentialCipher,
+    ProviderCredentialService,
+)
+from app.services.provider_credential_verifier import CredentialVerificationResult
 
 PASSWORD = "strong-user-password"
 API_KEY = "sk-user-owned-dashscope-key-123456"
+
+
+class SuccessfulVerifier:
+    def verify(self, api_key: str) -> CredentialVerificationResult:
+        assert api_key == API_KEY
+        return CredentialVerificationResult(
+            status="VERIFIED",
+            verified=True,
+            message="API Key 验证通过。",
+        )
+
+
+class InvalidVerifier:
+    def verify(self, api_key: str) -> CredentialVerificationResult:
+        assert api_key == API_KEY
+        return CredentialVerificationResult(
+            status="INVALID",
+            verified=False,
+            message="API Key 无效。",
+        )
 
 
 def credential_settings() -> Settings:
@@ -54,6 +79,7 @@ def test_user_can_bind_read_and_delete_encrypted_dashscope_key(
         "configured": False,
         "key_hint": None,
         "verified": False,
+        "verified_at": None,
         "updated_at": None,
     }
     assert saved.status_code == 200
@@ -71,12 +97,101 @@ def test_user_can_bind_read_and_delete_encrypted_dashscope_key(
     assert API_KEY not in stored.secret_ciphertext
     assert stored.encryption_key_id == "test-v1"
     assert CredentialCipher(settings).decrypt(stored.secret_ciphertext) == API_KEY
+    assert (
+        ProviderCredentialService(db_session, settings).read_verified_dashscope_key(
+            account["workspace_id"]
+        )
+        is None
+    )
 
     deleted = client.delete("/api/v1/credentials/dashscope")
     after_delete = client.get("/api/v1/credentials/dashscope")
     assert deleted.status_code == 204
     assert after_delete.json()["configured"] is False
     assert db_session.scalar(select(ProviderCredential)) is None
+
+
+def test_saved_key_must_verify_before_ai_use(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    settings = credential_settings()
+    app.dependency_overrides[get_settings] = lambda: settings
+    app.dependency_overrides[get_dashscope_credential_verifier] = lambda: (
+        SuccessfulVerifier()
+    )
+    account = register(client, "verified@example.com")
+    assert (
+        client.put(
+            "/api/v1/credentials/dashscope", json={"api_key": API_KEY}
+        ).status_code
+        == 200
+    )
+
+    verified = client.post("/api/v1/credentials/dashscope/verify")
+    visible = client.get("/api/v1/credentials/dashscope")
+
+    assert verified.status_code == 200
+    assert verified.json()["status"] == "VERIFIED"
+    assert verified.json()["verified"] is True
+    assert verified.json()["verified_at"] is not None
+    assert API_KEY not in verified.text
+    assert visible.json()["verified"] is True
+    assert visible.json()["verified_at"] is not None
+    assert (
+        ProviderCredentialService(db_session, settings).read_verified_dashscope_key(
+            account["workspace_id"]
+        )
+        == API_KEY
+    )
+
+
+def test_invalid_key_stays_encrypted_but_cannot_be_used(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    settings = credential_settings()
+    app.dependency_overrides[get_settings] = lambda: settings
+    app.dependency_overrides[get_dashscope_credential_verifier] = lambda: (
+        InvalidVerifier()
+    )
+    account = register(client, "invalid@example.com")
+    assert (
+        client.put(
+            "/api/v1/credentials/dashscope", json={"api_key": API_KEY}
+        ).status_code
+        == 200
+    )
+
+    invalid = client.post("/api/v1/credentials/dashscope/verify")
+
+    assert invalid.status_code == 200
+    assert invalid.json()["status"] == "INVALID"
+    assert invalid.json()["verified"] is False
+    assert API_KEY not in invalid.text
+    assert (
+        ProviderCredentialService(db_session, settings).read_dashscope_key(
+            account["workspace_id"]
+        )
+        == API_KEY
+    )
+    assert (
+        ProviderCredentialService(db_session, settings).read_verified_dashscope_key(
+            account["workspace_id"]
+        )
+        is None
+    )
+
+
+def test_verification_requires_a_saved_key(client: TestClient) -> None:
+    settings = credential_settings()
+    app.dependency_overrides[get_settings] = lambda: settings
+    register(client, "missing@example.com")
+
+    response = client.post("/api/v1/credentials/dashscope/verify")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "请先保存 API Key，再进行验证。"
 
 
 def test_provider_credentials_are_isolated_by_workspace(
@@ -86,10 +201,13 @@ def test_provider_credentials_are_isolated_by_workspace(
     settings = credential_settings()
     app.dependency_overrides[get_settings] = lambda: settings
     first = register(client, "first@example.com")
-    assert client.put(
-        "/api/v1/credentials/dashscope",
-        json={"api_key": API_KEY},
-    ).status_code == 200
+    assert (
+        client.put(
+            "/api/v1/credentials/dashscope",
+            json={"api_key": API_KEY},
+        ).status_code
+        == 200
+    )
     client.post("/api/v1/auth/logout")
 
     second = register(client, "second@example.com")

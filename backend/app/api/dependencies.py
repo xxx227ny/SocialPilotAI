@@ -63,7 +63,9 @@ def get_workspace_provider_settings(
         else None
     )
     api_key = (
-        ProviderCredentialService(db, app_settings).read_dashscope_key(workspace_id)
+        ProviderCredentialService(db, app_settings).read_verified_dashscope_key(
+            workspace_id
+        )
         if workspace_id is not None
         else None
     )
@@ -91,7 +93,7 @@ def get_text_generation_provider(
         return SafeObservableTextProvider(QwenProvider(app_settings))
     except (ProviderAuthenticationError, ProviderConfigurationError) as exc:
         raise AppError(
-            "Qwen API credentials are not configured", status_code=503
+            "Workspace API Key is missing or unverified", status_code=503
         ) from exc
 
 
@@ -284,7 +286,9 @@ def get_visual_generation_provider(
     try:
         return WanxProvider(app_settings)
     except (ProviderAuthenticationError, ProviderConfigurationError) as exc:
-        raise AppError("Wanx provider is not configured", status_code=503) from exc
+        raise AppError(
+            "Workspace API Key is missing or unverified", status_code=503
+        ) from exc
 
 
 VisualProviderDep = Annotated[

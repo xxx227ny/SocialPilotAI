@@ -28,8 +28,9 @@ Never restart or repoint `socialpilot-api`, `socialpilot-worker`, or
 
 After deployment, run `smoke_test.py` against the public staging origin. The
 test creates two non-billable validation accounts, uses synthetic provider keys,
-and verifies secure cookies plus cross-workspace product and credential
-isolation without contacting an AI provider.
+verifies one synthetic key through the non-generation model-list endpoint, and
+checks secure cookies plus cross-workspace product and credential isolation.
+It never starts text, image, audio, or video generation.
 
 `media_smoke_test.py` additionally accepts a verified local MP4 fixture. It
 creates an isolated staging artifact without provider calls, then validates

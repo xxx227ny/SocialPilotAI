@@ -85,9 +85,7 @@ def main(argv: list[str] | None = None) -> int:
     engine = create_engine(
         f"sqlite:///{sqlite_path}", connect_args={"check_same_thread": False}
     )
-    session_factory = sessionmaker(
-        bind=engine, autoflush=False, expire_on_commit=False
-    )
+    session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
     worker_identity = hashlib.sha256(
         f"standalone-worker:{os.getpid()}:{_utc_now()}".encode()
     ).hexdigest()
@@ -101,11 +99,11 @@ def main(argv: list[str] | None = None) -> int:
         lease_seconds=args.lease_seconds,
         heartbeat_interval_seconds=args.heartbeat_seconds,
         workspace_credential_resolver=(
-            lambda workspace_id: _workspace_credential(
-                session_factory, settings, workspace_id
+            lambda workspace_id: (
+                _workspace_credential(session_factory, settings, workspace_id)
+                if settings.enable_user_auth
+                else None
             )
-            if settings.enable_user_auth
-            else None
         ),
     )
     shutdown = Event()
@@ -159,9 +157,9 @@ def _workspace_credential(
     if not app_settings.enable_user_auth or workspace_id is None:
         return None
     with session_factory() as session:
-        return ProviderCredentialService(session, app_settings).read_dashscope_key(
-            workspace_id
-        )
+        return ProviderCredentialService(
+            session, app_settings
+        ).read_verified_dashscope_key(workspace_id)
 
 
 if __name__ == "__main__":

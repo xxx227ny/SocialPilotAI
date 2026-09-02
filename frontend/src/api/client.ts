@@ -54,8 +54,10 @@ export function apiContentUrl(path: string): string {
 }
 
 const SAFE_PROVIDER_MESSAGES: Record<string, string> = {
+  "Workspace API Key is missing or unverified":
+    "请先前往“API Key 设置”，绑定并验证你自己的阿里云百炼 API Key。",
   "Qwen provider authentication failed":
-    "Qwen认证失败；请在本机核验QWEN_API_KEY与对应区域和Workspace。",
+    "千问认证失败；请重新验证当前工作区绑定的 API Key，并检查其所属地域。",
   "Qwen provider permission denied":
     "Qwen账号、Workspace或模型权限不足；本次请求未保存结果。",
   "Qwen endpoint or model was not found":
