@@ -1,7 +1,7 @@
 import { type FormEvent, useRef, useState } from "react";
 
-import { getApiErrorMessage } from "../../api/client";
-import { createProduct } from "../../api/products";
+import { getApiErrorMessage, isUnconfirmedApiMutation } from "../../api/client";
+import { createProduct, listProducts } from "../../api/products";
 import type { Product, ProductCreatePayload } from "../../types/product";
 
 interface ProductCreateFormProps {
@@ -92,6 +92,25 @@ function validateForm(
   };
 }
 
+function matchesRecentCreation(
+  product: Product,
+  payload: ProductCreatePayload,
+  requestedAt: number,
+) {
+  return product.name === payload.name
+    && product.category === payload.category
+    && product.description === payload.description
+    && product.selling_points.length === payload.selling_points.length
+    && product.selling_points.every(
+      (point, index) => point === payload.selling_points[index],
+    )
+    && Date.parse(product.created_at) >= requestedAt - 2_000;
+}
+
+function wait(milliseconds: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
 export function ProductCreateForm({ onCreated }: ProductCreateFormProps) {
   const [form, setForm] = useState<ProductFormState>(emptyForm);
   const [errors, setErrors] = useState<ProductFormErrors>({});
@@ -157,12 +176,31 @@ export function ProductCreateForm({ onCreated }: ProductCreateFormProps) {
 
     submitLock.current = true;
     setSubmitting(true);
+    const requestedAt = Date.now();
     try {
       const product = await createProduct(validation.payload);
       setCreatedProduct(product);
       setForm(emptyForm());
       onCreated(product);
     } catch (error) {
+      if (isUnconfirmedApiMutation(error)) {
+        try {
+          await wait(800);
+          const products = await listProducts();
+          const recovered = products.find((product) =>
+            matchesRecentCreation(product, validation.payload!, requestedAt),
+          );
+          if (recovered) {
+            setCreatedProduct(recovered);
+            setForm(emptyForm());
+            onCreated(recovered);
+            setRequestError("");
+            return;
+          }
+        } catch {
+          // Preserve the original delivery uncertainty when confirmation also fails.
+        }
+      }
       setRequestError(
         getApiErrorMessage(error, "商品创建失败，请检查服务连接后重试。"),
       );

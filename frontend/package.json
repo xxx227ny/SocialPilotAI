@@ -7,6 +7,7 @@
     "test:read-cache": "node scripts/test-read-resource-cache.mjs",
     "test:growth-readability": "node scripts/test-growth-readability.mjs",
     "test:read-resilience": "node scripts/test-read-resilience.mjs",
+    "test:network-recovery": "node scripts/test-network-recovery.mjs",
     "test:production-api-base": "node scripts/test-production-api-base.mjs",
     "dev": "vite",
     "dev:token-plan": "vite --mode token-plan",
