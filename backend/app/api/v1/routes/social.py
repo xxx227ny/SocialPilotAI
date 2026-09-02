@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
+from app.api.auth_dependency import ProductPrincipalDep
 from app.api.dependencies import (
     BindingInstagramProviderDep,
     BindingPinterestProviderDep,
@@ -32,6 +33,8 @@ from app.schemas.social import (
     InstagramPublishingMetadata,
     InstagramPublishRequest,
     InstagramSubmitPreflightRead,
+    LocalDisconnectRead,
+    LocalDisconnectRequest,
     PinterestConnectRead,
     PinterestConnectRequest,
     PinterestDisconnectRead,
@@ -50,6 +53,7 @@ from app.schemas.social import (
     TikTokPublishRequest,
     TikTokRefreshRequest,
     TikTokSubmitPreflightRead,
+    WorkspaceSocialAccountRead,
     YouTubeConnectRead,
     YouTubeConnectRequest,
     YouTubePreflightRead,
@@ -309,6 +313,34 @@ def list_social_accounts(
     product_id: int = Query(gt=0),
 ) -> list[SocialAccountRead]:
     return SocialAccountService(db, settings, None).list_accounts(product_id)
+
+
+@router.get(
+    "/social-accounts/overview",
+    response_model=list[WorkspaceSocialAccountRead],
+)
+def list_workspace_social_accounts(
+    db: DbSession,
+    settings: SettingsDep,
+    principal: ProductPrincipalDep,
+) -> list[WorkspaceSocialAccountRead]:
+    del principal
+    return SocialAccountService(db, settings, None).list_workspace_accounts()
+
+
+@router.post(
+    "/social-accounts/{account_id}/local-disconnect",
+    response_model=LocalDisconnectRead,
+)
+def disconnect_workspace_social_account(
+    account_id: int,
+    data: LocalDisconnectRequest,
+    db: DbSession,
+    settings: SettingsDep,
+    principal: ProductPrincipalDep,
+) -> LocalDisconnectRead:
+    del data, principal
+    return SocialAccountService(db, settings, None).disconnect_local(account_id)
 
 
 @router.get("/social-accounts/{account_id}", response_model=SocialAccountRead)

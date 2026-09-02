@@ -19,6 +19,10 @@ export interface SocialAccount {
   disconnected_at: string | null;
 }
 
+export interface WorkspaceSocialAccount extends SocialAccount {
+  product_name: string;
+}
+
 export interface YouTubeConnectResult {
   authorization_url: string;
   expires_at: string;

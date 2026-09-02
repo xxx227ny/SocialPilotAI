@@ -49,8 +49,9 @@ assert.match(login, /确认验证邮箱/);
 assert.match(accountSecurity, /邮箱尚未验证/);
 assert.match(accountSecurity, /发送验证邮件/);
 assert.match(app, /settings\/account-security/);
+assert.match(app, /settings\/social-accounts/);
 assert.doesNotMatch(onboarding, /QWEN_API_KEY/);
 assert.doesNotMatch(settings, /localStorage|sessionStorage/);
 assert.doesNotMatch(credentialApi, /localStorage|sessionStorage/);
 
-console.log("Product auth frontend checks passed: 43 assertions.");
+console.log("Product auth frontend checks passed: 44 assertions.");

@@ -25,10 +25,12 @@ from app.repositories.product import ProductRepository
 from app.repositories.social import SocialRepository
 from app.schemas.social import (
     DisconnectRead,
+    LocalDisconnectRead,
     PublishArtifactCandidateRead,
     PublishExecutionRead,
     PublishTaskRead,
     SocialAccountRead,
+    WorkspaceSocialAccountRead,
     YouTubeConnectRead,
     YouTubePreflightRead,
     YouTubePublishingMetadata,
@@ -188,6 +190,36 @@ class SocialAccountService:
             SocialAccountRead.model_validate(account)
             for account in self.repository.list_accounts(product_id)
         ]
+
+    def list_workspace_accounts(self) -> list[WorkspaceSocialAccountRead]:
+        return [
+            WorkspaceSocialAccountRead(
+                **SocialAccountRead.model_validate(account).model_dump(),
+                product_name=product_name,
+            )
+            for account, product_name in self.repository.list_workspace_accounts()
+        ]
+
+    def disconnect_local(self, account_id: int) -> LocalDisconnectRead:
+        account = self.repository.get_account(account_id)
+        if account is None:
+            raise AppError("Social account not found", 404)
+        product = self.products.get(account.product_id)
+        if product is None:
+            raise AppError("Product not found", 404)
+        account.access_token_ciphertext = None
+        account.refresh_token_ciphertext = None
+        account.token_expires_at = None
+        account.refresh_token_expires_at = None
+        account.connection_status = "DISCONNECTED"
+        account.disconnected_at = datetime.now(UTC)
+        self.session.commit()
+        return LocalDisconnectRead(
+            account=WorkspaceSocialAccountRead(
+                **SocialAccountRead.model_validate(account).model_dump(),
+                product_name=product.name,
+            )
+        )
 
     def get_account(self, account_id: int, product_id: int) -> SocialAccountRead:
         account = self._account(account_id, product_id)

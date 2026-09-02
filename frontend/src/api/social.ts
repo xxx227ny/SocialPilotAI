@@ -4,6 +4,7 @@ import type {
   PublishArtifactCandidate,
   PublishTask,
   SocialAccount,
+  WorkspaceSocialAccount,
   InstagramConnectResult,
   TikTokConnectResult,
   PinterestConnectResult,
@@ -108,6 +109,30 @@ export async function listSocialAccounts(
     signal,
   });
   return response.data;
+}
+
+export async function listWorkspaceSocialAccounts(signal?: AbortSignal) {
+  const response = await apiClient.get<WorkspaceSocialAccount[]>(
+    "/social-accounts/overview",
+    { signal },
+  );
+  return response.data;
+}
+
+export async function disconnectWorkspaceSocialAccount(
+  accountId: number,
+  signal?: AbortSignal,
+) {
+  const response = await apiClient.post<{
+    account: WorkspaceSocialAccount;
+    local_only: true;
+    provider_authorization_revoked: false;
+  }>(
+    `/social-accounts/${accountId}/local-disconnect`,
+    { confirm_disconnect: true },
+    { signal },
+  );
+  return response.data.account;
 }
 
 export async function disconnectSocialAccount(

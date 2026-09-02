@@ -59,6 +59,20 @@ class SocialAccountRead(BaseModel):
     disconnected_at: datetime | None
 
 
+class WorkspaceSocialAccountRead(SocialAccountRead):
+    product_name: str
+
+
+class LocalDisconnectRequest(BaseModel):
+    confirm_disconnect: Literal[True]
+
+
+class LocalDisconnectRead(BaseModel):
+    account: WorkspaceSocialAccountRead
+    local_only: Literal[True] = True
+    provider_authorization_revoked: Literal[False] = False
+
+
 class DisconnectRequest(BaseModel):
     product_id: int = Field(gt=0)
     revoke_google_authorization: bool = False

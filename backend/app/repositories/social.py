@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.execution.workspace_context import current_execution_workspace_id
-from app.models import OAuthSession, PublishTask, SocialAccount
+from app.models import OAuthSession, Product, PublishTask, SocialAccount
 from app.models.social import TikTokCreatorInfoSnapshot
 
 
@@ -47,6 +47,23 @@ class SocialRepository:
         if condition is not None:
             statement = statement.where(condition)
         return list(self.session.scalars(statement).all())
+
+    def list_workspace_accounts(self) -> list[tuple[SocialAccount, str]]:
+        statement = (
+            select(SocialAccount, Product.name)
+            .join(Product, Product.id == SocialAccount.product_id)
+            .order_by(SocialAccount.updated_at.desc(), SocialAccount.id.desc())
+        )
+        condition = self._workspace_condition(SocialAccount)
+        if condition is not None:
+            statement = statement.where(
+                condition,
+                Product.workspace_id == self.workspace_id,
+            )
+        return [
+            (account, product_name)
+            for account, product_name in self.session.execute(statement).all()
+        ]
 
     def get_account(self, account_id: int) -> SocialAccount | None:
         statement = select(SocialAccount).where(SocialAccount.id == account_id)

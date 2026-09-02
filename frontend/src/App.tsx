@@ -12,6 +12,7 @@ import { SnapshotPresentationPage } from "./pages/SnapshotPresentationPage";
 import { LoginPage } from "./pages/LoginPage";
 import { ApiKeySettingsPage } from "./pages/ApiKeySettingsPage";
 import { AccountSecurityPage } from "./pages/AccountSecurityPage";
+import { SocialAccountsPage } from "./pages/SocialAccountsPage";
 import { parseSnapshotPresentationRoute } from "./components/presentation/snapshotPresentationState";
 
 export default function App() {
@@ -40,6 +41,7 @@ export default function App() {
         <Route path="content-studio" element={<ContentStudioPage />} />
         <Route path="growth-copilot" element={<GrowthCopilotPage />} />
         <Route path="settings/api-key" element={<ApiKeySettingsPage />} />
+        <Route path="settings/social-accounts" element={<SocialAccountsPage />} />
         <Route path="settings/account-security" element={<AccountSecurityPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

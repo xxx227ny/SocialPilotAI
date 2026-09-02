@@ -13,6 +13,7 @@ const navItems = [
   { to: "/content-studio", label: "视频工厂", icon: "▶" },
   { to: "/growth-copilot", label: "投流优化", icon: "↗" },
   { to: "/settings/api-key", label: "API Key 设置", icon: "⚿", productOnly: true },
+  { to: "/settings/social-accounts", label: "社媒账号", icon: "◎", productOnly: true },
   { to: "/settings/account-security", label: "账号安全", icon: "◇", productOnly: true },
 ];
 
