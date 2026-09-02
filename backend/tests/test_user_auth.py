@@ -34,6 +34,13 @@ class FakeAccountEmailSender:
         self.email_verifications.append((recipient, token))
 
 
+class FailingAccountEmailSender(FakeAccountEmailSender):
+    def send_password_reset(self, recipient: str, token: str) -> None:
+        from app.services.account_email_service import AccountEmailDeliveryError
+
+        raise AccountEmailDeliveryError("simulated delivery failure")
+
+
 def user_auth_settings(**overrides: object) -> Settings:
     values: dict[str, object] = {
         "enable_user_auth": True,
@@ -93,6 +100,32 @@ def test_registration_creates_isolated_account_and_secure_session(
     assert token not in auth_session.token_hash
     assert db_session.scalar(select(Workspace)) is not None
     assert db_session.scalar(select(Membership)) is not None
+
+
+def test_registration_rejects_unsafe_or_malformed_email_addresses(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    app.dependency_overrides[get_settings] = lambda: user_auth_settings()
+
+    for email in (
+        "missing-at.example.com",
+        "two@@example.com",
+        "leading.@example.com",
+        "double..dot@example.com",
+        "header\r\n@example.com",
+        "space in-local@example.com",
+        "owner@example",
+        "owner@-example.com",
+    ):
+        response = client.post(
+            "/api/v1/auth/register",
+            json={"email": email, "password": PASSWORD},
+        )
+        assert response.status_code in {422}
+
+    assert db_session.scalar(select(User)) is None
+    assert db_session.scalar(select(Workspace)) is None
 
 
 def test_logout_revokes_session_and_login_restores_access(
@@ -429,4 +462,32 @@ def test_unconfigured_email_delivery_is_safe_and_explicit_for_signed_in_user(
     assert "令牌" not in reset.text
     assert verification.status_code == 503
     assert verification.json()["detail"] == "系统邮件服务尚未配置，请联系管理员。"
+    assert db_session.scalar(select(AccountActionToken)) is None
+
+
+def test_failed_password_reset_delivery_does_not_leave_token_or_cooldown(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    app.dependency_overrides[get_settings] = lambda: user_auth_settings()
+    app.dependency_overrides[get_account_email_sender] = (
+        lambda: FailingAccountEmailSender()
+    )
+    client.post(
+        "/api/v1/auth/register",
+        json={"email": EMAIL, "password": PASSWORD},
+    )
+    client.post("/api/v1/auth/logout")
+
+    first = client.post(
+        "/api/v1/auth/password-reset/request",
+        json={"email": EMAIL},
+    )
+    second = client.post(
+        "/api/v1/auth/password-reset/request",
+        json={"email": EMAIL},
+    )
+
+    assert first.status_code == second.status_code == 202
+    assert first.json() == second.json()
     assert db_session.scalar(select(AccountActionToken)) is None

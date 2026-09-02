@@ -2,7 +2,6 @@ from typing import Annotated
 
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Cookie,
     Depends,
     HTTPException,
@@ -38,7 +37,6 @@ from app.services.account_action_service import (
 )
 from app.services.account_email_service import (
     AccountEmailDeliveryError,
-    AccountEmailSender,
     AccountEmailSenderDep,
 )
 from app.services.demo_auth_service import (
@@ -61,17 +59,6 @@ from app.services.user_auth_service import (
 router = APIRouter(prefix="/auth")
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 DbSession = Annotated[Session, Depends(get_db)]
-
-
-def _send_password_reset_safely(
-    email_sender: AccountEmailSender,
-    recipient: str,
-    token: str,
-) -> None:
-    try:
-        email_sender.send_password_reset(recipient, token)
-    except AccountEmailDeliveryError:
-        return
 
 
 def _set_session_cookie(
@@ -349,7 +336,6 @@ def logout_other_devices(
 )
 def request_password_reset(
     payload: PasswordResetRequest,
-    background_tasks: BackgroundTasks,
     settings: SettingsDep,
     db: DbSession,
     email_sender: AccountEmailSenderDep,
@@ -372,13 +358,14 @@ def request_password_reset(
     if token is None:
         db.rollback()
         return generic
+    try:
+        email_sender.send_password_reset(user.email, token)
+    except AccountEmailDeliveryError:
+        # Preserve account-enumeration protection while ensuring a failed delivery
+        # neither stores a useless token nor starts the resend cooldown.
+        db.rollback()
+        return generic
     db.commit()
-    background_tasks.add_task(
-        _send_password_reset_safely,
-        email_sender,
-        user.email,
-        token,
-    )
     return generic
 
 

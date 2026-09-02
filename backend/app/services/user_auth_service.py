@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import secrets
 from dataclasses import dataclass
 from datetime import timedelta
@@ -16,6 +17,7 @@ SESSION_COOKIE_NAME = "socialpilot_session"
 _DUMMY_PASSWORD_HASH = hash_password(
     "invalid-user-password", salt=b"socialpilot-auth-dummy"
 )
+_EMAIL_LOCAL_PATTERN = re.compile(r"^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+$")
 
 
 class DuplicateEmailError(ValueError):
@@ -33,10 +35,41 @@ class AuthenticatedPrincipal:
 
 def normalize_email(email: str) -> str:
     normalized = email.strip().casefold()
-    local, separator, domain = normalized.partition("@")
-    if not separator or not local or "." not in domain or domain.startswith("."):
+    if len(normalized) > 320 or any(character.isspace() for character in normalized):
         raise ValueError("Email address is invalid")
-    return normalized
+    if any(ord(character) < 32 or ord(character) == 127 for character in normalized):
+        raise ValueError("Email address is invalid")
+    if normalized.count("@") != 1:
+        raise ValueError("Email address is invalid")
+    local, domain = normalized.split("@", 1)
+    if (
+        not local
+        or len(local) > 64
+        or local.startswith(".")
+        or local.endswith(".")
+        or ".." in local
+        or _EMAIL_LOCAL_PATTERN.fullmatch(local) is None
+    ):
+        raise ValueError("Email address is invalid")
+    try:
+        ascii_domain = domain.encode("idna").decode("ascii")
+    except UnicodeError as exc:
+        raise ValueError("Email address is invalid") from exc
+    labels = ascii_domain.split(".")
+    if (
+        len(ascii_domain) > 253
+        or len(labels) < 2
+        or any(
+            not label
+            or len(label) > 63
+            or label.startswith("-")
+            or label.endswith("-")
+            or not label.replace("-", "").isalnum()
+            for label in labels
+        )
+    ):
+        raise ValueError("Email address is invalid")
+    return f"{local}@{ascii_domain.casefold()}"
 
 
 def register_user(
