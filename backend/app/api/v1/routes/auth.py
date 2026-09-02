@@ -523,7 +523,24 @@ def logout(
         samesite="lax" if settings.enable_user_auth else "strict",
         path="/",
     )
+    if settings.enable_user_auth:
+        return AuthSessionRead(
+            enabled=True,
+            authenticated=False,
+            auth_mode="user",
+            registration_enabled=settings.allow_public_registration,
+            email_verified=False,
+        )
+    if settings.enable_demo_auth:
+        return AuthSessionRead(
+            enabled=True,
+            authenticated=False,
+            auth_mode="demo",
+            registration_enabled=False,
+        )
     return AuthSessionRead(
-        enabled=settings.enable_user_auth or settings.enable_demo_auth,
-        authenticated=not settings.enable_user_auth and not settings.enable_demo_auth,
+        enabled=False,
+        authenticated=True,
+        auth_mode="disabled",
+        registration_enabled=False,
     )

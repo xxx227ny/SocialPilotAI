@@ -122,6 +122,10 @@ def test_logout_revokes_session_and_login_restores_access(
     restored = client.get("/api/v1/products")
 
     assert logged_out.status_code == 200
+    assert logged_out.json()["authenticated"] is False
+    assert logged_out.json()["auth_mode"] == "user"
+    assert logged_out.json()["registration_enabled"] is True
+    assert logged_out.json()["email_verified"] is False
     assert revoked_session is not None
     assert revoked_session.revoked_at is not None
     assert blocked.status_code == 401

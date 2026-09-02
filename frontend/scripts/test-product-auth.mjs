@@ -11,6 +11,7 @@ const login = readFileSync(new URL("../src/pages/LoginPage.tsx", import.meta.url
 const settings = readFileSync(new URL("../src/pages/ApiKeySettingsPage.tsx", import.meta.url), "utf8");
 const dashboard = readFileSync(new URL("../src/pages/DashboardPage.tsx", import.meta.url), "utf8");
 const onboarding = readFileSync(new URL("../src/components/product/brandKitOnboardingState.ts", import.meta.url), "utf8");
+const backendAuth = readFileSync(new URL("../../backend/app/api/v1/routes/auth.py", import.meta.url), "utf8");
 
 assert.match(authApi, /\/auth\/register/);
 assert.match(context, /registrationEnabled/);
@@ -60,5 +61,7 @@ assert.match(context, /logoutWasPending \? logoutRequest\(\) : getAuthSession\(\
 assert.match(context, /服务器退出请求尚未确认，刷新时将继续完成/);
 assert.match(layout, /disabled=\{loggingOut\}/);
 assert.match(layout, /正在退出…/);
+assert.match(backendAuth, /auth_mode="user"/);
+assert.match(backendAuth, /registration_enabled=settings\.allow_public_registration/);
 
-console.log("Product auth frontend checks passed: 50 assertions.");
+console.log("Product auth frontend checks passed: 52 assertions.");
