@@ -84,6 +84,8 @@ class WorkspaceActivitySummarySchema(BaseModel):
     api_key_verified: bool
     product_count: int = Field(ge=0)
     product_asset_count: int = Field(ge=0)
+    product_asset_storage_bytes: int = Field(ge=0)
+    product_asset_storage_limit_bytes: int = Field(gt=0)
     strategy_count: int = Field(ge=0)
     copy_matrix_count: int = Field(ge=0)
     video_project_count: int = Field(ge=0)

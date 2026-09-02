@@ -71,6 +71,8 @@ export interface WorkspaceActivitySummary {
   api_key_verified: boolean;
   product_count: number;
   product_asset_count: number;
+  product_asset_storage_bytes: number;
+  product_asset_storage_limit_bytes: number;
   strategy_count: number;
   copy_matrix_count: number;
   video_project_count: number;

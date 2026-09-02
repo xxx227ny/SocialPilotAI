@@ -22,7 +22,12 @@ class WorkspaceActivitySummaryService:
     def __init__(self, db: Session) -> None:
         self.db = db
 
-    def get(self, workspace_id: int) -> WorkspaceActivitySummarySchema:
+    def get(
+        self,
+        workspace_id: int,
+        *,
+        product_asset_storage_limit_bytes: int,
+    ) -> WorkspaceActivitySummarySchema:
         credential = self.db.scalar(
             select(ProviderCredential).where(
                 ProviderCredential.workspace_id == workspace_id,
@@ -35,6 +40,11 @@ class WorkspaceActivitySummaryService:
         )
         product_asset_count = self._count(
             select(func.count(ProductAsset.id))
+            .join(Product, Product.id == ProductAsset.product_id)
+            .where(Product.workspace_id == workspace_id)
+        )
+        product_asset_storage_bytes = self._count(
+            select(func.coalesce(func.sum(ProductAsset.size_bytes), 0))
             .join(Product, Product.id == ProductAsset.product_id)
             .where(Product.workspace_id == workspace_id)
         )
@@ -82,6 +92,8 @@ class WorkspaceActivitySummaryService:
             ),
             product_count=product_count,
             product_asset_count=product_asset_count,
+            product_asset_storage_bytes=product_asset_storage_bytes,
+            product_asset_storage_limit_bytes=product_asset_storage_limit_bytes,
             strategy_count=strategy_count,
             copy_matrix_count=copy_matrix_count,
             video_project_count=video_project_count,

@@ -10,6 +10,7 @@ from app.models import (
     CopyMatrix,
     ExecutionJob,
     MarketingStrategy,
+    ProductAsset,
     VideoProject,
     VideoRenderArtifact,
     VideoRenderTask,
@@ -52,6 +53,20 @@ def test_workspace_summary_reports_real_counts_without_cross_account_data(
     product_response = client.post("/api/v1/products", json=product_payload)
     assert product_response.status_code == 201
     product_id = int(product_response.json()["id"])
+    db_session.add(
+        ProductAsset(
+            product_id=product_id,
+            file_name="summary.png",
+            file_path="product-images/summary.png",
+            file_type="png",
+            content_type="image/png",
+            size_bytes=123,
+            sha256="a" * 64,
+            width=64,
+            height=64,
+            storage_identity="product-images/summary.png",
+        )
+    )
 
     strategy = MarketingStrategy(
         product_id=product_id,
@@ -145,7 +160,9 @@ def test_workspace_summary_reports_real_counts_without_cross_account_data(
         "api_key_configured": True,
         "api_key_verified": False,
         "product_count": 1,
-        "product_asset_count": 0,
+        "product_asset_count": 1,
+        "product_asset_storage_bytes": 123,
+        "product_asset_storage_limit_bytes": 250_000_000,
         "strategy_count": 1,
         "copy_matrix_count": 1,
         "video_project_count": 1,
@@ -168,6 +185,8 @@ def test_workspace_summary_reports_real_counts_without_cross_account_data(
         "api_key_verified": False,
         "product_count": 0,
         "product_asset_count": 0,
+        "product_asset_storage_bytes": 0,
+        "product_asset_storage_limit_bytes": 250_000_000,
         "strategy_count": 0,
         "copy_matrix_count": 0,
         "video_project_count": 0,

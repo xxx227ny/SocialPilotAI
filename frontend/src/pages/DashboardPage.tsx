@@ -40,6 +40,12 @@ const workflow = [
   { title: "分析并优化投放", detail: "导入或使用沙箱投放数据，查看 ROAS、CTR、CVR 和 CPA，再应用优化建议。", to: "/growth-copilot", action: "查看投放分析" },
 ];
 
+function formatStorage(bytes: number): string {
+  if (bytes >= 1_000_000) return `${(bytes / 1_000_000).toFixed(1)} MB`;
+  if (bytes >= 1_000) return `${(bytes / 1_000).toFixed(1)} KB`;
+  return `${bytes} B`;
+}
+
 export function DashboardPage() {
   const { authMode, username } = useAuth();
   const [summary, setSummary] = useState<WorkspaceActivitySummary | null>(null);
@@ -132,7 +138,10 @@ export function DashboardPage() {
           <div className="home-guide__summary">
             <article>
               <strong>{summary.product_count} 个商品 · {summary.product_asset_count} 份素材</strong>
-              <p>商品资料和图片均只属于当前工作区。</p>
+              <p>
+                商品资料和图片均只属于当前工作区；素材占用
+                {formatStorage(summary.product_asset_storage_bytes)} / {formatStorage(summary.product_asset_storage_limit_bytes)}。
+              </p>
             </article>
             <article>
               <strong>{summary.strategy_count} 份策略 · {summary.copy_matrix_count} 组文案</strong>

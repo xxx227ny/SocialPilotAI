@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.api.auth_dependency import ProductPrincipalDep
+from app.api.auth_dependency import ProductPrincipalDep, SettingsDep
 from app.db.session import get_db
 from app.repositories.demo import DemoScenarioRepository
 from app.schemas.dashboard import (
@@ -47,5 +47,11 @@ def get_product_dashboard(
 def get_workspace_activity_summary(
     db: DbSession,
     principal: ProductPrincipalDep,
+    settings: SettingsDep,
 ) -> WorkspaceActivitySummarySchema:
-    return WorkspaceActivitySummaryService(db).get(principal.workspace_id)
+    return WorkspaceActivitySummaryService(db).get(
+        principal.workspace_id,
+        product_asset_storage_limit_bytes=(
+            settings.product_asset_workspace_max_bytes
+        ),
+    )
