@@ -240,7 +240,11 @@ try {
   assert.ok(page.includes("shouldMountBatchVideoFlow"));
   assert.ok(featureSource.includes("VITE_ENABLE_BATCH_VIDEO_JOBS"));
   assert.ok(!featureSource.includes("VITE_ENABLE_BATCH_VIDEO_JOBS ??"));
-  staticAssertions += 3;
+  assert.match(
+    featureSource,
+    /batchVideoJobsEnabled\s*=\s*import\.meta\.env\.PROD\s*\|\|/,
+  );
+  staticAssertions += 4;
   for (const forbidden of ["latest", "pinterest", "wanx", "ffmpeg"]) {
     assert.ok(!panel.toLowerCase().includes(forbidden));
     staticAssertions += 1;

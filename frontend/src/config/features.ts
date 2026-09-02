@@ -40,7 +40,10 @@ export const videoCompositionEnhancementEnabled = isEnabledFeatureFlag(
   import.meta.env.VITE_ENABLE_VIDEO_COMPOSITION_ENHANCEMENT,
 );
 
-export const batchVideoJobsEnabled = isEnabledFeatureFlag(
+// Batch orchestration is a supported production workspace section. It stays
+// hidden in presentation mode and its backend preflight still prevents any
+// unconfirmed provider work.
+export const batchVideoJobsEnabled = import.meta.env.PROD || isEnabledFeatureFlag(
   import.meta.env.VITE_ENABLE_BATCH_VIDEO_JOBS,
 );
 export const videoScriptVersionsEnabled = isEnabledFeatureFlag(
