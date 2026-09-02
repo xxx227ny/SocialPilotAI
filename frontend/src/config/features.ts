@@ -2,7 +2,10 @@ export function isEnabledFeatureFlag(value: string | undefined): boolean {
   return value?.trim().toLowerCase() === "true";
 }
 
-export const strategyExecutionEnabled = isEnabledFeatureFlag(
+// Strategy generation is part of the product's supported production flow.
+// The backend still enforces workspace credentials, preflight validation and
+// explicit cost confirmation before any provider call can be queued.
+export const strategyExecutionEnabled = import.meta.env.PROD || isEnabledFeatureFlag(
   import.meta.env.VITE_ENABLE_STRATEGY_EXECUTION,
 );
 

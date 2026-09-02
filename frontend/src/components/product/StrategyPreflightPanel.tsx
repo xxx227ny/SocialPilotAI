@@ -358,6 +358,11 @@ export function StrategyPreflightPanel({
             </div>
           ) : null}
           <p className="strategy-execution-gate">{preflight.cost_notice}</p>
+          {!strategyExecutionEnabled ? (
+            <p className="form-feedback form-feedback--error" role="status">
+              当前网页构建未开启策略执行功能，请使用产品开发版或联系管理员更新前端版本。
+            </p>
+          ) : null}
           {!job ? (
             <>
               <label className="strategy-preflight__acknowledgement">

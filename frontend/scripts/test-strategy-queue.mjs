@@ -116,8 +116,15 @@ try {
   assert.match(component, /retryExecutionJob/);
   assert.match(component, /submitLockRef\.current/);
   assert.match(component, /SUBMIT_UNKNOWN/);
+  assert.match(component, /当前网页构建未开启策略执行功能/);
   assert.doesNotMatch(component, /generateMarketingStrategy/);
   assert.doesNotMatch(component, /getLatestMarketingStrategy/);
+
+  const features = read("src", "config", "features.ts");
+  assert.match(
+    features,
+    /strategyExecutionEnabled\s*=\s*import\.meta\.env\.PROD\s*\|\|/,
+  );
 
   const api = read("src", "api", "strategies.ts");
   assert.match(api, /\/strategy-jobs/);
@@ -130,7 +137,7 @@ try {
   assert.match(copyWorkspace, /<MarketingTaskConfig/);
   assert.doesNotMatch(productCenter, /MarketingTaskConfig/);
 
-  console.log("Strategy queue frontend checks passed: 23 scenarios");
+  console.log("Strategy queue frontend checks passed: 25 scenarios");
 } finally {
   await server.close();
 }
