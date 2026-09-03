@@ -12,13 +12,28 @@ from pathlib import Path
 
 DEFAULT_CONFIG_PATH = Path("/etc/socialpilot-staging/runtime.json")
 DEFAULT_BACKUP_DIR = Path("/var/lib/socialpilot-staging/backups")
-SMOKE_EMAIL_PATTERN = re.compile(
-    r"^smoke-[ab]-[0-9]{14}[0-9a-f]{6}@invalid\.example$"
+DEFAULT_ARTIFACT_ROOT = Path("/var/lib/socialpilot-staging/artifacts")
+SMOKE_EMAIL_PATTERNS = (
+    re.compile(r"^smoke-[ab]-[0-9]{14}[0-9a-f]{6}@invalid\.example$"),
+    re.compile(r"^media-(?:owner|other)-[0-9]{14}[0-9a-f]{6}@invalid\.example$"),
 )
 
 
 def is_managed_smoke_email(email: str) -> bool:
-    return SMOKE_EMAIL_PATTERN.fullmatch(email.strip().casefold()) is not None
+    normalized = email.strip().casefold()
+    return any(pattern.fullmatch(normalized) for pattern in SMOKE_EMAIL_PATTERNS)
+
+
+def safe_artifact_path(root: Path, relative_path: str) -> Path:
+    if not relative_path or Path(relative_path).is_absolute():
+        raise ValueError("Managed artifact path must be relative")
+    resolved_root = root.resolve()
+    resolved = (resolved_root / relative_path).resolve()
+    try:
+        resolved.relative_to(resolved_root)
+    except ValueError as error:
+        raise ValueError("Managed artifact path escapes the artifact root") from error
+    return resolved
 
 
 def sqlite_path_from_url(database_url: str) -> Path:
@@ -49,15 +64,38 @@ def candidate_smoke_users(
     return candidates
 
 
+def candidate_artifact_records(
+    connection: sqlite3.Connection,
+    *,
+    workspace_ids: list[int],
+) -> list[tuple[str, str]]:
+    if not workspace_ids:
+        return []
+    placeholders = ",".join("?" for _ in workspace_ids)
+    return [
+        (str(storage_path), str(raw_metadata))
+        for storage_path, raw_metadata in connection.execute(
+            "SELECT a.storage_path, a.metadata FROM video_render_artifacts a "
+            "JOIN video_render_tasks t ON t.id = a.video_render_task_id "
+            "JOIN video_projects v ON v.id = t.video_project_id "
+            "JOIN products p ON p.id = v.product_id "
+            f"WHERE p.workspace_id IN ({placeholders}) "
+            "AND a.storage_path IS NOT NULL",
+            workspace_ids,
+        )
+    ]
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Safely purge invalid account tokens and optionally the exact smoke "
-            "accounts created by deploy/staging/smoke_test.py. Dry-run is default."
+            "accounts created by staging smoke tools. Dry-run is default."
         )
     )
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH)
     parser.add_argument("--backup-dir", type=Path, default=DEFAULT_BACKUP_DIR)
+    parser.add_argument("--artifact-root", type=Path, default=DEFAULT_ARTIFACT_ROOT)
     parser.add_argument("--minimum-smoke-age-minutes", type=int, default=10)
     parser.add_argument("--include-smoke-users", action="store_true")
     parser.add_argument("--apply", action="store_true")
@@ -118,6 +156,7 @@ def main() -> None:
                OR consumed_at <= datetime('now', '-7 days')
             """
         )
+        artifact_files: list[Path] = []
         if candidates:
             user_ids = [user_id for user_id, _email in candidates]
             placeholders = ",".join("?" for _ in user_ids)
@@ -131,6 +170,31 @@ def main() -> None:
             ]
             if workspace_ids:
                 workspace_placeholders = ",".join("?" for _ in workspace_ids)
+                artifact_rows = candidate_artifact_records(
+                    connection, workspace_ids=workspace_ids
+                )
+                for storage_path, raw_metadata in artifact_rows:
+                    artifact_files.append(
+                        safe_artifact_path(args.artifact_root, str(storage_path))
+                    )
+                    try:
+                        metadata = json.loads(str(raw_metadata))
+                    except (TypeError, ValueError):
+                        metadata = {}
+                    digest = metadata.get("sha256") if isinstance(metadata, dict) else None
+                    if isinstance(digest, str) and re.fullmatch(
+                        r"[0-9a-fA-F]{64}", digest
+                    ):
+                        preview_root = args.artifact_root / ".previews"
+                        artifact_files.extend(
+                            safe_artifact_path(
+                                args.artifact_root,
+                                path.relative_to(args.artifact_root).as_posix(),
+                            )
+                            for path in preview_root.glob(f"{digest}-*.mp4")
+                            if path.is_file()
+                        )
+            if workspace_ids:
                 connection.execute(
                     f"DELETE FROM workspaces WHERE id IN ({workspace_placeholders})",
                     workspace_ids,
@@ -143,6 +207,10 @@ def main() -> None:
         if violations:
             raise RuntimeError("Foreign-key check failed; cleanup rolled back")
         connection.commit()
+        for artifact_file in artifact_files:
+            artifact_file.unlink(missing_ok=True)
+        if artifact_files:
+            print(f"Managed artifact files removed: {len(artifact_files)}")
         print(f"Cleanup complete. Rollback database: {backup}")
     except Exception:
         connection.rollback()

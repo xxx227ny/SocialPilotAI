@@ -66,5 +66,6 @@ cache headers, shared-CDN denial, and cross-workspace media protection.
 After non-billable staging smoke runs, inspect managed test accounts and expired
 account tokens with `cleanup_account_records.py --include-smoke-users`. The tool
 is dry-run by default. `--apply` first creates a SQLite backup, matches only the
-exact `smoke-a-*` / `smoke-b-*` addresses created by `smoke_test.py`, checks
-foreign-key integrity, and never matches ordinary customer email addresses.
+exact timestamped addresses created by `smoke_test.py` and `media_smoke_test.py`,
+removes their managed artifact files, checks foreign-key integrity, and never
+matches ordinary customer email addresses.
