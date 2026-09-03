@@ -136,6 +136,13 @@ def main() -> None:
             trust_env=False,
         ) as second,
     ):
+        landing = first.get("/")
+        require_status(landing, 200)
+        if "text/html" not in landing.headers.get("content-type", ""):
+            raise RuntimeError("Staging root did not return the product frontend")
+        if '<div id="root"></div>' not in landing.text:
+            raise RuntimeError("Staging root returned an unexpected HTML document")
+
         session = first.get("/api/v1/auth/session")
         require_status(session, 200)
         anonymous = session.json()

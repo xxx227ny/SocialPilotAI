@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -13,7 +12,7 @@ def _nginx_configuration() -> str:
 def test_staging_nginx_serves_frontend_without_the_api_process() -> None:
     configuration = _nginx_configuration()
 
-    assert "root /opt/socialpilot-staging/current/frontend;" in configuration
+    assert "root /opt/socialpilot-staging/current/frontend-dist;" in configuration
     assets = configuration.split("location ^~ /assets/ {", 1)[1].split("}", 1)[0]
     spa = configuration.split("location / {", 1)[1].split("}", 1)[0]
 
