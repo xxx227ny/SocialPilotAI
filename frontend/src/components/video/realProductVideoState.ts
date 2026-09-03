@@ -7,6 +7,7 @@ import type {
 import type {
   ProductVideoProductionBatch,
   ProductVideoProductionItem,
+  ProductVideoProductionResult,
   ProductVideoSource,
 } from "../../types/productMarketingVideo";
 
@@ -111,6 +112,31 @@ export function productionPollDelayMs(
   )
     ? 10_000
     : 2_000;
+}
+
+export function shouldMonitorProductionBatch(
+  batch: ProductVideoProductionBatch,
+  items: ProductVideoProductionItem[],
+): boolean {
+  return batch.status !== "PAUSED" && !productionBatchTerminal(batch, items);
+}
+
+function productionSnapshotTimestamp(value: ProductVideoProductionResult): string {
+  const timestamps = [
+    value.batch.updated_at,
+    ...value.items.map((item) => item.updated_at),
+  ].sort();
+  return timestamps[timestamps.length - 1] ?? value.batch.updated_at;
+}
+
+export function selectNewestProductionSnapshot(
+  current: ProductVideoProductionResult | null,
+  incoming: ProductVideoProductionResult,
+): ProductVideoProductionResult {
+  if (!current || current.batch.id !== incoming.batch.id) return incoming;
+  return productionSnapshotTimestamp(incoming) < productionSnapshotTimestamp(current)
+    ? current
+    : incoming;
 }
 
 export function selectThreePlatformSources(

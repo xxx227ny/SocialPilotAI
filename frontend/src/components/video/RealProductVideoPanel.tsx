@@ -79,7 +79,9 @@ import {
   productionStageLabel,
   RealProductVideoOperation,
   requireSuccessfulResult,
+  selectNewestProductionSnapshot,
   selectThreePlatformSources,
+  shouldMonitorProductionBatch,
 } from "./realProductVideoState";
 
 const MOTIONS = ["zoom_in", "pan_right", "zoom_out", "pan_left"] as const;
@@ -108,6 +110,9 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
   const [production, setProduction] =
     useState<ProductVideoProductionResult | null>(null);
   const [productionBatchId, setProductionBatchId] = useState("");
+  const [productionRefreshing, setProductionRefreshing] = useState(false);
+  const [productionRefreshError, setProductionRefreshError] = useState("");
+  const [productionLastReadAt, setProductionLastReadAt] = useState("");
   const [workflowContextLoading, setWorkflowContextLoading] = useState(false);
   const referenceAssets = useMemo(
     () =>
@@ -230,7 +235,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
     const controller = new AbortController();
     getProductVideoProductionBatch(product.id, batchId, controller.signal)
       .then((value) => {
-        setProduction(value);
+        applyProduction(value);
         setProductionBatchId(String(value.batch.id));
         if (value.batch.status === "SUCCEEDED") {
           setPhase("SUCCEEDED");
@@ -248,6 +253,83 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
       });
     return () => controller.abort();
   }, [isPresentation, product.id]);
+
+  useEffect(() => {
+    if (
+      !production ||
+      isPresentation ||
+      !shouldMonitorProductionBatch(production.batch, production.items)
+    ) {
+      return;
+    }
+    let disposed = false;
+    let timer = 0;
+    let controller: AbortController | null = null;
+    let refreshSequence = 0;
+
+    const schedule = (delay: number) => {
+      timer = window.setTimeout(() => void refresh(), delay);
+    };
+    const refresh = async () => {
+      controller?.abort();
+      const currentController = new AbortController();
+      const currentSequence = ++refreshSequence;
+      controller = currentController;
+      setProductionRefreshing(true);
+      try {
+        const refreshed = await getProductVideoProductionBatch(
+          product.id,
+          production.batch.id,
+          currentController.signal,
+        );
+        if (disposed || currentSequence !== refreshSequence) return;
+        applyProduction(refreshed);
+        setProductionRefreshError("");
+        if (productionBatchTerminal(refreshed.batch, refreshed.items)) {
+          setPhase(refreshed.batch.status === "SUCCEEDED" ? "SUCCEEDED" : "FAILED");
+          setMessage(
+            refreshed.batch.status === "SUCCEEDED"
+              ? "三平台完整成片已生成，可分别预览和下载。"
+              : "批次已结束，失败平台保留明确原因，成功平台结果仍可下载。",
+          );
+          return;
+        }
+        schedule(productionPollDelayMs(refreshed.items));
+      } catch (error) {
+        if (
+          disposed ||
+          currentController.signal.aborted ||
+          currentSequence !== refreshSequence
+        ) {
+          return;
+        }
+        setProductionRefreshError(
+          getApiErrorMessage(error, "自动刷新暂时中断；不会重复提交任务或产生费用。"),
+        );
+        schedule(10_000);
+      } finally {
+        if (!disposed && currentSequence === refreshSequence) {
+          setProductionRefreshing(false);
+        }
+      }
+    };
+    const refreshWhenVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      window.clearTimeout(timer);
+      void refresh();
+    };
+
+    schedule(productionPollDelayMs(production.items));
+    window.addEventListener("online", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      disposed = true;
+      window.clearTimeout(timer);
+      controller?.abort();
+      window.removeEventListener("online", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [isPresentation, product.id, production?.batch.id, production?.batch.status]);
 
   useEffect(() => {
     setBatchPreflight(null);
@@ -979,7 +1061,32 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
   }
 
   function applyProduction(value: ProductVideoProductionResult) {
-    setProduction(value);
+    setProduction((current) => selectNewestProductionSnapshot(current, value));
+    setProductionLastReadAt(
+      new Date().toLocaleTimeString("zh-CN", { hour12: false }),
+    );
+  }
+
+  async function refreshProductionBatchNow() {
+    if (!production || productionRefreshing) return;
+    const controller = new AbortController();
+    setProductionRefreshing(true);
+    try {
+      const refreshed = await getProductVideoProductionBatch(
+        product.id,
+        production.batch.id,
+        controller.signal,
+      );
+      applyProduction(refreshed);
+      setProductionRefreshError("");
+      setMessage("已读取服务器上的最新批次进度；不会重新生成或产生模型费用。");
+    } catch (error) {
+      setProductionRefreshError(
+        getApiErrorMessage(error, "进度读取失败，请检查网络后重试。"),
+      );
+    } finally {
+      setProductionRefreshing(false);
+    }
   }
 
   function saveFinalResult(video: number, subtitle: number) {
@@ -1570,6 +1677,37 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
             <strong>生产批次 #{production.batch.id}</strong>
             <span>状态：{productionBatchStatusLabel(production.batch.status)}</span>
           </header>
+          <div
+            className={`production-batch-monitor${
+              productionRefreshError ? " production-batch-monitor--error" : ""
+            }`}
+            role="status"
+          >
+            <div>
+              <strong>
+                {productionRefreshError
+                  ? "进度连接暂时中断"
+                  : productionRefreshing
+                    ? "正在读取最新进度"
+                    : shouldMonitorProductionBatch(production.batch, production.items)
+                      ? "进度自动刷新已开启"
+                      : "当前批次无需自动刷新"}
+              </strong>
+              <small>
+                {productionRefreshError ||
+                  (productionLastReadAt
+                    ? `上次成功读取：${productionLastReadAt}`
+                    : "正在等待首次进度读取")}
+              </small>
+            </div>
+            <button
+              type="button"
+              disabled={productionRefreshing}
+              onClick={() => void refreshProductionBatchNow()}
+            >
+              {productionRefreshing ? "刷新中……" : "立即刷新进度"}
+            </button>
+          </div>
           <div className="production-batch-actions">
             <button
               type="button"
@@ -1615,11 +1753,12 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
                 )}
                 {item.final_video_artifact_id && item.subtitle_artifact_id && (
                   <div>
-                      <video
-                        controls
-                        playsInline
-                        preload="none"
-                      src={compositionEnhancementPreviewUrl(
+                    <ResilientVideoPreview
+                      label={`${item.platform} 成片`}
+                      previewUrl={compositionEnhancementPreviewUrl(
+                        item.final_video_artifact_id,
+                      )}
+                      sourceUrl={compositionEnhancementContentUrl(
                         item.final_video_artifact_id,
                       )}
                     />
@@ -1679,7 +1818,11 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
       )}
       {cloudVideoArtifactId && (
         <div>
-          <video controls playsInline preload="metadata" src={happyHorseVideoPreviewUrl(cloudVideoArtifactId)} />
+          <ResilientVideoPreview
+            label="HappyHorse 成片"
+            previewUrl={happyHorseVideoPreviewUrl(cloudVideoArtifactId)}
+            sourceUrl={happyHorseVideoContentUrl(cloudVideoArtifactId)}
+          />
           <a href={happyHorseVideoContentUrl(cloudVideoArtifactId)} download>
             下载HappyHorse MP4
           </a>
@@ -1687,7 +1830,11 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
       )}
       {result && (
         <div>
-          <video controls playsInline preload="metadata" src={compositionEnhancementPreviewUrl(result.video)} />
+          <ResilientVideoPreview
+            label="最终合成视频"
+            previewUrl={compositionEnhancementPreviewUrl(result.video)}
+            sourceUrl={compositionEnhancementContentUrl(result.video)}
+          />
           <a href={compositionEnhancementContentUrl(result.video)} download>
             下载MP4
           </a>
@@ -1698,6 +1845,63 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
       )}
       {message && <p role="status">{message}</p>}
     </section>
+  );
+}
+
+function ResilientVideoPreview({
+  label,
+  previewUrl,
+  sourceUrl,
+}: {
+  label: string;
+  previewUrl: string;
+  sourceUrl: string;
+}) {
+  const [mode, setMode] = useState<"preview" | "source">("preview");
+  const [failed, setFailed] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    setMode("preview");
+    setFailed(false);
+    setReloadKey(0);
+  }, [previewUrl, sourceUrl]);
+
+  const retry = () => {
+    setMode("preview");
+    setFailed(false);
+    setReloadKey((value) => value + 1);
+  };
+
+  return (
+    <div className="resilient-video-preview">
+      <video
+        key={`${mode}-${reloadKey}`}
+        aria-label={label}
+        controls
+        playsInline
+        preload="metadata"
+        src={mode === "preview" ? previewUrl : sourceUrl}
+        onLoadedData={() => setFailed(false)}
+        onError={() => {
+          if (mode === "preview") {
+            setMode("source");
+            setFailed(false);
+          } else {
+            setFailed(true);
+          }
+        }}
+      />
+      {mode === "source" && !failed ? (
+        <small role="status">低码率预览暂时不可用，已切换到原始成片。</small>
+      ) : null}
+      {failed ? (
+        <div className="resilient-video-preview__error" role="alert">
+          <span>视频读取失败，请检查网络或 VPN 后重新加载。</span>
+          <button type="button" onClick={retry}>重新加载视频</button>
+        </div>
+      ) : null}
+    </div>
   );
 }
 

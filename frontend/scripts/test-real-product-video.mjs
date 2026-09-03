@@ -148,6 +148,46 @@ try {
     true,
   );
   assert.equal(
+    state.shouldMonitorProductionBatch(
+      { status: "RUNNING" },
+      [{ status: "RUNNING" }],
+    ),
+    true,
+  );
+  assert.equal(
+    state.shouldMonitorProductionBatch(
+      { status: "PAUSED" },
+      [{ status: "RUNNING" }],
+    ),
+    false,
+  );
+  assert.equal(
+    state.shouldMonitorProductionBatch(
+      { status: "SUCCEEDED" },
+      [{ status: "SUCCEEDED" }],
+    ),
+    false,
+  );
+  const olderSnapshot = {
+    batch: { id: 9, updated_at: "2026-09-03T01:00:00Z" },
+    items: [{ updated_at: "2026-09-03T01:00:01Z" }],
+    reused: false,
+  };
+  const newerSnapshot = {
+    batch: { id: 9, updated_at: "2026-09-03T01:00:02Z" },
+    items: [{ updated_at: "2026-09-03T01:00:03Z" }],
+    reused: false,
+  };
+  assert.equal(
+    state.selectNewestProductionSnapshot(newerSnapshot, olderSnapshot),
+    newerSnapshot,
+  );
+  assert.equal(
+    state.selectNewestProductionSnapshot(olderSnapshot, newerSnapshot),
+    newerSnapshot,
+  );
+  behavior++;
+  assert.equal(
     state.productionBatchRecoverable(
       { status: "FAILED" },
       [
@@ -309,6 +349,15 @@ try {
     "按批次编号加载已有成片",
     "不会重新生成，也不会产生模型费用",
     "三平台生产进度",
+    "进度自动刷新已开启",
+    "立即刷新进度",
+    "自动刷新暂时中断；不会重复提交任务或产生费用",
+    "ResilientVideoPreview",
+    "低码率预览暂时不可用，已切换到原始成片",
+    "视频读取失败，请检查网络或 VPN 后重新加载",
+    "重新加载视频",
+    "selectNewestProductionSnapshot",
+    "shouldMonitorProductionBatch",
     "刷新页面后仍可恢复此批次",
     "productionStageLabel",
     "productionFailureMessage",

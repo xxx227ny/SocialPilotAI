@@ -4218,6 +4218,34 @@ textarea { font: inherit; }
   gap: 0.75rem;
 }
 
+.production-batch-monitor {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid rgba(52, 211, 153, 0.35);
+  border-radius: 10px;
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.production-batch-monitor > div {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.production-batch-monitor small {
+  color: inherit;
+  opacity: 0.78;
+}
+
+.production-batch-monitor--error {
+  border-color: rgba(248, 113, 113, 0.42);
+  background: rgba(239, 68, 68, 0.12);
+  color: #fecaca;
+}
+
 .production-platform-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -4235,6 +4263,28 @@ textarea { font: inherit; }
 .production-platform-card progress,
 .production-platform-card video {
   width: 100%;
+}
+
+.resilient-video-preview {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.resilient-video-preview small {
+  color: #fbbf24;
+}
+
+.resilient-video-preview__error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid rgba(248, 113, 113, 0.42);
+  border-radius: 9px;
+  background: rgba(239, 68, 68, 0.12);
+  color: #fecaca;
 }
 .operational-product-workspace {
   display: grid;

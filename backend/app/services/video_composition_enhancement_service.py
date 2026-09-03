@@ -38,6 +38,7 @@ from app.services.video_composition_enhancement_probe import (
 )
 from app.services.video_composition_service import VideoCompositionArtifactAccessService
 from app.services.video_composition_subtitles import render_webvtt
+from app.services.video_preview import warm_video_preview
 
 
 class VideoCompositionEnhancementService:
@@ -209,13 +210,34 @@ class VideoCompositionEnhancementService:
                 content=output.read_bytes(),
                 extension=".mp4",
             )
-            return self._persist(
+            artifact = self._persist(
                 enhancement.id,
                 media,
                 stored_subtitle,
                 stored_video,
                 len(cues),
             )
+            self._warm_preview(artifact)
+            return artifact
+
+    def _warm_preview(self, artifact: VideoCompositionEnhancementArtifact) -> None:
+        """Best-effort warmup keeps the first authenticated playback responsive."""
+        if not self.settings.enable_video_preview_prewarm:
+            return
+        try:
+            path = self.assets.resolve_exact(
+                artifact.storage_path,
+                artifact.size_bytes,
+                artifact.sha256,
+                ".mp4",
+            )
+        except AppError:
+            return
+        warm_video_preview(
+            path,
+            artifact.sha256,
+            self.settings.video_composition_ffmpeg_path,
+        )
 
     def _persist(self, enhancement_id, media, subtitle, video, cue_count):
         enhancement = self.repository.get(enhancement_id)

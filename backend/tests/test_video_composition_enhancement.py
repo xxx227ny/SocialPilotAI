@@ -46,6 +46,9 @@ from app.services.video_composition_enhancement_probe import (
     VideoCompositionEnhancementProbe,
     VideoCompositionEnhancementProbeError,
 )
+from app.services.video_composition_enhancement_service import (
+    VideoCompositionEnhancementService,
+)
 from app.services.video_composition_subtitles import (
     render_ass,
     render_ass_from_webvtt,
@@ -53,10 +56,11 @@ from app.services.video_composition_subtitles import (
 )
 
 
-def _settings(root: Path) -> Settings:
+def _settings(root: Path, *, preview_prewarm: bool = False) -> Settings:
     return Settings(
         _env_file=None,
         enable_video_composition_enhancement=True,
+        enable_video_preview_prewarm=preview_prewarm,
         video_artifact_storage_root=str(root),
         video_composition_temp_root=str(root / "temp"),
     )
@@ -64,6 +68,38 @@ def _settings(root: Path) -> Settings:
 
 def _sha(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
+
+
+def test_final_enhancement_preview_is_prepared_best_effort(
+    db_session, tmp_path, monkeypatch
+) -> None:
+    content = b"final-video"
+    path = tmp_path / "final.mp4"
+    path.write_bytes(content)
+    artifact = type(
+        "Artifact",
+        (),
+        {
+            "storage_path": path.name,
+            "size_bytes": len(content),
+            "sha256": _sha(content),
+        },
+    )()
+    calls = []
+    monkeypatch.setattr(
+        "app.services.video_composition_enhancement_service.warm_video_preview",
+        lambda source, digest, ffmpeg: calls.append((source, digest, ffmpeg)),
+    )
+    service = VideoCompositionEnhancementService(
+        db_session, _settings(tmp_path, preview_prewarm=True)
+    )
+    service._warm_preview(artifact)
+    assert calls == [(path, artifact.sha256, "ffmpeg")]
+
+    calls.clear()
+    disabled = VideoCompositionEnhancementService(db_session, _settings(tmp_path))
+    disabled._warm_preview(artifact)
+    assert calls == []
 
 
 def _source(db_session, root: Path):
