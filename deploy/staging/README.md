@@ -10,7 +10,7 @@ This deployment is deliberately isolated from the competition Demo.
 - Runtime configuration: `/etc/socialpilot-staging/runtime.json`
 - Services: `socialpilot-staging-api`, `socialpilot-staging-worker`
 
-Nginx serves the built frontend directly from the active release and proxies
+Nginx serves the built `frontend-dist` directory directly from the active release and proxies
 only `/api/` requests to the application listener.  This keeps the login page
 and hashed assets available while the API is restarted during a release, and
 prevents large JavaScript/CSS responses from consuming application-worker

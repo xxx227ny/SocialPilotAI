@@ -33,6 +33,7 @@ def test_bundle_contains_runtime_entrypoints_and_built_frontend(
     assert set(RUNTIME_ENTRYPOINTS) <= names
     assert "frontend-dist/index.html" in names
     assert "frontend-dist/assets/app.js" in names
+    assert "frontend/src/App.tsx" in names
     assert manifest["git_commit"] == result["git_commit"]
     assert len(result["archive_sha256"]) == 64
 
