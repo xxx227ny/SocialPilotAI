@@ -27,6 +27,7 @@ def test_runtime_regeneration_preserves_only_server_email_credentials() -> None:
         "ACCOUNT_SMTP_PASSWORD": "smtp-authorization-code",
         "ACCOUNT_SMTP_SECURITY": "tls",
         "ACCOUNT_SMTP_TIMEOUT_SECONDS": "12",
+        "ACCOUNT_REQUIRE_VERIFIED_EMAIL": "true",
         "QWEN_API_KEY": "must-not-be-preserved",
         "DASHSCOPE_API_KEY": "must-not-be-preserved",
         "WANX_API_KEY": "must-not-be-preserved",

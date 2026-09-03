@@ -55,3 +55,9 @@ It never starts text, image, audio, or video generation.
 creates an isolated staging artifact without provider calls, then validates
 public HTTPS byte ranges, low-bitrate fast-start preview generation, browser
 cache headers, shared-CDN denial, and cross-workspace media protection.
+
+After non-billable staging smoke runs, inspect managed test accounts and expired
+account tokens with `cleanup_account_records.py --include-smoke-users`. The tool
+is dry-run by default. `--apply` first creates a SQLite backup, matches only the
+exact `smoke-a-*` / `smoke-b-*` addresses created by `smoke_test.py`, checks
+foreign-key integrity, and never matches ordinary customer email addresses.

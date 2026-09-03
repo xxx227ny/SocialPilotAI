@@ -41,6 +41,7 @@ def test_email_configurator_preserves_runtime_and_adds_hidden_secret() -> None:
     assert updated["ACCOUNT_SMTP_HOST"] == "smtp.example.com"
     assert updated["ACCOUNT_SMTP_PORT"] == "465"
     assert updated["ACCOUNT_SMTP_PASSWORD"] == "authorization-code"
+    assert updated["ACCOUNT_REQUIRE_VERIFIED_EMAIL"] == "true"
 
 
 @pytest.mark.parametrize(

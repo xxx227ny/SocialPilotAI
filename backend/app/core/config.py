@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     account_email_request_cooldown_seconds: int = Field(
         default=60, ge=30, le=3600
     )
+    account_require_verified_email: bool = False
+    account_action_token_retention_seconds: int = Field(
+        default=604_800, ge=3600, le=2_592_000
+    )
     user_credential_encryption_key: SecretStr | None = None
     user_credential_encryption_key_id: str = "v1"
     enable_demo_auth: bool = False

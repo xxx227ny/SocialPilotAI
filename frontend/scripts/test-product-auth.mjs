@@ -55,7 +55,13 @@ assert.match(login, /忘记密码？/);
 assert.match(login, /找回密码（邮件服务待配置）/);
 assert.match(login, /disabled=\{!emailDeliveryAvailable\}/);
 assert.match(context, /emailDeliveryAvailable/);
+assert.match(context, /emailVerificationRequired/);
+assert.match(context, /emailVerificationRetryAfterSeconds/);
 assert.match(backendAuth, /email_delivery_available/);
+assert.match(backendAuth, /email_verification_required/);
+assert.match(accountSecurity, /秒后可重发/);
+assert.match(accountSecurity, /请先完成邮箱验证/);
+assert.match(app, /&& !emailVerified/);
 assert.match(login, /重新连接登录服务/);
 assert.match(login, /VPN 或代理已关闭/);
 assert.match(context, /网络、代理或 VPN/);
@@ -82,4 +88,4 @@ assert.match(backendAuth, /registration_enabled=settings\.allow_public_registrat
 assert.match(styles, /\.account-menu button[\s\S]*color:\s*#b71935/);
 assert.match(styles, /\.account-menu button:hover[\s\S]*background:\s*#ffe2e8/);
 
-console.log("Product auth frontend checks passed: 66 assertions.");
+console.log("Product auth frontend checks passed: 71 assertions.");

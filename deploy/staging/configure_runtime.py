@@ -21,6 +21,7 @@ PRESERVED_ACCOUNT_EMAIL_KEYS = (
     "ACCOUNT_SMTP_PASSWORD",
     "ACCOUNT_SMTP_SECURITY",
     "ACCOUNT_SMTP_TIMEOUT_SECONDS",
+    "ACCOUNT_REQUIRE_VERIFIED_EMAIL",
 )
 
 
@@ -84,10 +85,13 @@ def build_runtime_config(existing: dict[str, object]) -> dict[str, object]:
         "VIDEO_COMPOSITION_TEMP_ROOT": "/var/lib/socialpilot-staging/composition-temp",
         "VIDEO_ARTIFACT_MAX_BYTES": "500000000",
         "ENABLE_VIDEO_PREVIEW_PREWARM": "true",
-        "EXECUTION_WORKER_STATUS_FILE": "/var/lib/socialpilot-staging/worker-status.json",
+        "EXECUTION_WORKER_STATUS_FILE": (
+            "/var/lib/socialpilot-staging/worker-status.json"
+        ),
         "SOCIALPILOT_PUBLIC_ORIGIN": PUBLIC_ORIGIN,
         "SOCIAL_FRONTEND_BASE_URL": PUBLIC_ORIGIN,
         "ACCOUNT_PUBLIC_WEB_ORIGIN": PUBLIC_ORIGIN,
+        "ACCOUNT_ACTION_TOKEN_RETENTION_SECONDS": "604800",
     }
     # Email delivery belongs to the server, while Qwen/Wanx credentials belong
     # to each user workspace. Preserve only the explicit SMTP allowlist when a

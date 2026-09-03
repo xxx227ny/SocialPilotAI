@@ -44,6 +44,7 @@ class EmailVerificationCompleteRequest(BaseModel):
 
 class AccountActionRead(BaseModel):
     message: str
+    retry_after_seconds: int | None = Field(default=None, ge=0)
 
 
 class SessionRevocationRead(BaseModel):
@@ -61,3 +62,5 @@ class AuthSessionRead(BaseModel):
     registration_enabled: bool | None = None
     email_verified: bool | None = None
     email_delivery_available: bool | None = None
+    email_verification_required: bool | None = None
+    email_verification_retry_after_seconds: int | None = Field(default=None, ge=0)

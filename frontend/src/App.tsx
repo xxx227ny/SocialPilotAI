@@ -36,7 +36,12 @@ const SocialAccountsPage = lazy(() =>
 );
 
 export default function App() {
-  const { authenticated, checking } = useAuth();
+  const {
+    authenticated,
+    checking,
+    emailVerified,
+    emailVerificationRequired,
+  } = useAuth();
   const location = useLocation();
   if (checking) {
     return <main className="auth-loading" aria-live="polite">正在检查登录状态…</main>;
@@ -47,6 +52,13 @@ export default function App() {
   }
   if (!authenticated) {
     return <LoginPage />;
+  }
+  if (
+    emailVerificationRequired
+    && !emailVerified
+    && location.pathname !== "/settings/account-security"
+  ) {
+    return <Navigate to="/settings/account-security" replace />;
   }
   const snapshotRoute = parseSnapshotPresentationRoute(location.search);
   if (snapshotRoute.kind !== "legacy") {

@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
 from app.db.session import get_db
+from app.services.account_email_service import account_email_verification_required
 from app.services.demo_auth_service import (
     SESSION_COOKIE_NAME,
     AuthenticatedUser,
@@ -52,6 +53,27 @@ def require_product_principal(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="当前环境尚未启用独立用户账号。",
+        )
+    return principal
+
+
+def require_verified_workspace_user(
+    settings: SettingsDep,
+    principal: Annotated[
+        AuthenticatedPrincipal | AuthenticatedUser | None,
+        Depends(require_authenticated_user),
+    ],
+) -> AuthenticatedPrincipal | AuthenticatedUser | None:
+    """Protect the product workspace once verified-email enforcement is enabled."""
+
+    if (
+        isinstance(principal, AuthenticatedPrincipal)
+        and account_email_verification_required(settings)
+        and not principal.email_verified
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="请先完成邮箱验证，再使用商品、AI 生成和发布功能。",
         )
     return principal
 

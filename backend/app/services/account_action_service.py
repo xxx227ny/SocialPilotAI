@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import secrets
 from datetime import timedelta
 
-from sqlalchemy import select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import AccountActionToken, AuthSession, User
@@ -33,8 +34,14 @@ def issue_account_action_token(
     purpose: str,
     ttl_seconds: int,
     cooldown_seconds: int,
+    retention_seconds: int = 604_800,
 ) -> str | None:
     now = utc_now()
+    cleanup_account_action_tokens(
+        db,
+        retention_seconds=retention_seconds,
+        now=now,
+    )
     recent = db.scalar(
         select(AccountActionToken)
         .where(
@@ -71,6 +78,56 @@ def issue_account_action_token(
     )
     db.flush()
     return token
+
+
+def account_action_retry_after_seconds(
+    db: Session,
+    *,
+    user_id: int,
+    purpose: str,
+    cooldown_seconds: int,
+) -> int:
+    now = utc_now()
+    recent = db.scalar(
+        select(AccountActionToken)
+        .where(
+            AccountActionToken.user_id == user_id,
+            AccountActionToken.purpose == purpose,
+            AccountActionToken.consumed_at.is_(None),
+            AccountActionToken.expires_at > now,
+            AccountActionToken.created_at
+            > now - timedelta(seconds=cooldown_seconds),
+        )
+        .order_by(AccountActionToken.created_at.desc())
+    )
+    if recent is None:
+        return 0
+    created_at = recent.created_at
+    if created_at.tzinfo is None and now.tzinfo is not None:
+        created_at = created_at.replace(tzinfo=now.tzinfo)
+    deadline = created_at + timedelta(seconds=cooldown_seconds)
+    return max(0, math.ceil((deadline - now).total_seconds()))
+
+
+def cleanup_account_action_tokens(
+    db: Session,
+    *,
+    retention_seconds: int = 604_800,
+    now=None,
+) -> int:
+    """Remove unusable tokens without touching active account links."""
+
+    current = now or utc_now()
+    consumed_before = current - timedelta(seconds=retention_seconds)
+    result = db.execute(
+        delete(AccountActionToken).where(
+            or_(
+                AccountActionToken.expires_at <= current,
+                AccountActionToken.consumed_at <= consumed_before,
+            )
+        )
+    )
+    return int(result.rowcount or 0)
 
 
 def verify_email_with_token(db: Session, token: str) -> bool:

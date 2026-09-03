@@ -1,6 +1,9 @@
 from fastapi import APIRouter, Depends
 
-from app.api.auth_dependency import require_authenticated_user
+from app.api.auth_dependency import (
+    require_authenticated_user,
+    require_verified_workspace_user,
+)
 from app.api.v1.routes.auth import router as auth_router
 from app.api.v1.routes.batch_video_jobs import router as batch_video_jobs_router
 from app.api.v1.routes.brand_kits import router as brand_kits_router
@@ -35,28 +38,31 @@ api_router.include_router(auth_router, tags=["authentication"])
 
 protected_router = APIRouter(dependencies=[Depends(require_authenticated_user)])
 protected_router.include_router(system_router, tags=["system"])
-protected_router.include_router(products_router, tags=["products"])
-protected_router.include_router(credentials_router, tags=["credentials"])
-protected_router.include_router(
+api_router.include_router(protected_router)
+
+workspace_router = APIRouter(dependencies=[Depends(require_verified_workspace_user)])
+workspace_router.include_router(products_router, tags=["products"])
+workspace_router.include_router(credentials_router, tags=["credentials"])
+workspace_router.include_router(
     product_marketing_videos_router, tags=["real-product-video"]
 )
-protected_router.include_router(brand_kits_router, tags=["brand-kits"])
-protected_router.include_router(batch_video_jobs_router, tags=["batch-video-jobs"])
-protected_router.include_router(execution_jobs_router, tags=["execution-jobs"])
-protected_router.include_router(social_router, tags=["social-publishing"])
-protected_router.include_router(marketing_tasks_router, tags=["marketing-tasks"])
-protected_router.include_router(
+workspace_router.include_router(brand_kits_router, tags=["brand-kits"])
+workspace_router.include_router(batch_video_jobs_router, tags=["batch-video-jobs"])
+workspace_router.include_router(execution_jobs_router, tags=["execution-jobs"])
+workspace_router.include_router(social_router, tags=["social-publishing"])
+workspace_router.include_router(marketing_tasks_router, tags=["marketing-tasks"])
+workspace_router.include_router(
     presentation_snapshots_router, tags=["presentation-snapshots"]
 )
-protected_router.include_router(strategies_router, tags=["marketing-strategies"])
-protected_router.include_router(copies_router, tags=["copy-matrix"])
-protected_router.include_router(strategy_copy_router, tags=["copy-matrix"])
-protected_router.include_router(growth_router, tags=["growth-copilot"])
-protected_router.include_router(videos_router, tags=["content-studio"])
-protected_router.include_router(video_renders_router, tags=["video-render-tasks"])
-protected_router.include_router(
+workspace_router.include_router(strategies_router, tags=["marketing-strategies"])
+workspace_router.include_router(copies_router, tags=["copy-matrix"])
+workspace_router.include_router(strategy_copy_router, tags=["copy-matrix"])
+workspace_router.include_router(growth_router, tags=["growth-copilot"])
+workspace_router.include_router(videos_router, tags=["content-studio"])
+workspace_router.include_router(video_renders_router, tags=["video-render-tasks"])
+workspace_router.include_router(
     video_script_versions_router, tags=["video-script-versions"]
 )
-protected_router.include_router(video_compositions_router, tags=["video-compositions"])
-protected_router.include_router(dashboard_router, tags=["demo-dashboard"])
-api_router.include_router(protected_router)
+workspace_router.include_router(video_compositions_router, tags=["video-compositions"])
+workspace_router.include_router(dashboard_router, tags=["demo-dashboard"])
+api_router.include_router(workspace_router)

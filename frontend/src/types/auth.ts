@@ -9,6 +9,8 @@ export type AuthSession = {
   registration_enabled?: boolean | null;
   email_verified?: boolean | null;
   email_delivery_available?: boolean | null;
+  email_verification_required?: boolean | null;
+  email_verification_retry_after_seconds?: number | null;
 };
 
 export type SessionRevocation = {
@@ -17,4 +19,5 @@ export type SessionRevocation = {
 
 export type AccountAction = {
   message: string;
+  retry_after_seconds?: number | null;
 };

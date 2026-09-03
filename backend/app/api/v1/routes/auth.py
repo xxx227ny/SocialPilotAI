@@ -30,6 +30,7 @@ from app.schemas.auth import (
 from app.services.account_action_service import (
     EMAIL_VERIFICATION,
     PASSWORD_RESET,
+    account_action_retry_after_seconds,
     find_active_user_by_email,
     issue_account_action_token,
     reset_password_with_token,
@@ -39,6 +40,7 @@ from app.services.account_email_service import (
     AccountEmailDeliveryError,
     AccountEmailSenderDep,
     account_email_delivery_configured,
+    account_email_verification_required,
 )
 from app.services.demo_auth_service import (
     SESSION_COOKIE_NAME,
@@ -84,9 +86,10 @@ def _set_session_cookie(
 def _principal_response(
     principal,
     *,
-    registration_enabled: bool,
-    email_delivery_available: bool,
+    settings: Settings,
+    db: Session,
 ) -> AuthSessionRead:
+    email_delivery_available = account_email_delivery_configured(settings)
     return AuthSessionRead(
         enabled=True,
         authenticated=True,
@@ -95,9 +98,20 @@ def _principal_response(
         user_id=principal.user_id,
         workspace_id=principal.workspace_id,
         auth_mode="user",
-        registration_enabled=registration_enabled,
+        registration_enabled=settings.allow_public_registration,
         email_verified=principal.email_verified,
         email_delivery_available=email_delivery_available,
+        email_verification_required=account_email_verification_required(settings),
+        email_verification_retry_after_seconds=(
+            account_action_retry_after_seconds(
+                db,
+                user_id=principal.user_id,
+                purpose=EMAIL_VERIFICATION,
+                cooldown_seconds=settings.account_email_request_cooldown_seconds,
+            )
+            if not principal.email_verified and email_delivery_available
+            else 0
+        ),
     )
 
 
@@ -120,11 +134,14 @@ def get_auth_session(
                 auth_mode="user",
                 registration_enabled=settings.allow_public_registration,
                 email_delivery_available=account_email_delivery_configured(settings),
+                email_verification_required=account_email_verification_required(
+                    settings
+                ),
             )
         return _principal_response(
             principal,
-            registration_enabled=settings.allow_public_registration,
-            email_delivery_available=account_email_delivery_configured(settings),
+            settings=settings,
+            db=db,
         )
     if not settings.enable_demo_auth:
         return AuthSessionRead(enabled=False, authenticated=True, username=None)
@@ -200,6 +217,7 @@ def register(
             purpose=EMAIL_VERIFICATION,
             ttl_seconds=settings.email_verification_token_ttl_seconds,
             cooldown_seconds=settings.account_email_request_cooldown_seconds,
+            retention_seconds=settings.account_action_token_retention_seconds,
         )
         if verification_token is not None:
             try:
@@ -212,8 +230,8 @@ def register(
                 db.commit()
     return _principal_response(
         principal,
-        registration_enabled=settings.allow_public_registration,
-        email_delivery_available=account_email_delivery_configured(settings),
+        settings=settings,
+        db=db,
     )
 
 
@@ -275,8 +293,8 @@ def login(
         )
         return _principal_response(
             principal,
-            registration_enabled=settings.allow_public_registration,
-            email_delivery_available=account_email_delivery_configured(settings),
+            settings=settings,
+            db=db,
         )
     if not settings.enable_demo_auth:
         raise HTTPException(
@@ -341,8 +359,8 @@ def update_password(
     )
     return _principal_response(
         principal,
-        registration_enabled=settings.allow_public_registration,
-        email_delivery_available=account_email_delivery_configured(settings),
+        settings=settings,
+        db=db,
     )
 
 
@@ -389,6 +407,7 @@ def request_password_reset(
         purpose=PASSWORD_RESET,
         ttl_seconds=settings.password_reset_token_ttl_seconds,
         cooldown_seconds=settings.account_email_request_cooldown_seconds,
+        retention_seconds=settings.account_action_token_retention_seconds,
     )
     if token is None:
         db.rollback()
@@ -474,14 +493,21 @@ def request_email_verification(
         purpose=EMAIL_VERIFICATION,
         ttl_seconds=settings.email_verification_token_ttl_seconds,
         cooldown_seconds=settings.account_email_request_cooldown_seconds,
+        retention_seconds=settings.account_action_token_retention_seconds,
     )
     if token is None:
+        retry_after_seconds = account_action_retry_after_seconds(
+            db,
+            user_id=user.id,
+            purpose=EMAIL_VERIFICATION,
+            cooldown_seconds=settings.account_email_request_cooldown_seconds,
+        )
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="验证邮件已发送，请稍后再试。",
+            detail=f"验证邮件已发送，请在 {retry_after_seconds} 秒后重试。",
             headers={
-                "Retry-After": str(settings.account_email_request_cooldown_seconds)
+                "Retry-After": str(retry_after_seconds)
             },
         )
     try:
@@ -493,7 +519,10 @@ def request_email_verification(
             detail="验证邮件发送失败，请稍后重试。",
         ) from exc
     db.commit()
-    return AccountActionRead(message="验证邮件已发送，请前往邮箱完成验证。")
+    return AccountActionRead(
+        message="验证邮件已发送，请前往邮箱完成验证。",
+        retry_after_seconds=settings.account_email_request_cooldown_seconds,
+    )
 
 
 @router.post(
@@ -553,6 +582,8 @@ def logout(
             registration_enabled=settings.allow_public_registration,
             email_verified=False,
             email_delivery_available=account_email_delivery_configured(settings),
+            email_verification_required=account_email_verification_required(settings),
+            email_verification_retry_after_seconds=0,
         )
     if settings.enable_demo_auth:
         return AuthSessionRead(

@@ -1,5 +1,5 @@
 import axios from "axios";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 
 import {
   changePassword,
@@ -11,7 +11,13 @@ import { useAuth } from "../context/AuthContext";
 import { useReadResource } from "../hooks/useReadResource";
 
 export function AccountSecurityPage() {
-  const { emailVerified, username } = useAuth();
+  const {
+    emailVerified,
+    emailVerificationRequired,
+    emailVerificationRetryAfterSeconds,
+    refresh: refreshAuth,
+    username,
+  } = useAuth();
   const readiness = useReadResource("system-readiness", getSystemReadiness);
   const emailDeliveryReady = readiness.data?.account_email.ready === true;
   const [currentPassword, setCurrentPassword] = useState("");
@@ -20,8 +26,23 @@ export function AccountSecurityPage() {
   const [submitting, setSubmitting] = useState(false);
   const [revoking, setRevoking] = useState(false);
   const [sendingVerification, setSendingVerification] = useState(false);
+  const [verificationCooldown, setVerificationCooldown] = useState(
+    emailVerificationRetryAfterSeconds,
+  );
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setVerificationCooldown(emailVerificationRetryAfterSeconds);
+  }, [emailVerificationRetryAfterSeconds]);
+
+  useEffect(() => {
+    if (verificationCooldown <= 0) return undefined;
+    const timer = window.setTimeout(() => {
+      setVerificationCooldown((value) => Math.max(0, value - 1));
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [verificationCooldown]);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -80,11 +101,15 @@ export function AccountSecurityPage() {
     try {
       const result = await requestEmailVerification();
       setMessage(result.message);
+      setVerificationCooldown(Math.max(0, result.retry_after_seconds ?? 0));
+      await refreshAuth();
     } catch (caught) {
       if (axios.isAxiosError(caught) && caught.response?.status === 503) {
         setError(caught.response.data?.detail || "系统邮件服务尚未配置。");
       } else if (axios.isAxiosError(caught) && caught.response?.status === 429) {
-        setError("验证邮件已经发送，请稍后再试。");
+        const retryAfter = Number(caught.response.headers["retry-after"] || 0);
+        setVerificationCooldown(Number.isFinite(retryAfter) ? retryAfter : 0);
+        setError(caught.response.data?.detail || "验证邮件已经发送，请稍后再试。");
       } else {
         setError("验证邮件发送失败，请稍后重试。");
       }
@@ -113,6 +138,12 @@ export function AccountSecurityPage() {
         </div>
         {!emailVerified && (
           <div className="email-verification-actions">
+            {emailVerificationRequired && (
+              <p className="settings-warning" role="status">
+                为保护账号与用户自己的 API Key，请先完成邮箱验证；验证前商品、AI
+                生成和发布功能暂不可用。
+              </p>
+            )}
             {readiness.loading && !readiness.data ? (
               <p className="settings-information" role="status">
                 正在检查邮件服务…
@@ -126,11 +157,17 @@ export function AccountSecurityPage() {
             <div className="settings-actions">
               <button
                 type="button"
-                disabled={sendingVerification || !emailDeliveryReady}
+                disabled={
+                  sendingVerification
+                  || !emailDeliveryReady
+                  || verificationCooldown > 0
+                }
                 onClick={sendVerification}
               >
                 {sendingVerification
                   ? "正在发送…"
+                  : verificationCooldown > 0
+                    ? `${verificationCooldown} 秒后可重发`
                   : emailDeliveryReady
                     ? "发送验证邮件"
                     : "邮件服务待配置"}

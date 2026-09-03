@@ -26,7 +26,11 @@ def register(client: httpx.Client, email: str, password: str, name: str) -> dict
     )
     require_status(response, 201)
     cookie = response.headers.get("set-cookie", "")
-    if "HttpOnly" not in cookie or "Secure" not in cookie or "SameSite=lax" not in cookie:
+    if (
+        "HttpOnly" not in cookie
+        or "Secure" not in cookie
+        or "SameSite=lax" not in cookie
+    ):
         raise RuntimeError("Registration did not return the required secure cookie")
     return response.json()
 
@@ -87,7 +91,9 @@ def create_product(client: httpx.Client, name: str) -> dict:
         json={
             "name": name,
             "category": "Deployment Validation",
-            "description": "A non-billable product used for staging isolation validation.",
+            "description": (
+                "A non-billable product used for staging isolation validation."
+            ),
             "selling_points": ["Workspace isolated"],
             "target_markets": ["Validation only"],
         },
@@ -130,6 +136,7 @@ def main() -> None:
             "auth_mode": "user",
             "registration_enabled": True,
             "email_delivery_available": False,
+            "email_verification_required": False,
         }:
             raise RuntimeError("Unexpected anonymous session state")
 

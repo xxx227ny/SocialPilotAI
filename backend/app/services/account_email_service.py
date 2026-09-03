@@ -131,3 +131,16 @@ def account_email_delivery_configured(settings: Settings) -> bool:
             (settings.account_smtp_host or "").strip(),
         )
     )
+
+
+def account_email_verification_required(settings: Settings) -> bool:
+    """Require verification only while a usable delivery path is configured.
+
+    This prevents an incomplete initial setup from locking every customer out
+    of their existing workspace before a delivery channel has been configured.
+    """
+
+    return bool(
+        settings.account_require_verified_email
+        and account_email_delivery_configured(settings)
+    )

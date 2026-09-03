@@ -27,6 +27,8 @@ type AuthState = {
   registrationEnabled: boolean;
   emailVerified: boolean;
   emailDeliveryAvailable: boolean;
+  emailVerificationRequired: boolean;
+  emailVerificationRetryAfterSeconds: number;
   error: string | null;
   login: (username: string, password: string) => Promise<void>;
   register: (email: string, password: string, workspaceName?: string) => Promise<void>;
@@ -47,6 +49,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [registrationEnabled, setRegistrationEnabled] = useState(false);
   const [emailVerified, setEmailVerified] = useState(false);
   const [emailDeliveryAvailable, setEmailDeliveryAvailable] = useState(false);
+  const [emailVerificationRequired, setEmailVerificationRequired] = useState(false);
+  const [emailVerificationRetryAfterSeconds, setEmailVerificationRetryAfterSeconds] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   const applyLocalLogout = useCallback((nextError: string | null = null) => {
@@ -55,6 +59,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
     setAuthenticated(false);
     setUsername(null);
     setEmailVerified(false);
+    setEmailVerificationRequired(false);
+    setEmailVerificationRetryAfterSeconds(0);
     setError(nextError);
   }, []);
 
@@ -67,6 +73,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
       auth_mode?: "disabled" | "demo" | "user" | null;
       email_verified?: boolean | null;
       email_delivery_available?: boolean | null;
+      email_verification_required?: boolean | null;
+      email_verification_retry_after_seconds?: number | null;
     }) => {
       clearReadResources();
       clearCopyWorkspaceCache();
@@ -77,6 +85,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
       setRegistrationEnabled(Boolean(session.registration_enabled));
       setEmailVerified(Boolean(session.email_verified));
       setEmailDeliveryAvailable(Boolean(session.email_delivery_available));
+      setEmailVerificationRequired(Boolean(session.email_verification_required));
+      setEmailVerificationRetryAfterSeconds(
+        Math.max(0, session.email_verification_retry_after_seconds ?? 0),
+      );
       setError(null);
     },
     [],
@@ -124,6 +136,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
         setAuthenticated(false);
         setUsername(null);
         setEmailVerified(false);
+        setEmailVerificationRequired(false);
+        setEmailVerificationRetryAfterSeconds(0);
       }
     };
     window.addEventListener("socialpilot:unauthorized", handleUnauthorized);
@@ -177,6 +191,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
       registrationEnabled,
       emailVerified,
       emailDeliveryAvailable,
+      emailVerificationRequired,
+      emailVerificationRetryAfterSeconds,
       error,
       login,
       register,
@@ -193,6 +209,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
       registrationEnabled,
       emailVerified,
       emailDeliveryAvailable,
+      emailVerificationRequired,
+      emailVerificationRetryAfterSeconds,
       error,
       login,
       register,

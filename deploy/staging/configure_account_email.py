@@ -6,12 +6,11 @@ import argparse
 import getpass
 import json
 import os
-from pathlib import Path
 import re
 import shutil
 import time
+from pathlib import Path
 from urllib.parse import urlsplit
-
 
 DEFAULT_CONFIG_PATH = Path("/etc/socialpilot-staging/runtime.json")
 DEFAULT_PUBLIC_ORIGIN = "https://staging.47.242.222.177.nip.io"
@@ -66,6 +65,7 @@ def build_email_update(
             "ACCOUNT_SMTP_PORT": str(smtp_port),
             "ACCOUNT_SMTP_SECURITY": security,
             "ACCOUNT_SMTP_TIMEOUT_SECONDS": "15",
+            "ACCOUNT_REQUIRE_VERIFIED_EMAIL": "true",
         }
     )
     if normalized_username:
