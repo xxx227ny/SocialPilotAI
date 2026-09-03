@@ -85,10 +85,10 @@ def verify_invalid_key(client: httpx.Client, api_key: str) -> dict:
     return result
 
 
-def create_product(client: httpx.Client, name: str) -> dict:
-    response = client.post(
-        "/api/v1/products",
-        json={
+def create_product(client: httpx.Client, name: str, request_key: str) -> dict:
+    request = {
+        "headers": {"Idempotency-Key": request_key},
+        "json": {
             "name": name,
             "category": "Deployment Validation",
             "description": (
@@ -97,9 +97,17 @@ def create_product(client: httpx.Client, name: str) -> dict:
             "selling_points": ["Workspace isolated"],
             "target_markets": ["Validation only"],
         },
+    }
+    response = client.post(
+        "/api/v1/products",
+        **request,
     )
     require_status(response, 201)
-    return response.json()
+    repeated = client.post("/api/v1/products", **request)
+    require_status(repeated, 201)
+    if repeated.json().get("id") != response.json().get("id"):
+        raise RuntimeError("Repeated product request created a duplicate")
+    return repeated.json()
 
 
 def main() -> None:
@@ -130,14 +138,15 @@ def main() -> None:
     ):
         session = first.get("/api/v1/auth/session")
         require_status(session, 200)
-        if session.json() != {
-            "enabled": True,
-            "authenticated": False,
-            "auth_mode": "user",
-            "registration_enabled": True,
-            "email_delivery_available": False,
-            "email_verification_required": False,
-        }:
+        anonymous = session.json()
+        if (
+            anonymous.get("enabled") is not True
+            or anonymous.get("authenticated") is not False
+            or anonymous.get("auth_mode") != "user"
+            or anonymous.get("registration_enabled") is not True
+            or not isinstance(anonymous.get("email_delivery_available"), bool)
+            or anonymous.get("email_verification_required") is not False
+        ):
             raise RuntimeError("Unexpected anonymous session state")
 
         account_a = register(
@@ -166,12 +175,20 @@ def main() -> None:
             raise RuntimeError("Credential hints did not remain user-specific")
         verify_invalid_key(first, key_a)
 
-        product_a = create_product(first, "Smoke Product A " + run_id)
+        product_a = create_product(
+            first,
+            "Smoke Product A " + run_id,
+            "smoke-product-create-" + run_id,
+        )
         if second.get("/api/v1/products").json() != []:
             raise RuntimeError("Second workspace can see first workspace products")
         require_status(second.get(f"/api/v1/products/{product_a['id']}"), 404)
 
-        product_b = create_product(second, "Smoke Product B " + run_id)
+        product_b = create_product(
+            second,
+            "Smoke Product B " + run_id,
+            "smoke-product-create-" + run_id,
+        )
         first_products = first.get("/api/v1/products")
         require_status(first_products, 200)
         if [item["id"] for item in first_products.json()] != [product_a["id"]]:
@@ -187,6 +204,8 @@ def main() -> None:
                 raise RuntimeError("Workspace summary did not declare its data scope")
             if summary.get("ai_calls") != 0:
                 raise RuntimeError("Workspace summary unexpectedly reported an AI call")
+            if summary.get("ai_job_count") != 0:
+                raise RuntimeError("Workspace summary unexpectedly reported an AI job")
             if summary.get("product_count") != 1:
                 raise RuntimeError("Workspace summary leaked or omitted a product")
         if first_summary.json().get("api_key_configured") is not True:

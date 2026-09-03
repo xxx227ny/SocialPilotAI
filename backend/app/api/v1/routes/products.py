@@ -1,7 +1,16 @@
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Request, Response, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Header,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -26,8 +35,15 @@ SettingsDep = Annotated[Settings, Depends(get_settings)]
 
 
 @router.post("", response_model=ProductRead, status_code=status.HTTP_201_CREATED)
-def create_product(data: ProductCreate, db: DbSession) -> ProductRead:
-    return ProductService(db).create(data)
+def create_product(
+    data: ProductCreate,
+    db: DbSession,
+    idempotency_key: Annotated[
+        str | None,
+        Header(alias="Idempotency-Key", min_length=16, max_length=100),
+    ] = None,
+) -> ProductRead:
+    return ProductService(db).create(data, request_key=idempotency_key)
 
 
 @router.get("", response_model=list[ProductRead])

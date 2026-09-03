@@ -1,8 +1,9 @@
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import (
     CopyMatrix,
+    ExecutionAttempt,
     ExecutionJob,
     MarketingStrategy,
     Product,
@@ -12,7 +13,10 @@ from app.models import (
     VideoRenderArtifact,
     VideoRenderTask,
 )
-from app.schemas.dashboard import WorkspaceActivitySummarySchema
+from app.schemas.dashboard import (
+    WorkspaceActivitySummarySchema,
+    WorkspaceEstimatedCostSchema,
+)
 from app.services.provider_credential_service import DASHSCOPE_PROVIDER
 
 
@@ -85,7 +89,66 @@ class WorkspaceActivitySummaryService:
                 ExecutionJob.status.in_(("FAILED", "SUBMIT_UNKNOWN")),
             )
         )
+        ai_job_filter = or_(
+            ExecutionJob.job_type.like("qwen.%"),
+            ExecutionJob.job_type.like("wanx.%"),
+            ExecutionJob.job_type.like("tts.%"),
+            ExecutionJob.job_type.like("happyhorse.%"),
+        )
+        ai_job_count = self._count(
+            select(func.count(ExecutionJob.id)).where(
+                ExecutionJob.workspace_id == workspace_id,
+                ai_job_filter,
+            )
+        )
+        ai_success_count = self._count(
+            select(func.count(ExecutionJob.id)).where(
+                ExecutionJob.workspace_id == workspace_id,
+                ai_job_filter,
+                ExecutionJob.status == "SUCCEEDED",
+            )
+        )
+        ai_attention_count = self._count(
+            select(func.count(ExecutionJob.id)).where(
+                ExecutionJob.workspace_id == workspace_id,
+                ai_job_filter,
+                ExecutionJob.status.in_(("FAILED", "SUBMIT_UNKNOWN")),
+            )
+        )
+        ai_calls = self._count(
+            select(func.coalesce(func.sum(ExecutionAttempt.provider_call_count), 0))
+            .join(
+                ExecutionJob,
+                ExecutionJob.id == ExecutionAttempt.execution_job_id,
+            )
+            .where(
+                ExecutionJob.workspace_id == workspace_id,
+                ai_job_filter,
+            )
+        )
+        estimated_cost_rows = self.db.execute(
+            select(
+                ExecutionJob.currency,
+                func.coalesce(func.sum(ExecutionJob.estimated_cost), 0),
+            )
+            .where(
+                ExecutionJob.workspace_id == workspace_id,
+                ai_job_filter,
+                ExecutionJob.cost_confirmed.is_(True),
+                ExecutionJob.estimated_cost > 0,
+            )
+            .group_by(ExecutionJob.currency)
+            .order_by(ExecutionJob.currency)
+        ).all()
         return WorkspaceActivitySummarySchema(
+            ai_calls=ai_calls,
+            ai_job_count=ai_job_count,
+            ai_success_count=ai_success_count,
+            ai_attention_count=ai_attention_count,
+            confirmed_estimated_costs=[
+                WorkspaceEstimatedCostSchema(currency=currency, amount=amount)
+                for currency, amount in estimated_cost_rows
+            ],
             api_key_configured=credential is not None,
             api_key_verified=(
                 credential is not None and credential.verified_at is not None

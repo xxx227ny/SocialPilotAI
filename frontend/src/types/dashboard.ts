@@ -66,7 +66,11 @@ export interface DashboardSnapshot {
 
 export interface WorkspaceActivitySummary {
   data_scope: "current_workspace";
-  ai_calls: 0;
+  ai_calls: number;
+  ai_job_count: number;
+  ai_success_count: number;
+  ai_attention_count: number;
+  confirmed_estimated_costs: Array<{ currency: string; amount: string }>;
   api_key_configured: boolean;
   api_key_verified: boolean;
   product_count: number;

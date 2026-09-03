@@ -46,6 +46,15 @@ function formatStorage(bytes: number): string {
   return `${bytes} B`;
 }
 
+function formatEstimatedCosts(
+  costs: WorkspaceActivitySummary["confirmed_estimated_costs"],
+): string {
+  if (costs.length === 0) return "暂无已确认的预计费用";
+  return costs
+    .map(({ amount, currency }) => `${Number(amount).toFixed(2)} ${currency}`)
+    .join(" + ");
+}
+
 export function DashboardPage() {
   const { authMode, username } = useAuth();
   const [summary, setSummary] = useState<WorkspaceActivitySummary | null>(null);
@@ -155,6 +164,13 @@ export function DashboardPage() {
                   : summary.attention_job_count > 0
                     ? `${summary.attention_job_count} 个任务需要查看失败原因。`
                     : "当前没有等待处理或需要关注的任务。"}
+              </p>
+            </article>
+            <article>
+              <strong>{summary.ai_calls} 次模型调用 · {summary.ai_job_count} 个 AI 任务</strong>
+              <p>
+                成功 {summary.ai_success_count} 个，需要关注 {summary.ai_attention_count} 个；
+                {formatEstimatedCosts(summary.confirmed_estimated_costs)}（预算估算，并非服务商账单）。
               </p>
             </article>
           </div>

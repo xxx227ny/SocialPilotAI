@@ -19,14 +19,33 @@ class ProductRepository:
             value = current_execution_workspace_id()
         return int(value) if value is not None else None
 
-    def create(self, data: ProductCreate) -> Product:
+    def create(
+        self,
+        data: ProductCreate,
+        *,
+        create_request_key: str | None = None,
+        create_request_digest: str | None = None,
+    ) -> Product:
         product = Product(
             workspace_id=self.workspace_id,
+            create_request_key=create_request_key,
+            create_request_digest=create_request_digest,
             **data.model_dump(),
         )
         self.session.add(product)
         self.session.commit()
         return self.get(product.id)  # type: ignore[return-value]
+
+    def get_by_create_request_key(self, request_key: str) -> Product | None:
+        statement = select(Product).options(selectinload(Product.assets)).where(
+            Product.create_request_key == request_key
+        )
+        workspace_id = self.workspace_id
+        if workspace_id is None:
+            statement = statement.where(Product.workspace_id.is_(None))
+        else:
+            statement = statement.where(Product.workspace_id == workspace_id)
+        return self.session.scalar(statement)
 
     def list(self) -> list[Product]:
         statement = (

@@ -23,8 +23,11 @@ export async function getProduct(
 
 export async function createProduct(
   payload: ProductCreatePayload,
+  idempotencyKey: string,
 ): Promise<Product> {
-  const response = await apiClient.post<Product>("/products", payload);
+  const response = await apiClient.post<Product>("/products", payload, {
+    headers: { "Idempotency-Key": idempotencyKey },
+  });
   return response.data;
 }
 

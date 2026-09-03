@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -75,11 +76,24 @@ class DashboardSnapshotSchema(BaseModel):
     pipeline: list[PipelineStepSchema]
 
 
+class WorkspaceEstimatedCostSchema(BaseModel):
+    """Confirmed provider-budget estimate; this is not a provider invoice."""
+
+    currency: str = Field(min_length=3, max_length=3)
+    amount: Decimal = Field(ge=0, max_digits=14, decimal_places=4)
+
+
 class WorkspaceActivitySummarySchema(BaseModel):
     """Read-only, current-workspace activity totals used by onboarding."""
 
     data_scope: Literal["current_workspace"] = "current_workspace"
-    ai_calls: Literal[0] = 0
+    ai_calls: int = Field(ge=0)
+    ai_job_count: int = Field(ge=0)
+    ai_success_count: int = Field(ge=0)
+    ai_attention_count: int = Field(ge=0)
+    confirmed_estimated_costs: list[WorkspaceEstimatedCostSchema] = Field(
+        default_factory=list
+    )
     api_key_configured: bool
     api_key_verified: bool
     product_count: int = Field(ge=0)

@@ -118,6 +118,7 @@ export function ProductCreateForm({ onCreated }: ProductCreateFormProps) {
   const [requestError, setRequestError] = useState("");
   const [createdProduct, setCreatedProduct] = useState<Product | null>(null);
   const submitLock = useRef(false);
+  const pendingSubmission = useRef<{ signature: string; key: string } | null>(null);
 
   function updateField(field: "name" | "category" | "description", value: string) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -177,8 +178,14 @@ export function ProductCreateForm({ onCreated }: ProductCreateFormProps) {
     submitLock.current = true;
     setSubmitting(true);
     const requestedAt = Date.now();
+    const signature = JSON.stringify(validation.payload);
+    const idempotencyKey = pendingSubmission.current?.signature === signature
+      ? pendingSubmission.current.key
+      : crypto.randomUUID();
+    pendingSubmission.current = { signature, key: idempotencyKey };
     try {
-      const product = await createProduct(validation.payload);
+      const product = await createProduct(validation.payload, idempotencyKey);
+      pendingSubmission.current = null;
       setCreatedProduct(product);
       setForm(emptyForm());
       onCreated(product);
@@ -191,6 +198,7 @@ export function ProductCreateForm({ onCreated }: ProductCreateFormProps) {
             matchesRecentCreation(product, validation.payload!, requestedAt),
           );
           if (recovered) {
+            pendingSubmission.current = null;
             setCreatedProduct(recovered);
             setForm(emptyForm());
             onCreated(recovered);
@@ -200,6 +208,8 @@ export function ProductCreateForm({ onCreated }: ProductCreateFormProps) {
         } catch {
           // Preserve the original delivery uncertainty when confirmation also fails.
         }
+      } else {
+        pendingSubmission.current = null;
       }
       setRequestError(
         getApiErrorMessage(error, "商品创建失败，请检查服务连接后重试。"),

@@ -31,6 +31,13 @@ def utc_now() -> datetime:
 
 class Product(Base):
     __tablename__ = "products"
+    __table_args__ = (
+        UniqueConstraint(
+            "workspace_id",
+            "create_request_key",
+            name="uq_products_workspace_create_request_key",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
@@ -52,6 +59,8 @@ class Product(Base):
     workspace_id: Mapped[int | None] = mapped_column(
         ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True, index=True
     )
+    create_request_key: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    create_request_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     brand_kit_version: Mapped[BrandKitVersion | None] = relationship(
         back_populates="products"

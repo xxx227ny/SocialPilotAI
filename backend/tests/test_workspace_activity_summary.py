@@ -8,6 +8,7 @@ from app.core.config import Settings, get_settings
 from app.main import app
 from app.models import (
     CopyMatrix,
+    ExecutionAttempt,
     ExecutionJob,
     MarketingStrategy,
     ProductAsset,
@@ -150,13 +151,61 @@ def test_workspace_summary_reports_real_counts_without_cross_account_data(
                 uncertain=False,
             )
         )
+    ai_jobs = []
+    for suffix, job_type, status, cost, currency in (
+        ("copy", "qwen.copy_matrix.generate.v1", "SUCCEEDED", "0.05", "CNY"),
+        ("image", "wanx.product_image.generate.v1", "FAILED", "0.25", "CNY"),
+        ("voice", "tts.voiceover.generate.v1", "SUCCEEDED", "0", "CNY"),
+    ):
+        job = ExecutionJob(
+            workspace_id=first_workspace_id,
+            job_type=job_type,
+            source_type="product",
+            source_id=product_id,
+            input_digest=(
+                "4" if suffix == "copy" else "5" if suffix == "image" else "6"
+            )
+            * 64,
+            idempotency_key=f"workspace-summary-ai-{suffix}",
+            input_payload={},
+            priority=0,
+            estimated_cost=Decimal(cost),
+            currency=currency,
+            cost_confirmed=True,
+            status=status,
+            attempt_count=1,
+            max_attempts=1,
+            uncertain=False,
+        )
+        db_session.add(job)
+        ai_jobs.append(job)
+    db_session.flush()
+    for index, job in enumerate(ai_jobs, start=1):
+        db_session.add(
+            ExecutionAttempt(
+                execution_job_id=job.id,
+                attempt_number=1,
+                status=job.status,
+                provider_call_count=index,
+                external_submission_possible=False,
+                provider_submission_state=(
+                    "RESPONSE_RECEIVED"
+                    if job.status == "SUCCEEDED"
+                    else "EXPLICIT_FAILURE"
+                ),
+            )
+        )
     db_session.commit()
 
     first_summary = client.get("/api/v1/dashboard/workspace-summary")
     assert first_summary.status_code == 200
     assert first_summary.json() == {
         "data_scope": "current_workspace",
-        "ai_calls": 0,
+        "ai_calls": 6,
+        "ai_job_count": 3,
+        "ai_success_count": 2,
+        "ai_attention_count": 1,
+        "confirmed_estimated_costs": [{"currency": "CNY", "amount": "0.3000"}],
         "api_key_configured": True,
         "api_key_verified": False,
         "product_count": 1,
@@ -168,7 +217,7 @@ def test_workspace_summary_reports_real_counts_without_cross_account_data(
         "video_project_count": 1,
         "video_artifact_count": 1,
         "active_job_count": 1,
-        "attention_job_count": 1,
+        "attention_job_count": 2,
     }
 
     second = TestClient(app)
@@ -181,6 +230,10 @@ def test_workspace_summary_reports_real_counts_without_cross_account_data(
     assert second_summary.json() == {
         "data_scope": "current_workspace",
         "ai_calls": 0,
+        "ai_job_count": 0,
+        "ai_success_count": 0,
+        "ai_attention_count": 0,
+        "confirmed_estimated_costs": [],
         "api_key_configured": False,
         "api_key_verified": False,
         "product_count": 0,

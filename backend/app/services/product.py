@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 from dataclasses import replace
 from pathlib import Path
@@ -20,8 +22,40 @@ class ProductService:
     def __init__(self, session: Session) -> None:
         self.repository = ProductRepository(session)
 
-    def create(self, data: ProductCreate) -> Product:
-        return self.repository.create(data)
+    def create(self, data: ProductCreate, *, request_key: str | None = None) -> Product:
+        if request_key is None:
+            return self.repository.create(data)
+        digest = hashlib.sha256(
+            json.dumps(
+                data.model_dump(mode="json"),
+                ensure_ascii=True,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        existing = self.repository.get_by_create_request_key(request_key)
+        if existing is not None:
+            return self._verify_idempotent_product(existing, digest)
+        try:
+            return self.repository.create(
+                data,
+                create_request_key=request_key,
+                create_request_digest=digest,
+            )
+        except IntegrityError:
+            self.repository.session.rollback()
+            existing = self.repository.get_by_create_request_key(request_key)
+            if existing is None:
+                raise
+            return self._verify_idempotent_product(existing, digest)
+
+    @staticmethod
+    def _verify_idempotent_product(product: Product, digest: str) -> Product:
+        if product.create_request_digest != digest:
+            raise AppError(
+                "该创建请求标识已用于不同商品，请刷新页面后重新提交。", 409
+            )
+        return product
 
     def list(self) -> list[Product]:
         return self.repository.list()

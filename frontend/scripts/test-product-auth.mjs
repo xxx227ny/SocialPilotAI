@@ -11,6 +11,8 @@ const login = readFileSync(new URL("../src/pages/LoginPage.tsx", import.meta.url
 const settings = readFileSync(new URL("../src/pages/ApiKeySettingsPage.tsx", import.meta.url), "utf8");
 const dashboard = readFileSync(new URL("../src/pages/DashboardPage.tsx", import.meta.url), "utf8");
 const onboarding = readFileSync(new URL("../src/components/product/brandKitOnboardingState.ts", import.meta.url), "utf8");
+const productForm = readFileSync(new URL("../src/components/product/ProductCreateForm.tsx", import.meta.url), "utf8");
+const productsApi = readFileSync(new URL("../src/api/products.ts", import.meta.url), "utf8");
 const backendAuth = readFileSync(new URL("../../backend/app/api/v1/routes/auth.py", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
 
@@ -87,5 +89,8 @@ assert.match(backendAuth, /auth_mode="user"/);
 assert.match(backendAuth, /registration_enabled=settings\.allow_public_registration/);
 assert.match(styles, /\.account-menu button[\s\S]*color:\s*#b71935/);
 assert.match(styles, /\.account-menu button:hover[\s\S]*background:\s*#ffe2e8/);
+assert.match(productForm, /pendingSubmission/);
+assert.match(productForm, /crypto\.randomUUID\(\)/);
+assert.match(productsApi, /"Idempotency-Key": idempotencyKey/);
 
-console.log("Product auth frontend checks passed: 71 assertions.");
+console.log("Product auth frontend checks passed: 74 assertions.");

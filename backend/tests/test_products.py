@@ -40,6 +40,37 @@ def test_create_product(client: TestClient, product_payload: dict[str, object]) 
     assert product["assets"] == []
 
 
+def test_create_product_reuses_same_idempotency_key_without_duplicate(
+    client: TestClient, product_payload: dict[str, object]
+) -> None:
+    headers = {"Idempotency-Key": "product-create-request-0001"}
+
+    first = client.post("/api/v1/products", json=product_payload, headers=headers)
+    repeated = client.post("/api/v1/products", json=product_payload, headers=headers)
+
+    assert first.status_code == repeated.status_code == 201
+    assert repeated.json()["id"] == first.json()["id"]
+    assert len(client.get("/api/v1/products").json()) == 1
+
+
+def test_create_product_rejects_idempotency_key_reuse_for_different_payload(
+    client: TestClient, product_payload: dict[str, object]
+) -> None:
+    headers = {"Idempotency-Key": "product-create-request-0002"}
+    first = client.post("/api/v1/products", json=product_payload, headers=headers)
+
+    conflict = client.post(
+        "/api/v1/products",
+        json={**product_payload, "name": "A different product"},
+        headers=headers,
+    )
+
+    assert first.status_code == 201
+    assert conflict.status_code == 409
+    assert "不同商品" in conflict.json()["error"]["message"]
+    assert len(client.get("/api/v1/products").json()) == 1
+
+
 def test_list_products(client: TestClient, product_payload: dict[str, object]) -> None:
     create_product(client, product_payload)
 

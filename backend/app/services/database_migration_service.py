@@ -49,7 +49,8 @@ BRAND_KIT_WORKSPACES_REVISION = "0028_brand_kit_workspaces"
 PROVIDER_CREDENTIAL_PROFILES_REVISION = "0029_provider_credential_profiles"
 LOGIN_THROTTLES_REVISION = "0030_login_throttles"
 ACCOUNT_ACTION_TOKENS_REVISION = "0031_account_action_tokens"
-HEAD_REVISION = ACCOUNT_ACTION_TOKENS_REVISION
+PRODUCT_CREATE_IDEMPOTENCY_REVISION = "0032_product_create_idempotency"
+HEAD_REVISION = PRODUCT_CREATE_IDEMPOTENCY_REVISION
 UNVERSIONED = "unversioned"
 MANIFEST_VERSION = 1
 ALEMBIC_INI = Path(__file__).resolve().parents[2] / "alembic.ini"
@@ -300,6 +301,7 @@ def expected_schema_fingerprint(revision: str) -> str:
         BRAND_KIT_WORKSPACES_REVISION,
         PROVIDER_CREDENTIAL_PROFILES_REVISION,
         LOGIN_THROTTLES_REVISION,
+        ACCOUNT_ACTION_TOKENS_REVISION,
         HEAD_REVISION,
     }:
         raise ValueError(f"Unknown expected revision: {revision}")
