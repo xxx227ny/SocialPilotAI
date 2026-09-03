@@ -696,6 +696,7 @@ def get_database_migration_status(database_path: Path) -> DatabaseMigrationStatu
             BRAND_KIT_WORKSPACES_REVISION,
             PROVIDER_CREDENTIAL_PROFILES_REVISION,
             LOGIN_THROTTLES_REVISION,
+            ACCOUNT_ACTION_TOKENS_REVISION,
             HEAD_REVISION,
         }:
             raise IncompatibleSchemaError("Unsupported Alembic revision")
@@ -744,6 +745,7 @@ def get_database_migration_status(database_path: Path) -> DatabaseMigrationStatu
                 "provider_credential_profiles_runtime"
             ),
             LOGIN_THROTTLES_REVISION: "login_throttles_runtime",
+            ACCOUNT_ACTION_TOKENS_REVISION: "account_action_tokens_runtime",
         }
         return DatabaseMigrationStatus(
             state=state_by_revision[revision],
@@ -837,6 +839,7 @@ def _upgrade_sqlite_database_unlocked(
                     BRAND_KIT_WORKSPACES_REVISION,
                     PROVIDER_CREDENTIAL_PROFILES_REVISION,
                     LOGIN_THROTTLES_REVISION,
+                    ACCOUNT_ACTION_TOKENS_REVISION,
                     HEAD_REVISION,
                 }:
                     raise IncompatibleSchemaError(

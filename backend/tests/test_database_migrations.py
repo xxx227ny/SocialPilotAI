@@ -1052,6 +1052,30 @@ def test_0030_database_is_safely_upgraded_to_account_action_token_head(
     assert get_database_migration_status(database).state == "head"
 
 
+def test_0031_database_is_safely_upgraded_to_product_idempotency_head(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "account-action-tokens-0031.db"
+    backups = tmp_path / "backups"
+    migration_service._run_alembic(  # noqa: SLF001
+        database,
+        "upgrade",
+        migration_service.ACCOUNT_ACTION_TOKENS_REVISION,
+    )
+
+    before = get_database_migration_status(database)
+    assert before.state == "account_action_tokens_runtime"
+    assert before.revision == migration_service.ACCOUNT_ACTION_TOKENS_REVISION
+    assert before.upgrade_required is True
+
+    result = upgrade_sqlite_database(database, backups)
+
+    assert result.previous_revision == migration_service.ACCOUNT_ACTION_TOKENS_REVISION
+    assert result.current_revision == HEAD_REVISION
+    assert result.backup_manifest_path is not None
+    assert get_database_migration_status(database).state == "head"
+
+
 def test_0021_runtime_is_recognized_and_safely_upgraded_to_0022(
     tmp_path: Path,
 ) -> None:
