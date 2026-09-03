@@ -206,6 +206,10 @@ def main() -> None:
                 raise RuntimeError("Workspace summary unexpectedly reported an AI call")
             if summary.get("ai_job_count") != 0:
                 raise RuntimeError("Workspace summary unexpectedly reported an AI job")
+            if summary.get("connected_social_account_count") != 0:
+                raise RuntimeError("Workspace summary leaked a social connection")
+            if summary.get("publish_task_count") != 0:
+                raise RuntimeError("Workspace summary leaked a publish task")
             if summary.get("product_count") != 1:
                 raise RuntimeError("Workspace summary leaked or omitted a product")
         if first_summary.json().get("api_key_configured") is not True:

@@ -173,6 +173,14 @@ export function DashboardPage() {
                 {formatEstimatedCosts(summary.confirmed_estimated_costs)}（预算估算，并非服务商账单）。
               </p>
             </article>
+            <article>
+              <strong>{summary.connected_social_account_count} 个社媒连接 · {summary.successful_publish_count} 次发布成功</strong>
+              <p>
+                {summary.publish_task_count === 0
+                  ? "当前工作区还没有平台发布记录。"
+                  : `共 ${summary.publish_task_count} 个发布任务${summary.publish_attention_count > 0 ? `，${summary.publish_attention_count} 个需要人工查看` : "，没有需要处理的异常"}。`}
+              </p>
+            </article>
           </div>
         </section>
       )}

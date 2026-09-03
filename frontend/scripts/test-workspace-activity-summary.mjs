@@ -21,6 +21,12 @@ assert.match(page, /summary\.copy_matrix_count/);
 assert.match(page, /summary\.video_artifact_count/);
 assert.match(page, /summary\.ai_calls/);
 assert.match(page, /预算估算，并非服务商账单/);
+assert.match(types, /connected_social_account_count: number/);
+assert.match(types, /successful_publish_count: number/);
+assert.match(types, /publish_attention_count: number/);
+assert.match(page, /summary\.connected_social_account_count/);
+assert.match(page, /summary\.successful_publish_count/);
+assert.match(page, /summary\.publish_attention_count/);
 assert.doesNotMatch(page, /getDashScopeCredential/);
 assert.doesNotMatch(page, /listProducts/);
 

@@ -43,6 +43,12 @@ def test_cleanup_requires_absolute_sqlite_database() -> None:
         module.sqlite_path_from_url("postgresql://db.example/app")
 
 
+def test_cleanup_uses_staging_runtime_backup_directory() -> None:
+    module = _load_module()
+
+    assert Path("/var/lib/socialpilot-staging/backups") == module.DEFAULT_BACKUP_DIR
+
+
 def test_candidate_selection_applies_exact_pattern_and_minimum_age() -> None:
     module = _load_module()
     connection = sqlite3.connect(":memory:")

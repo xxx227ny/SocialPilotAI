@@ -83,6 +83,11 @@ class WorkspaceEstimatedCostSchema(BaseModel):
     amount: Decimal = Field(ge=0, max_digits=14, decimal_places=4)
 
 
+class WorkspaceSocialAccountCountSchema(BaseModel):
+    platform: str = Field(min_length=1, max_length=30)
+    count: int = Field(ge=0)
+
+
 class WorkspaceActivitySummarySchema(BaseModel):
     """Read-only, current-workspace activity totals used by onboarding."""
 
@@ -104,5 +109,12 @@ class WorkspaceActivitySummarySchema(BaseModel):
     copy_matrix_count: int = Field(ge=0)
     video_project_count: int = Field(ge=0)
     video_artifact_count: int = Field(ge=0)
+    connected_social_account_count: int = Field(ge=0)
+    connected_social_accounts: list[WorkspaceSocialAccountCountSchema] = Field(
+        default_factory=list
+    )
+    publish_task_count: int = Field(ge=0)
+    successful_publish_count: int = Field(ge=0)
+    publish_attention_count: int = Field(ge=0)
     active_job_count: int = Field(ge=0)
     attention_job_count: int = Field(ge=0)

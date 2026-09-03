@@ -42,6 +42,13 @@ Before changing the staging `current` symlink, record its target and create a
 SQLite online backup. Rollback consists of restoring the previous symlink,
 restarting only the two staging services, and verifying `/api/v1/health`.
 
+Build the release with `build_release_bundle.py` after the product frontend
+build completes. The bundle is assembled from the exact Git commit, adds the
+three root runtime entrypoints required by the installed services, includes
+`frontend-dist`, and writes a non-secret manifest with the commit and hashes.
+Do not deploy a hand-assembled source archive: a missing runtime entrypoint can
+leave systemd in a restart loop even when the application tests pass.
+
 Never restart or repoint `socialpilot-api`, `socialpilot-worker`, or
 `/opt/socialpilot/current` as part of a staging deployment.
 

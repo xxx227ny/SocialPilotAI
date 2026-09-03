@@ -81,6 +81,11 @@ export interface WorkspaceActivitySummary {
   copy_matrix_count: number;
   video_project_count: number;
   video_artifact_count: number;
+  connected_social_account_count: number;
+  connected_social_accounts: Array<{ platform: string; count: number }>;
+  publish_task_count: number;
+  successful_publish_count: number;
+  publish_attention_count: number;
   active_job_count: number;
   attention_job_count: number;
 }

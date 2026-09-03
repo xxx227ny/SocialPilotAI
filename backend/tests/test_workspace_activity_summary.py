@@ -12,6 +12,8 @@ from app.models import (
     ExecutionJob,
     MarketingStrategy,
     ProductAsset,
+    PublishTask,
+    SocialAccount,
     VideoProject,
     VideoRenderArtifact,
     VideoRenderTask,
@@ -124,11 +126,43 @@ def test_workspace_summary_reports_real_counts_without_cross_account_data(
     )
     db_session.add(render_task)
     db_session.flush()
+    artifact = VideoRenderArtifact(
+        video_render_task_id=render_task.id,
+        provider_output_url="https://example.invalid/video.mp4",
+        artifact_metadata={"content_type": "video/mp4"},
+    )
+    db_session.add(artifact)
+    db_session.flush()
+    social_account = SocialAccount(
+        workspace_id=first_workspace_id,
+        product_id=product_id,
+        platform="YouTube",
+        provider_account_id="summary-channel",
+        display_name="Summary channel",
+        scopes=["youtube.upload"],
+        connection_status="CONNECTED",
+        encryption_key_id="summary-test-key",
+    )
+    db_session.add(social_account)
+    db_session.flush()
     db_session.add(
-        VideoRenderArtifact(
-            video_render_task_id=render_task.id,
-            provider_output_url="https://example.invalid/video.mp4",
-            artifact_metadata={"content_type": "video/mp4"},
+        PublishTask(
+            workspace_id=first_workspace_id,
+            product_id=product_id,
+            social_account_id=social_account.id,
+            artifact_id=artifact.id,
+            platform="YouTube",
+            idempotency_key="workspace-summary-publish",
+            request_digest="7" * 64,
+            preflight_digest="8" * 64,
+            title="Summary publish",
+            description="Workspace-only publish record",
+            tags=[],
+            privacy_status="private",
+            made_for_kids=False,
+            synthetic_media=True,
+            notify_subscribers=False,
+            status="SUCCEEDED",
         )
     )
     for suffix, status in (("active", "QUEUED"), ("attention", "FAILED")):
@@ -216,6 +250,11 @@ def test_workspace_summary_reports_real_counts_without_cross_account_data(
         "copy_matrix_count": 1,
         "video_project_count": 1,
         "video_artifact_count": 1,
+        "connected_social_account_count": 1,
+        "connected_social_accounts": [{"platform": "YouTube", "count": 1}],
+        "publish_task_count": 1,
+        "successful_publish_count": 1,
+        "publish_attention_count": 0,
         "active_job_count": 1,
         "attention_job_count": 2,
     }
@@ -244,6 +283,11 @@ def test_workspace_summary_reports_real_counts_without_cross_account_data(
         "copy_matrix_count": 0,
         "video_project_count": 0,
         "video_artifact_count": 0,
+        "connected_social_account_count": 0,
+        "connected_social_accounts": [],
+        "publish_task_count": 0,
+        "successful_publish_count": 0,
+        "publish_attention_count": 0,
         "active_job_count": 0,
         "attention_job_count": 0,
     }

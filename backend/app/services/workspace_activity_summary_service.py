@@ -9,6 +9,8 @@ from app.models import (
     Product,
     ProductAsset,
     ProviderCredential,
+    PublishTask,
+    SocialAccount,
     VideoProject,
     VideoRenderArtifact,
     VideoRenderTask,
@@ -16,6 +18,7 @@ from app.models import (
 from app.schemas.dashboard import (
     WorkspaceActivitySummarySchema,
     WorkspaceEstimatedCostSchema,
+    WorkspaceSocialAccountCountSchema,
 )
 from app.services.provider_credential_service import DASHSCOPE_PROVIDER
 
@@ -76,6 +79,36 @@ class WorkspaceActivitySummaryService:
             .join(VideoProject, VideoProject.id == VideoRenderTask.video_project_id)
             .join(Product, Product.id == VideoProject.product_id)
             .where(Product.workspace_id == workspace_id)
+        )
+        social_account_rows = self.db.execute(
+            select(SocialAccount.platform, func.count(SocialAccount.id))
+            .where(
+                SocialAccount.workspace_id == workspace_id,
+                SocialAccount.connection_status == "CONNECTED",
+            )
+            .group_by(SocialAccount.platform)
+            .order_by(SocialAccount.platform)
+        ).all()
+        connected_social_accounts = [
+            WorkspaceSocialAccountCountSchema(platform=platform, count=int(count))
+            for platform, count in social_account_rows
+        ]
+        publish_task_count = self._count(
+            select(func.count(PublishTask.id)).where(
+                PublishTask.workspace_id == workspace_id
+            )
+        )
+        successful_publish_count = self._count(
+            select(func.count(PublishTask.id)).where(
+                PublishTask.workspace_id == workspace_id,
+                PublishTask.status == "SUCCEEDED",
+            )
+        )
+        publish_attention_count = self._count(
+            select(func.count(PublishTask.id)).where(
+                PublishTask.workspace_id == workspace_id,
+                PublishTask.status.in_(("FAILED", "SUBMIT_UNKNOWN")),
+            )
         )
         active_job_count = self._count(
             select(func.count(ExecutionJob.id)).where(
@@ -161,6 +194,13 @@ class WorkspaceActivitySummaryService:
             copy_matrix_count=copy_matrix_count,
             video_project_count=video_project_count,
             video_artifact_count=video_artifact_count,
+            connected_social_account_count=sum(
+                item.count for item in connected_social_accounts
+            ),
+            connected_social_accounts=connected_social_accounts,
+            publish_task_count=publish_task_count,
+            successful_publish_count=successful_publish_count,
+            publish_attention_count=publish_attention_count,
             active_job_count=active_job_count,
             attention_job_count=attention_job_count,
         )

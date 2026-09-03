@@ -11,7 +11,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 DEFAULT_CONFIG_PATH = Path("/etc/socialpilot-staging/runtime.json")
-DEFAULT_BACKUP_DIR = Path("/var/backups/socialpilot-staging")
+DEFAULT_BACKUP_DIR = Path("/var/lib/socialpilot-staging/backups")
 SMOKE_EMAIL_PATTERN = re.compile(
     r"^smoke-[ab]-[0-9]{14}[0-9a-f]{6}@invalid\.example$"
 )
