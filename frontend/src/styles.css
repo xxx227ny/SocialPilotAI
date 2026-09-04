@@ -4260,9 +4260,29 @@ textarea { font: inherit; }
   border-radius: 10px;
 }
 
-.production-platform-card progress,
-.production-platform-card video {
+.production-platform-card progress {
   width: 100%;
+}
+
+.production-platform-card .resilient-video-preview {
+  justify-items: center;
+  padding: 0.75rem;
+  border-radius: 10px;
+  background: rgba(2, 6, 23, 0.42);
+}
+
+.production-platform-card .resilient-video-preview video {
+  display: block;
+  width: min(100%, 420px);
+  height: auto;
+  max-height: min(520px, 58vh);
+  border-radius: 8px;
+  background: #000;
+  object-fit: contain;
+}
+
+.production-platform-card .resilient-video-preview__error {
+  width: min(100%, 420px);
 }
 
 .resilient-video-preview {

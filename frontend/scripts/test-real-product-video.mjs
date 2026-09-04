@@ -355,6 +355,7 @@ try {
     "utf8",
   );
   const page = await fs.readFile(path.join(root, "src/pages/ContentStudioPage.tsx"), "utf8");
+  const styles = await fs.readFile(path.join(root, "src/styles.css"), "utf8");
   const productCenter = await fs.readFile(
     path.join(root, "src/pages/ProductCenterPage.tsx"),
     "utf8",
@@ -541,9 +542,13 @@ try {
     productVideoApi.includes("confirm_uncertain_voiceover_replacement"),
   );
   assert.ok(productVideoApi.includes("retry_failed_images"));
+  assert.ok(styles.includes(".production-platform-card .resilient-video-preview video"));
+  assert.ok(styles.includes("width: min(100%, 420px)"));
+  assert.ok(styles.includes("max-height: min(520px, 58vh)"));
+  assert.ok(styles.includes("object-fit: contain"));
   assert.ok(!enhancementApi.includes("`/api/v1/video-composition"));
   assert.ok(!productVideoApi.includes("`/api/v1/video-render-artifacts"));
-  safety += 5;
+  safety += 9;
   for (const action of ["advance", "pause", "resume", "cancel"]) {
     assert.ok(productVideoApi.includes(`\"${action}\"`));
     safety++;
