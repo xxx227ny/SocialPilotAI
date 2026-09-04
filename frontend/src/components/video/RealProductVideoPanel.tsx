@@ -108,6 +108,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
   const [oneClickPreflight, setOneClickPreflight] =
     useState<BatchQwenScriptPreflight | null>(null);
   const [oneClickCostConfirmed, setOneClickCostConfirmed] = useState(false);
+  const [oneClickFeedback, setOneClickFeedback] = useState("");
   const [production, setProduction] =
     useState<ProductVideoProductionResult | null>(null);
   const [productionBatchId, setProductionBatchId] = useState("");
@@ -171,6 +172,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
     setOneClickRequest(null);
     setOneClickPreflight(null);
     setOneClickCostConfirmed(false);
+    setOneClickFeedback("");
     setScriptBatchId(
       window.localStorage.getItem(`socialpilot.scriptBatch.${product.id}`) ?? "",
     );
@@ -337,6 +339,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
     setBatchCostConfirmed(false);
     setOneClickPreflight(null);
     setOneClickCostConfirmed(false);
+    setOneClickFeedback("");
   }, [referenceAssetId, sources]);
 
   if (!realProductVideoEnabled || isPresentation) return null;
@@ -344,7 +347,11 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
   async function refreshWorkflowContext(silent = false) {
     const active = workflowContextOperation.current.begin();
     setWorkflowContextLoading(true);
-    if (!silent) setMessage("正在自动匹配当前商品的最新可用生产资料……");
+    if (!silent) {
+      const feedback = "正在自动匹配当前商品的最新可用生产资料……";
+      setMessage(feedback);
+      setOneClickFeedback(feedback);
+    }
     try {
       const context = await getProductVideoWorkflowContext(
         product.id,
@@ -379,21 +386,21 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
         marketing_strategy: "营销策略",
         reference_image: "商品主参考图",
       };
-      setMessage(
-        context.ready
-          ? "已自动匹配最新三平台批次、营销策略和商品主图，无需手填内部编号。"
-          : `自动匹配完成；请先补齐：${context.missing_requirements
-              .map((item) => missingLabels[item] ?? item)
-              .join("、")}。`,
-      );
+      const feedback = context.ready
+        ? "已自动匹配最新三平台批次、营销策略和商品主图，无需手填内部编号。"
+        : `自动匹配完成；请先补齐：${context.missing_requirements
+            .map((item) => missingLabels[item] ?? item)
+            .join("、")}。`;
+      setMessage(feedback);
+      setOneClickFeedback(feedback);
     } catch (error) {
       if (workflowContextOperation.current.current(active.id)) {
-        setMessage(
-          getApiErrorMessage(
-            error,
-            "自动匹配生产资料失败，仍可手动填写精确编号。",
-          ),
+        const feedback = getApiErrorMessage(
+          error,
+          "自动匹配生产资料失败，仍可手动填写精确编号。",
         );
+        setMessage(feedback);
+        setOneClickFeedback(feedback);
       }
     } finally {
       if (workflowContextOperation.current.current(active.id)) {
@@ -895,15 +902,23 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
 
   async function checkOneClickPreflight() {
     const batchId = Number(scriptBatchId);
-    if (!Number.isInteger(batchId) || batchId <= 0 || !referenceAsset) {
-      setMessage("请输入精确Batch ID、Strategy ID并选择商品主参考图。");
+    const inputIssue = oneClickPreflightInputIssue(
+      batchId,
+      strategyId,
+      Boolean(referenceAsset),
+    );
+    if (inputIssue) {
+      setMessage(inputIssue);
+      setOneClickFeedback(inputIssue);
       return;
     }
     const active = operation.current.begin();
     setOneClickRequest(null);
     setOneClickPreflight(null);
     setOneClickCostConfirmed(false);
-    setMessage("正在核对三平台Variant和完整模型调用费用……");
+    const checkingMessage = "正在核对三平台脚本和完整模型调用费用……";
+    setMessage(checkingMessage);
+    setOneClickFeedback(checkingMessage);
     try {
       const variants = await listBatchVideoVariants(batchId, active.signal);
       const request = buildBatchQwenScriptRequest(
@@ -913,7 +928,9 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
         copyMatrixId,
       );
       if (!request) {
-        setMessage(oneClickBatchRequirementMessage(variants, product.id, batchId) ?? "当前批次不满足三平台生成条件。");
+        const feedback = oneClickBatchRequirementMessage(variants, product.id, batchId) ?? "当前批次不满足三平台生成条件。";
+        setMessage(feedback);
+        setOneClickFeedback(feedback);
         return;
       }
       const fallback = await preflightBatchScriptsWithCopyFallback(
@@ -937,16 +954,18 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
         `socialpilot.scriptBatch.${product.id}`,
         String(batchId),
       );
-      setMessage(
-        checked.ready_for_execution
-          ? fallback.ignoredIncompatibleCopyMatrix
-            ? "文案矩阵不含 YouTube 文案，系统已自动改用商品资料与营销策略生成三平台脚本。完整链路检查已通过，请确认调用次数和费用。"
-            : "完整链路Preflight通过，请确认模型调用次数和费用。"
-          : oneClickBlockedMessage(checked),
-      );
+      const feedback = checked.ready_for_execution
+        ? fallback.ignoredIncompatibleCopyMatrix
+          ? "文案矩阵不含 YouTube 文案，系统已自动改用商品资料与营销策略生成三平台脚本。完整链路检查已通过，请确认调用次数和费用。"
+          : "完整链路检查已通过，请确认模型调用次数和费用。"
+        : oneClickBlockedMessage(checked);
+      setMessage(feedback);
+      setOneClickFeedback(feedback);
     } catch (error) {
       if (!operation.current.current(active.id)) return;
-      setMessage(getApiErrorMessage(error, "一键完整生产前置检查失败。"));
+      const feedback = getApiErrorMessage(error, "一键完整生产前置检查失败。");
+      setMessage(feedback);
+      setOneClickFeedback(feedback);
     }
   }
 
@@ -1466,6 +1485,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
               );
               setOneClickPreflight(null);
               setOneClickCostConfirmed(false);
+              setOneClickFeedback("");
             }}
           />
         </label>
@@ -1484,6 +1504,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
               );
               setOneClickPreflight(null);
               setOneClickCostConfirmed(false);
+              setOneClickFeedback("");
             }}
           />
         </label>
@@ -1508,6 +1529,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
               }
               setOneClickPreflight(null);
               setOneClickCostConfirmed(false);
+              setOneClickFeedback("");
             }}
           />
         </label>
@@ -1517,14 +1539,27 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
         <button
           type="button"
           disabled={
-            !referenceAsset ||
-            strategyId <= 0 ||
             !["IDLE", "FAILED", "SUCCEEDED"].includes(phase)
           }
+          aria-describedby="one-click-preflight-feedback"
           onClick={() => void checkOneClickPreflight()}
         >
           检查脚本到成片的完整调用与费用
         </button>
+        <p
+          id="one-click-preflight-feedback"
+          className="preflight-summary"
+          role="status"
+          aria-live="polite"
+        >
+          {oneClickFeedback ||
+            oneClickPreflightInputIssue(
+              Number(scriptBatchId),
+              strategyId,
+              Boolean(referenceAsset),
+            ) ||
+            "资料已填写，可以开始检查；检查不会生成内容或产生模型费用。"}
+        </p>
         {oneClickPreflight && (
           <div className="preflight-summary">
             <p>
@@ -1912,6 +1947,23 @@ function saveWorkflowContextValue(key: string, value: number | null) {
   } else {
     window.localStorage.removeItem(key);
   }
+}
+
+function oneClickPreflightInputIssue(
+  batchId: number,
+  strategyId: number,
+  hasReferenceAsset: boolean,
+) {
+  if (!Number.isInteger(batchId) || batchId <= 0) {
+    return "暂时不能检查：当前商品缺少三平台批次。请先到“批量任务”同时勾选 YouTube、TikTok、Instagram 创建一个批次，再返回这里点击“自动匹配最新可用资料”。";
+  }
+  if (!Number.isInteger(strategyId) || strategyId <= 0) {
+    return "暂时不能检查：当前商品缺少营销策略，请先在“文案矩阵”生成并保存营销策略。";
+  }
+  if (!hasReferenceAsset) {
+    return "暂时不能检查：请选择商品主参考图；如果没有图片，请先到“商品中心”上传。";
+  }
+  return "";
 }
 
 function phaseLabel(phase: RealProductVideoPhase) {
