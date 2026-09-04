@@ -60,6 +60,12 @@ export function expandedVariantCount(
   return new Set(productIds).size * new Set(platforms).size * variantsPerPlatform;
 }
 
+export function clampBatchConcurrency(requested: number, totalVariants: number) {
+  const upperBound = Math.min(20, Math.max(1, Math.floor(totalVariants) || 1));
+  const normalized = Number.isFinite(requested) ? Math.floor(requested) : 1;
+  return Math.min(upperBound, Math.max(1, normalized));
+}
+
 export function beginBatchOperation(slot: BatchOperationSlot, operation: BatchOperation) {
   if (slot.current !== null) return false;
   slot.current = operation;

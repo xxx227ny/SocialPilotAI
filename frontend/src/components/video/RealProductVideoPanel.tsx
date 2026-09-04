@@ -78,6 +78,7 @@ import {
   productionProgress,
   productionStageLabel,
   RealProductVideoOperation,
+  oneClickBatchRequirementMessage,
   requireSuccessfulResult,
   selectNewestProductionSnapshot,
   selectThreePlatformSources,
@@ -912,7 +913,8 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
         copyMatrixId,
       );
       if (!request) {
-        throw new Error("该Batch没有当前商品的三个READY平台Variant。");
+        setMessage(oneClickBatchRequirementMessage(variants, product.id, batchId) ?? "当前批次不满足三平台生成条件。");
+        return;
       }
       const fallback = await preflightBatchScriptsWithCopyFallback(
         request,
@@ -944,7 +946,6 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
       );
     } catch (error) {
       if (!operation.current.current(active.id)) return;
-      setPhase("FAILED");
       setMessage(getApiErrorMessage(error, "一键完整生产前置检查失败。"));
     }
   }

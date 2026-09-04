@@ -166,6 +166,27 @@ export function selectOneClickVariants(
   ).filter((variant): variant is BatchVideoVariant => variant !== undefined);
 }
 
+export function oneClickBatchRequirementMessage(
+  variants: BatchVideoVariant[],
+  productId: number,
+  batchId: number,
+): string | null {
+  const selected = selectOneClickVariants(variants, productId);
+  if (selected.length === 3) return null;
+  const available = new Set(selected.map((variant) => variant.platform));
+  const missing = PLATFORM_ORDER.filter((platform) => !available.has(platform));
+  const labels: Record<string, string> = {
+    youtube: "YouTube",
+    tiktok: "TikTok",
+    instagram: "Instagram",
+  };
+  const productVariants = variants.filter((variant) => variant.product_id === productId);
+  if (productVariants.length === 0) {
+    return `Batch #${batchId} 不属于当前商品。请返回“批量任务”，选择当前商品并同时勾选三个平台，创建新的三平台 Batch。`;
+  }
+  return `Batch #${batchId} 缺少可用的 ${missing.map((platform) => labels[platform]).join("、")} 变体。请返回“批量任务”，选择当前商品并同时勾选 YouTube、TikTok、Instagram，创建新的三平台 Batch。`;
+}
+
 export function buildBatchQwenScriptRequest(
   variants: BatchVideoVariant[],
   productId: number,

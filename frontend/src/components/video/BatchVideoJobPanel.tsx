@@ -17,6 +17,7 @@ import type {
 import {
   abortBatchOperation,
   beginBatchOperation,
+  clampBatchConcurrency,
   controlBatchWorkflow,
   createBatchWorkflow,
   downstreamCostLabel,
@@ -61,6 +62,7 @@ export function BatchVideoJobPanel() {
   const slot = useRef<BatchOperationSlot>({ current: null });
   const pollController = useRef<AbortController | null>(null);
   const sequence = useRef(0);
+  const total = expandedVariantCount(productIds, platforms, variantsPerPlatform);
 
   useEffect(() => () => {
     abortBatchOperation(slot.current);
@@ -71,6 +73,10 @@ export function BatchVideoJobPanel() {
     if (productList.loadedAt === null || productList.loading || productList.error) return;
     setProductIds((current) => current.filter((id) => products.some((item) => item.id === id)));
   }, [productList.loadedAt, productList.loading, productList.error, products]);
+
+  useEffect(() => {
+    setMaxConcurrency((current) => clampBatchConcurrency(current, total));
+  }, [total]);
 
   useEffect(() => {
     if (!result) return;
@@ -84,7 +90,6 @@ export function BatchVideoJobPanel() {
     );
   }, [result]);
 
-  const total = expandedVariantCount(productIds, platforms, variantsPerPlatform);
   const request = (): BatchVideoRequest => ({
     product_ids: productIds,
     platforms,
@@ -93,7 +98,7 @@ export function BatchVideoJobPanel() {
     aspect_ratio: "9:16",
     language: "zh-CN",
     priority: 50,
-    max_concurrency: maxConcurrency,
+    max_concurrency: clampBatchConcurrency(maxConcurrency, total),
     creative_angle: null,
     idempotency_key: `content-studio-${productIds.join("-")}-${platforms.join("-")}-${variantsPerPlatform}`,
   });
@@ -208,7 +213,7 @@ export function BatchVideoJobPanel() {
           <label key={platform}><input type="checkbox" checked={platforms.includes(platform)} onChange={(event) => setPlatforms((value) => event.target.checked ? [...value, platform] : value.filter((item) => item !== platform))} />{platform}</label>
         ))}</fieldset>
         <label>每平台变体数<input type="number" min="1" max="10" value={variantsPerPlatform} onChange={(event) => setVariantsPerPlatform(Number(event.target.value))} /></label>
-        <label>最大并发<input type="number" min="1" max="20" value={maxConcurrency} onChange={(event) => setMaxConcurrency(Number(event.target.value))} /></label>
+        <label>最大并发<input type="number" min="1" max={Math.max(1, Math.min(20, total))} value={maxConcurrency} onChange={(event) => setMaxConcurrency(clampBatchConcurrency(Number(event.target.value), total))} /></label>
       </div>
       <p><strong>{total}</strong> 个独立变体 · 15秒 · 9:16 · zh-CN</p>
       <div className="batch-video-panel__actions"><button disabled={total === 0} onClick={() => void submit()}>Preflight并创建</button><input aria-label="精确Batch ID" value={batchIdInput} onChange={(event) => setBatchIdInput(event.target.value)} /><button onClick={() => void refresh()}>按ID恢复</button></div>

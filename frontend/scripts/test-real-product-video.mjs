@@ -251,6 +251,28 @@ try {
     copy_matrix_id: 31,
   });
   assert.equal(state.buildBatchQwenScriptRequest([], 3, 21, null), null);
+  assert.equal(
+    state.oneClickBatchRequirementMessage(
+      [
+        { id: 7, product_id: 3, platform: "youtube", variant_index: 1, status: "READY_FOR_SCRIPT" },
+      ],
+      3,
+      1,
+    ),
+    "Batch #1 缺少可用的 TikTok、Instagram 变体。请返回“批量任务”，选择当前商品并同时勾选 YouTube、TikTok、Instagram，创建新的三平台 Batch。",
+  );
+  assert.equal(
+    state.oneClickBatchRequirementMessage(
+      [
+        { id: 6, product_id: 3, platform: "tiktok", variant_index: 1, status: "READY_FOR_SCRIPT" },
+        { id: 7, product_id: 3, platform: "youtube", variant_index: 1, status: "READY_FOR_SCRIPT" },
+        { id: 8, product_id: 3, platform: "instagram", variant_index: 1, status: "READY_FOR_SCRIPT" },
+      ],
+      3,
+      2,
+    ),
+    null,
+  );
   behavior++;
 
   const copyFallbackCalls = [];

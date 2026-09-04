@@ -39,6 +39,10 @@ try {
     state.expandedVariantCount([3, 1, 2], ["youtube", "tiktok", "instagram"], 2),
     18,
   );
+  assert.equal(state.clampBatchConcurrency(3, 1), 1);
+  assert.equal(state.clampBatchConcurrency(3, 3), 3);
+  assert.equal(state.clampBatchConcurrency(0, 3), 1);
+  assert.equal(state.clampBatchConcurrency(Number.NaN, 3), 1);
   behaviorScenarios += 1;
 
   const first = { id: 1, batchId: null, controller: new AbortController() };
