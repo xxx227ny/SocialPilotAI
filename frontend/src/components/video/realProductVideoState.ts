@@ -39,6 +39,10 @@ const STAGE_LABELS: Record<ProductVideoProductionItem["stage"], string> = {
 const ERROR_MESSAGES: Record<string, string> = {
   PRODUCTION_WANX_IMAGE_FAILED:
     "万象商品图生成明确失败；可点击“重试失败平台”，仅重试失败画面，不会重做已成功结果。",
+  VIDEO_RENDER_PREFLIGHT_NOT_READY:
+    "视频生成任务尚未提交给万象；当前工作区配置已修复，可点击“重试失败平台”继续现有批次。",
+  PRODUCTION_WANX_VIDEO_SUBMIT_FAILED:
+    "视频生成任务提交失败；若任务未到达万象，可点击“重试失败平台”安全恢复。",
   PRODUCTION_WANX_SUBMIT_UNKNOWN: "万象提交状态不确定，系统已停止自动重试以避免重复扣费。",
   PRODUCTION_WANX_VIDEO_RESULT_INVALID:
     "旧版任务的万象身份记录不一致；原云端任务仍保留，可点击“重试失败平台”安全恢复，不会重新提交视频。",
@@ -99,6 +103,8 @@ export function productionBatchRecoverable(
           "PRODUCTION_HAPPYHORSE_REFRESH_FAILED",
           "PRODUCTION_HAPPYHORSE_REFRESH_RETRYABLE",
           "PRODUCTION_WANX_IMAGE_FAILED",
+          "VIDEO_RENDER_PREFLIGHT_NOT_READY",
+          "PRODUCTION_WANX_VIDEO_SUBMIT_FAILED",
           "PRODUCTION_WANX_VIDEO_RESULT_INVALID",
           "PRODUCTION_VOICEOVER_FAILED",
           "PRODUCTION_VOICEOVER_SUBMIT_UNKNOWN",

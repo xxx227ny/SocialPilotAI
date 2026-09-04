@@ -23,6 +23,13 @@ from app.api.dependencies import (
 )
 from app.core.config import Settings, get_settings
 from app.core.exceptions import AppError
+from app.core.provider_runtime import resolve_workspace_provider_runtime
+from app.execution.credential_context import (
+    bind_execution_api_key,
+    bind_execution_provider_runtime,
+    reset_execution_api_key,
+    reset_execution_provider_runtime,
+)
 from app.main import app
 from app.models import VideoRenderArtifact, VideoRenderTask
 from app.providers.base import (
@@ -39,6 +46,7 @@ from app.providers.live_configuration import (
     get_provider_failure_metadata,
     metadata_for_transport_failure,
     qwen_provider_configured,
+    wanx_missing_requirements,
     wanx_provider_configured,
 )
 from app.providers.qwen_provider import QwenProvider
@@ -181,6 +189,35 @@ def test_wanx_never_falls_back_to_qwen_or_dashscope_key() -> None:
     assert wanx_provider_configured(settings) is False
     with pytest.raises(ProviderAuthenticationError):
         WanxProvider(settings)
+
+
+def test_wanx_non_coherent_preflight_accepts_bound_workspace_runtime() -> None:
+    settings = strict_settings(
+        enable_user_auth=True,
+        require_live_provider_coherence=False,
+        wanx_api_key=None,
+        wanx_workspace_id=None,
+        wanx_endpoint=None,
+    )
+    runtime = resolve_workspace_provider_runtime(
+        api_key="safe-workspace-api-key",
+        region="cn-beijing",
+        provider_workspace_id="workspace-12",
+    )
+    api_key_token = bind_execution_api_key(runtime.api_key)
+    runtime_token = bind_execution_provider_runtime(runtime)
+    try:
+        assert wanx_provider_configured(settings) is True
+        assert wanx_missing_requirements(settings) == ()
+    finally:
+        reset_execution_provider_runtime(runtime_token)
+        reset_execution_api_key(api_key_token)
+
+    assert wanx_provider_configured(settings) is False
+    assert wanx_missing_requirements(settings) == (
+        "wanx_credentials_configuration",
+        "wanx_endpoint_configuration",
+    )
 
 
 def test_dashscope_is_a_one_way_deprecated_qwen_alias() -> None:

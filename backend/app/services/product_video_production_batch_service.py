@@ -322,6 +322,21 @@ class ProductVideoProductionBatchService:
                     item.status == "FAILED"
                     and item.safe_error_code
                     in {
+                        "PRODUCTION_WANX_VIDEO_SUBMIT_FAILED",
+                        "VIDEO_RENDER_PREFLIGHT_NOT_READY",
+                    }
+                    and item.stage == "GENERATING_VIDEO"
+                    and self._prepare_wanx_preflight_recovery(item)
+                ):
+                    item.status = "RUNNING"
+                    item.safe_error_code = None
+                    item.completed_at = None
+                    recovered = True
+                    continue
+                if (
+                    item.status == "FAILED"
+                    and item.safe_error_code
+                    in {
                         "PRODUCTION_HAPPYHORSE_REFRESH_FAILED",
                         "PRODUCTION_HAPPYHORSE_REFRESH_RETRYABLE",
                     }
@@ -456,6 +471,44 @@ class ProductVideoProductionBatchService:
             "dynamic_video_refresh_count": 0,
             "dynamic_video_refresh_job_id": None,
         }
+        return True
+
+    def _prepare_wanx_preflight_recovery(
+        self, item: ProductVideoProductionItem
+    ) -> bool:
+        """Retry only a local preflight failure that made no provider call."""
+        raw_job_id = item.stage_state_json.get("dynamic_video_submit_job_id")
+        if not isinstance(raw_job_id, int):
+            return False
+        job = self.session.get(ExecutionJob, raw_job_id)
+        if (
+            job is None
+            or job.job_type != "wanx.video_render.submit.v1"
+            or job.status != "FAILED"
+            or job.safe_error_code != "VIDEO_RENDER_PREFLIGHT_NOT_READY"
+            or job.uncertain
+            or job.submitted_at is not None
+            or job.provider_operation_id is not None
+            or not job.attempts
+        ):
+            return False
+        latest_attempt = job.attempts[-1]
+        if (
+            latest_attempt.status != "FAILED"
+            or latest_attempt.safe_error_code != "VIDEO_RENDER_PREFLIGHT_NOT_READY"
+            or latest_attempt.provider_call_count != 0
+            or latest_attempt.external_submission_possible
+            or latest_attempt.provider_submission_state
+            not in {"NOT_STARTED", "NOT_SUBMITTED"}
+        ):
+            return False
+        job.max_attempts = max(job.max_attempts, job.attempt_count + 1)
+        job.status = "QUEUED"
+        job.safe_error_code = None
+        job.safe_error_details = None
+        job.completed_at = None
+        job.lease_owner_digest = None
+        job.lease_expires_at = None
         return True
 
     def cancel(
@@ -772,7 +825,17 @@ class ProductVideoProductionBatchService:
         if job.status == "SUBMIT_UNKNOWN":
             self._fail_item(item, "PRODUCTION_WANX_VIDEO_SUBMIT_UNKNOWN")
             return
-        if job.status in {"FAILED", "CANCELLED"}:
+        if job.status == "FAILED":
+            self._fail_item(
+                item,
+                (
+                    "VIDEO_RENDER_PREFLIGHT_NOT_READY"
+                    if job.safe_error_code == "VIDEO_RENDER_PREFLIGHT_NOT_READY"
+                    else "PRODUCTION_WANX_VIDEO_SUBMIT_FAILED"
+                ),
+            )
+            return
+        if job.status == "CANCELLED":
             self._fail_item(item, "PRODUCTION_WANX_VIDEO_SUBMIT_FAILED")
             return
         if job.status != "SUCCEEDED":

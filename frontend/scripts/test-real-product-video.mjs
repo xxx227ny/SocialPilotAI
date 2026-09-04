@@ -143,6 +143,10 @@ try {
     state.productionFailureMessage("PRODUCTION_VOICEOVER_EXCEEDS_TIMELINE"),
     /旁白超过15秒时间线/,
   );
+  assert.match(
+    state.productionFailureMessage("VIDEO_RENDER_PREFLIGHT_NOT_READY"),
+    /尚未提交给万象/,
+  );
   behavior++;
   assert.equal(
     state.productionBatchTerminal(
@@ -224,6 +228,18 @@ try {
         {
           status: "FAILED",
           safe_error_code: "PRODUCTION_WANX_VIDEO_RESULT_INVALID",
+        },
+      ],
+    ),
+    true,
+  );
+  assert.equal(
+    state.productionBatchRecoverable(
+      { status: "FAILED" },
+      [
+        {
+          status: "FAILED",
+          safe_error_code: "PRODUCTION_WANX_VIDEO_SUBMIT_FAILED",
         },
       ],
     ),

@@ -193,12 +193,8 @@ def qwen_missing_requirements(settings: Settings) -> tuple[str, ...]:
 
 def wanx_provider_configured(settings: Settings) -> bool:
     if not settings.require_live_provider_coherence:
-        return bool(effective_wanx_api_key(settings)) and bool(
-            (settings.wanx_endpoint or "").strip()
-            or (
-                _text(settings.wanx_workspace_id)
-                and _text(settings.wanx_region) in WANX_REGION_ENDPOINT_TEMPLATES
-            )
+        return bool(effective_wanx_api_key(settings)) and _wanx_endpoint_configured(
+            settings
         )
     return audit_live_provider_configuration(settings).wanx.ready
 
@@ -209,15 +205,22 @@ def wanx_missing_requirements(settings: Settings) -> tuple[str, ...]:
     missing: list[str] = []
     if not effective_wanx_api_key(settings):
         missing.append("wanx_credentials_configuration")
-    if not (
+    if not _wanx_endpoint_configured(settings):
+        missing.append("wanx_endpoint_configuration")
+    return tuple(missing)
+
+
+def _wanx_endpoint_configured(settings: Settings) -> bool:
+    """Accept the endpoint frozen into the active workspace execution context."""
+    if current_execution_provider_runtime() is not None:
+        return True
+    return bool(
         (settings.wanx_endpoint or "").strip()
         or (
             _text(settings.wanx_workspace_id)
             and _text(settings.wanx_region) in WANX_REGION_ENDPOINT_TEMPLATES
         )
-    ):
-        missing.append("wanx_endpoint_configuration")
-    return tuple(missing)
+    )
 
 
 def effective_qwen_api_key(settings: Settings) -> str:
