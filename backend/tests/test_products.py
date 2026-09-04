@@ -5,6 +5,9 @@ from fastapi.testclient import TestClient
 
 from app.core.config import Settings, get_settings
 from app.main import app
+from app.models import Workspace
+from app.schemas.product import ProductCreate
+from app.services.product import ProductService
 
 
 def png_bytes(width: int = 1080, height: int = 1920) -> bytes:
@@ -35,9 +38,34 @@ def test_create_product(client: TestClient, product_payload: dict[str, object]) 
     product = create_product(client, product_payload)
 
     assert product["id"] == 1
+    assert product["display_number"] == 1
     assert product["name"] == "Portable Blender"
     assert product["selling_points"] == product_payload["selling_points"]
     assert product["assets"] == []
+
+
+def test_product_display_numbers_are_independent_per_workspace(
+    db_session, product_payload: dict[str, object]
+) -> None:
+    first_workspace = Workspace(name="First workspace")
+    second_workspace = Workspace(name="Second workspace")
+    db_session.add_all((first_workspace, second_workspace))
+    db_session.commit()
+
+    db_session.info["workspace_id"] = first_workspace.id
+    first = ProductService(db_session).create(ProductCreate(**product_payload))
+    second = ProductService(db_session).create(
+        ProductCreate(**{**product_payload, "name": "Second product"})
+    )
+
+    db_session.info["workspace_id"] = second_workspace.id
+    other_workspace_first = ProductService(db_session).create(
+        ProductCreate(**{**product_payload, "name": "Other workspace product"})
+    )
+
+    assert (first.display_number, second.display_number) == (1, 2)
+    assert other_workspace_first.display_number == 1
+    assert other_workspace_first.id != first.id
 
 
 def test_create_product_reuses_same_idempotency_key_without_duplicate(

@@ -12,7 +12,7 @@ import {
 import { strategyExecutionEnabled } from "../../config/features";
 import type { ExecutionJob } from "../../types/execution";
 import type { MarketingTask } from "../../types/marketing";
-import type { Product } from "../../types/product";
+import { productDisplayNumber, type Product } from "../../types/product";
 import type {
   MarketingStrategy,
   StrategyPreflight,
@@ -341,7 +341,7 @@ export function StrategyPreflightPanel({
       {preflight ? (
         <div className="strategy-preflight__result">
           <dl className="product-detail__facts">
-            <div><dt>商品</dt><dd>#{preflight.product_id}</dd></div>
+            <div><dt>商品</dt><dd>#{productDisplayNumber(product)}</dd></div>
             <div><dt>营销任务</dt><dd>#{preflight.task_id}</dd></div>
             <div><dt>冻结内容指纹</dt><dd>{preflight.input_digest.slice(0, 12)}…</dd></div>
             <div><dt>前置检查有效期</dt><dd>{new Date(preflight.expires_at).toLocaleString()}</dd></div>
@@ -453,7 +453,7 @@ function StrategyResult({
         <span>营销策略 #{strategy.id}</span>
       </div>
       <dl className="product-detail__facts">
-        <div><dt>商品</dt><dd>#{strategy.product_id} · {product.name}</dd></div>
+        <div><dt>商品</dt><dd>#{productDisplayNumber(product)} · {product.name}</dd></div>
         <div><dt>营销任务</dt><dd>#{taskId}</dd></div>
       </dl>
       <section><h6>定位</h6><p>{strategy.positioning}</p></section>

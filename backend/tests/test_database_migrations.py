@@ -131,6 +131,7 @@ def business_snapshot(path: Path) -> str:
                 record.pop("workspace_id", None)
                 record.pop("create_request_key", None)
                 record.pop("create_request_digest", None)
+                record.pop("display_number", None)
                 payload[table_name].append(record)
     finally:
         connection.close()
@@ -149,6 +150,58 @@ def current_revision(path: Path) -> str | None:
         return None if row is None else str(row[0])
     finally:
         connection.close()
+
+
+def test_workspace_product_numbers_backfill_from_one_per_workspace(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "workspace-product-numbers.db"
+    migration_service._run_alembic(  # noqa: SLF001
+        database, "upgrade", "0032_product_create_idempotency"
+    )
+    now = datetime.now(UTC).isoformat()
+    connection = sqlite3.connect(database)
+    try:
+        connection.executemany(
+            "INSERT INTO workspaces "
+            "(id,name,workspace_type,status,created_at,updated_at) "
+            "VALUES (?,?,?,?,?,?)",
+            [
+                (1, "First", "PERSONAL", "ACTIVE", now, now),
+                (2, "Second", "PERSONAL", "ACTIVE", now, now),
+            ],
+        )
+        connection.executemany(
+            "INSERT INTO products "
+            "(id,name,category,description,selling_points,target_markets,"
+            "created_at,updated_at,brand_kit_version_id,workspace_id,"
+            "create_request_key,create_request_digest) "
+            "VALUES (?,?,?,?,?,?,?,?,NULL,?,NULL,NULL)",
+            [
+                (20, "First A", "Test", "Exact", '["Stable"]', "[]", now, now, 1),
+                (21, "Second A", "Test", "Exact", '["Stable"]', "[]", now, now, 2),
+                (22, "Second B", "Test", "Exact", '["Stable"]', "[]", now, now, 2),
+            ],
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    migration_service._run_alembic(database, "upgrade", HEAD_REVISION)  # noqa: SLF001
+
+    connection = sqlite3.connect(database)
+    try:
+        products = connection.execute(
+            "SELECT id, workspace_id, display_number FROM products ORDER BY id"
+        ).fetchall()
+        workspaces = connection.execute(
+            "SELECT id, next_product_number FROM workspaces ORDER BY id"
+        ).fetchall()
+    finally:
+        connection.close()
+
+    assert products == [(20, 1, 1), (21, 2, 1), (22, 2, 2)]
+    assert workspaces == [(1, 2), (2, 3)]
 
 
 def test_empty_database_upgrades_to_complete_head_schema(tmp_path: Path) -> None:
@@ -970,7 +1023,7 @@ def test_stage3f_head_contains_product_media_bridge_columns(tmp_path: Path) -> N
         }
     finally:
         connection.close()
-    assert HEAD_REVISION == "0032_product_create_idempotency"
+    assert HEAD_REVISION == "0033_workspace_product_numbers"
     assert {"provider_region", "provider_workspace_ref"} <= credential_columns
     assert {
         "scope_hash",

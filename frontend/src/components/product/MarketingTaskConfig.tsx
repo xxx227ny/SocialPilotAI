@@ -8,7 +8,7 @@ import {
 import { updateProduct } from "../../api/products";
 import type { PlatformCopy } from "../../types/copy";
 import type { MarketingTask } from "../../types/marketing";
-import type { Product } from "../../types/product";
+import { productDisplayNumber, type Product } from "../../types/product";
 import { StrategyPreflightPanel } from "./StrategyPreflightPanel";
 import {
   cacheEntryIsFresh,
@@ -552,7 +552,7 @@ export function MarketingTaskConfig({
           </div>
         </div>
         <dl>
-          <div><dt>当前商品</dt><dd>#{product.id} · {product.name}</dd></div>
+          <div><dt>当前商品</dt><dd>#{productDisplayNumber(product)} · {product.name}</dd></div>
           <div><dt>目标市场</dt><dd>{markets.length > 0 ? markets.join("、") : "未选择"}</dd></div>
           <div><dt>内容平台</dt><dd>{selectedPlatforms.length > 0 ? selectedPlatforms.join("、") : "未选择"}</dd></div>
           <div><dt>商品卖点</dt><dd>{product.selling_points.length} 个</dd></div>
@@ -615,7 +615,7 @@ export function MarketingTaskConfig({
                 <time>{formatTaskTime(savedTask.created_at)}</time>
               </header>
               <dl>
-                <div><dt>关联商品</dt><dd>#{savedTask.product_id} · {product.name}</dd></div>
+                <div><dt>关联商品</dt><dd>#{productDisplayNumber(product)} · {product.name}</dd></div>
                 <div><dt>目标市场</dt><dd>{savedTask.target_markets.join("、")}</dd></div>
                 <div><dt>已保存平台</dt><dd>{savedTask.platforms.join("、")}</dd></div>
                 <div><dt>保存状态</dt><dd>后端真实记录已保存</dd></div>

@@ -86,6 +86,7 @@ export interface ProductVideoWorkflowContext {
 
 export interface BatchProductOption {
   id: number;
+  display_number: number | null;
   name: string;
   brand_kit_version_id: number | null;
 }

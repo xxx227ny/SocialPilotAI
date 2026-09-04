@@ -18,7 +18,7 @@ import type {
   BrandKitVersion,
   BrandKitVersionInput,
 } from "../../types/brandKit";
-import type { Product } from "../../types/product";
+import { productDisplayNumber, type Product } from "../../types/product";
 import {
   automaticallySelectedVersionId,
   deriveOnboardingSteps,
@@ -484,7 +484,7 @@ export function BrandKitOnboardingPanel({
               <h3>商品与品牌规范版本绑定</h3>
               <p>
                 {selectedProduct
-                  ? `当前商品 #${selectedProduct.id} · 已绑定版本 ${selectedProduct.brand_kit_version_id ?? "无"}`
+                  ? `当前商品 #${productDisplayNumber(selectedProduct)} · 已绑定版本 ${selectedProduct.brand_kit_version_id ?? "无"}`
                   : "请先在商品列表明确选择商品。"}
               </p>
             </div>

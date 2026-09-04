@@ -167,6 +167,7 @@ class ProductRead(ProductBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    display_number: int | None = None
     brand_kit_version_id: int | None = None
     created_at: datetime
     updated_at: datetime

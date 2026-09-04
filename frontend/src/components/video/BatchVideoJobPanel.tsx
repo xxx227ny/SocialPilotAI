@@ -14,6 +14,7 @@ import type {
   BatchVideoCreateResult,
   BatchVideoRequest,
 } from "../../types/batchVideo";
+import { productDisplayNumber } from "../../types/product";
 import {
   abortBatchOperation,
   beginBatchOperation,
@@ -207,7 +208,7 @@ export function BatchVideoJobPanel() {
       <p>当前阶段编排成本：0 USD（orchestration_only）。脚本、素材、TTS、渲染与发布成本{downstreamCostLabel(result?.batch.downstream_provider_cost_status ?? "NOT_ESTIMATED")}。</p>
       <div className="batch-video-panel__grid">
         <fieldset><legend>商品（可多选）</legend>{products.map((product) => (
-          <label key={product.id}><input type="checkbox" checked={productIds.includes(product.id)} onChange={(event) => setProductIds((value) => event.target.checked ? [...value, product.id] : value.filter((id) => id !== product.id))} />{product.name} · BrandKitVersion {product.brand_kit_version_id ?? "未绑定"}</label>
+          <label key={product.id}><input type="checkbox" checked={productIds.includes(product.id)} onChange={(event) => setProductIds((value) => event.target.checked ? [...value, product.id] : value.filter((id) => id !== product.id))} />#{productDisplayNumber(product)} · {product.name} · BrandKitVersion {product.brand_kit_version_id ?? "未绑定"}</label>
         ))}{productList.loadedAt === null ? <p role="status">正在首次读取商品……</p> : null}{productList.error ? <button type="button" onClick={productList.refresh}>重新读取商品</button> : null}</fieldset>
         <fieldset><legend>平台</legend>{ALL_PLATFORMS.map((platform) => (
           <label key={platform}><input type="checkbox" checked={platforms.includes(platform)} onChange={(event) => setPlatforms((value) => event.target.checked ? [...value, platform] : value.filter((item) => item !== platform))} />{platform}</label>
@@ -218,7 +219,7 @@ export function BatchVideoJobPanel() {
       <p><strong>{total}</strong> 个独立变体 · 15秒 · 9:16 · zh-CN</p>
       <div className="batch-video-panel__actions"><button disabled={total === 0} onClick={() => void submit()}>Preflight并创建</button><input aria-label="精确Batch ID" value={batchIdInput} onChange={(event) => setBatchIdInput(event.target.value)} /><button onClick={() => void refresh()}>按ID恢复</button></div>
       {message && <p role="status">{message}</p>}
-      {result && <><div className="batch-video-panel__actions"><button onClick={() => void control("pause")}>暂停</button><button onClick={() => void control("resume")}>恢复</button><button onClick={() => void control("cancel")}>取消</button></div><p>普通用户无需逐个平台填写脚本；“等待生成脚本”表示变体已准备好，但脚本尚未创建。请前往“一键商品视频”，系统会自动生成并激活三平台脚本。</p><table><thead><tr><th>ID</th><th>商品</th><th>平台</th><th>变体</th><th>状态</th></tr></thead><tbody>{result.variants.map((variant) => <tr key={variant.id}><td>{variant.id}</td><td>{variant.product_id}</td><td>{variant.platform}</td><td>{variant.variant_index}</td><td>{BATCH_STATUS_LABELS[variant.status] ?? variant.status}</td></tr>)}</tbody></table></>}
+      {result && <><div className="batch-video-panel__actions"><button onClick={() => void control("pause")}>暂停</button><button onClick={() => void control("resume")}>恢复</button><button onClick={() => void control("cancel")}>取消</button></div><p>普通用户无需逐个平台填写脚本；“等待生成脚本”表示变体已准备好，但脚本尚未创建。请前往“一键商品视频”，系统会自动生成并激活三平台脚本。</p><table><thead><tr><th>ID</th><th>商品</th><th>平台</th><th>变体</th><th>状态</th></tr></thead><tbody>{result.variants.map((variant) => { const product = products.find((item) => item.id === variant.product_id); return <tr key={variant.id}><td>{variant.id}</td><td>{product ? `#${productDisplayNumber(product)} · ${product.name}` : "商品记录不可用"}</td><td>{variant.platform}</td><td>{variant.variant_index}</td><td>{BATCH_STATUS_LABELS[variant.status] ?? variant.status}</td></tr>; })}</tbody></table></>}
     </section>
   );
 }

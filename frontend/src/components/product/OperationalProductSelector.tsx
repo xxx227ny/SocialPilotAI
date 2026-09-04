@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { getApiErrorMessage } from "../../api/client";
 import { getProduct, listProducts } from "../../api/products";
 import { useReadResource } from "../../hooks/useReadResource";
-import type { Product } from "../../types/product";
+import { productDisplayNumber, type Product } from "../../types/product";
 
 export function OperationalProductSelector({
   title,
@@ -105,7 +105,7 @@ export function OperationalProductSelector({
             <option value={0}>请选择商品</option>
             {products.map((product) => (
               <option key={product.id} value={product.id}>
-                #{product.id} · {product.name}
+                #{productDisplayNumber(product)} · {product.name}
               </option>
             ))}
           </select>

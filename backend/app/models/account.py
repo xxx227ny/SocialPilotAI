@@ -59,6 +59,9 @@ class Workspace(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
     )
+    next_product_number: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
 
     memberships: Mapped[list[Membership]] = relationship(
         back_populates="workspace", cascade="all, delete-orphan"

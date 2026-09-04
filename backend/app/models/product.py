@@ -34,6 +34,11 @@ class Product(Base):
     __table_args__ = (
         UniqueConstraint(
             "workspace_id",
+            "display_number",
+            name="uq_products_workspace_display_number",
+        ),
+        UniqueConstraint(
+            "workspace_id",
             "create_request_key",
             name="uq_products_workspace_create_request_key",
         ),
@@ -61,6 +66,10 @@ class Product(Base):
     )
     create_request_key: Mapped[str | None] = mapped_column(String(100), nullable=True)
     create_request_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Stable number shown to people. `id` remains the internal/FK identity.
+    # Nullable keeps direct legacy/import inserts readable; normal product
+    # creation and the migration always assign a workspace-local number.
+    display_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     brand_kit_version: Mapped[BrandKitVersion | None] = relationship(
         back_populates="products"

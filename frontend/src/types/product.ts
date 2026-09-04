@@ -14,6 +14,7 @@ export interface ProductAsset {
 
 export interface Product {
   id: number;
+  display_number: number | null;
   brand_kit_version_id: number | null;
   name: string;
   category: string | null;
@@ -23,6 +24,12 @@ export interface Product {
   created_at: string;
   updated_at: string;
   assets: ProductAsset[];
+}
+
+export function productDisplayNumber(
+  product: Pick<Product, "id" | "display_number">,
+): number {
+  return product.display_number ?? product.id;
 }
 
 export interface ProductCreatePayload {

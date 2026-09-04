@@ -14,7 +14,7 @@ import { BrandKitOnboardingPanel } from "../components/product/BrandKitOnboardin
 import { ProductCreateForm } from "../components/product/ProductCreateForm";
 import { usePresentationMode } from "../context/PresentationModeContext";
 import { useReadResource } from "../hooks/useReadResource";
-import type { Product } from "../types/product";
+import { productDisplayNumber, type Product } from "../types/product";
 
 const PRODUCT_CENTER_SELECTION_KEY = "socialpilot.productCenter.selectedProduct";
 
@@ -194,7 +194,7 @@ export function ProductCenterPage() {
                       <span className="product-list-item__content">
                         <span className="product-list-item__title">
                           <strong>{product.name}</strong>
-                          <small>#{String(product.id).padStart(3, "0")}</small>
+                          <small>#{productDisplayNumber(product)}</small>
                         </span>
                         <span className="product-list-item__category">
                           {product.category || "未分类"}
@@ -422,7 +422,7 @@ function ProductDetail({
     <article className="product-detail-card">
       <header>
         <div>
-          <span>商品 #{String(product.id).padStart(3, "0")}</span>
+          <span>商品 #{productDisplayNumber(product)}</span>
           <h3>{product.name}</h3>
           <p>{product.category || "未分类"}</p>
         </div>

@@ -13,7 +13,7 @@ import { copyExecutionEnabled } from "../../config/features";
 import type { CopyPreflight, PersistedCopyMatrix } from "../../types/copy";
 import type { ExecutionJob } from "../../types/execution";
 import type { MarketingTask } from "../../types/marketing";
-import type { Product } from "../../types/product";
+import { productDisplayNumber, type Product } from "../../types/product";
 import type { MarketingStrategy } from "../../types/strategy";
 import {
   copyMatrixCsv,
@@ -440,7 +440,7 @@ export function CopyPreflightPanel({
         网页只验证精确商品、营销任务、营销策略与冻结输入；只有后台任务领取后才调用千问。
       </p>
       <dl className="product-detail__facts copy-preflight__context">
-        <div><dt>商品</dt><dd>#{product.id} · {product.name}</dd></div>
+        <div><dt>商品</dt><dd>#{productDisplayNumber(product)} · {product.name}</dd></div>
         <div><dt>营销任务</dt><dd>#{task.id}</dd></div>
         <div><dt>营销策略</dt><dd>#{strategy.id}</dd></div>
         <div><dt>策略来源</dt><dd>{strategySource === "direct" ? "任务精确结果" : "兼容来源"}</dd></div>
@@ -638,7 +638,7 @@ function CopyMatrixResult({
         <span>文案矩阵 #{matrix.id}</span>
       </header>
       <dl className="product-detail__facts">
-        <div><dt>商品</dt><dd>#{matrix.product_id} · {product.name}</dd></div>
+        <div><dt>商品</dt><dd>#{productDisplayNumber(product)} · {product.name}</dd></div>
         <div><dt>营销任务</dt><dd>#{taskId}</dd></div>
         <div><dt>营销策略</dt><dd>#{matrix.marketing_strategy_id}</dd></div>
         <div><dt>生成平台</dt><dd>{matrix.copies.map((copy) => copy.platform).join("、")}</dd></div>

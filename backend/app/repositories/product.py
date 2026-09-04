@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from sqlalchemy import MetaData, Table, func, inspect, select
+from sqlalchemy import MetaData, Table, func, inspect, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from app.execution.workspace_context import current_execution_workspace_id
-from app.models import Product, ProductAsset
+from app.models import Product, ProductAsset, Workspace
 from app.schemas.product import ProductAssetCreate, ProductCreate, ProductUpdate
 
 
@@ -26,8 +26,10 @@ class ProductRepository:
         create_request_key: str | None = None,
         create_request_digest: str | None = None,
     ) -> Product:
+        workspace_id = self.workspace_id
         product = Product(
-            workspace_id=self.workspace_id,
+            workspace_id=workspace_id,
+            display_number=self._allocate_display_number(workspace_id),
             create_request_key=create_request_key,
             create_request_digest=create_request_digest,
             **data.model_dump(),
@@ -35,6 +37,26 @@ class ProductRepository:
         self.session.add(product)
         self.session.commit()
         return self.get(product.id)  # type: ignore[return-value]
+
+    def _allocate_display_number(self, workspace_id: int | None) -> int:
+        if workspace_id is not None:
+            next_value = self.session.scalar(
+                update(Workspace)
+                .where(Workspace.id == workspace_id)
+                .values(next_product_number=Workspace.next_product_number + 1)
+                .returning(Workspace.next_product_number)
+            )
+            if next_value is None:
+                raise RuntimeError("Product workspace does not exist")
+            return int(next_value) - 1
+
+        # Compatibility path for legacy/demo execution without an authenticated
+        # workspace. Authenticated product creation always uses the atomic
+        # workspace counter above.
+        highest = self.session.scalar(
+            select(func.max(Product.display_number)).where(Product.workspace_id.is_(None))
+        )
+        return int(highest or 0) + 1
 
     def get_by_create_request_key(self, request_key: str) -> Product | None:
         statement = select(Product).options(selectinload(Product.assets)).where(
