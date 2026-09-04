@@ -3,16 +3,11 @@ import { useCallback, useEffect, useState } from "react";
 import { listPublishTasks } from "../api/social";
 import { getVideoRenderArtifacts } from "../api/videos";
 import { OperationalProductSelector } from "../components/product/OperationalProductSelector";
-import { PresentationSnapshotPanel } from "../components/product/PresentationSnapshotPanel";
 import { SocialPublishingPanel } from "../components/product/SocialPublishingPanel";
 import { DemoContextBar } from "../components/showcase/DemoContextBar";
 import { LiveWanxGenerationPanel } from "../components/video/LiveWanxGenerationPanel";
-import { AdvancedVideoScriptVersionPanel } from "../components/video/AdvancedVideoScriptVersionPanel";
 import { BatchVideoJobPanel } from "../components/video/BatchVideoJobPanel";
-import { InitialVideoProjectPanel } from "../components/video/InitialVideoProjectPanel";
 import { RealProductVideoPanel } from "../components/video/RealProductVideoPanel";
-import { VideoCompositionPanel } from "../components/video/VideoCompositionPanel";
-import { VideoRenderPreflightPanel } from "../components/video/VideoRenderPreflightPanel";
 import { shouldMountBatchVideoFlow } from "../components/video/batchVideoJobState";
 import { VideoHero } from "../components/video/VideoHero";
 import { VideoStoryboard } from "../components/video/VideoStoryboard";
@@ -27,7 +22,7 @@ import { useDemoSnapshot } from "../hooks/useDemoSnapshot";
 import { usePresentationMode } from "../context/PresentationModeContext";
 import type { PublishTask } from "../types/social";
 import type { VideoRenderArtifact } from "../types/video";
-import { batchVideoJobsEnabled, qwenVideoScriptGenerationEnabled, videoScriptVersionsEnabled } from "../config/features";
+import { batchVideoJobsEnabled } from "../config/features";
 
 export function ContentStudioPage() {
   const { isPresentation } = usePresentationMode();
@@ -139,16 +134,17 @@ export function ContentStudioPage() {
   );
 }
 
-type VideoWorkspaceView = "production" | "batch" | "advanced";
+type VideoWorkspaceView = "production" | "batch" | "publishing";
 
 const VIDEO_WORKSPACE_VIEW_KEY = "socialpilot.videoWorkspace.view";
 const VIDEO_PRODUCTION_PRODUCT_KEY = "socialpilot.videoWorkspace.productionProduct";
-const VIDEO_ADVANCED_PRODUCT_KEY = "socialpilot.videoWorkspace.advancedProduct";
+const VIDEO_PUBLISHING_PRODUCT_KEY = "socialpilot.videoWorkspace.publishingProduct";
 
 function restoredVideoWorkspaceView(): VideoWorkspaceView {
   try {
     const stored = window.localStorage.getItem(VIDEO_WORKSPACE_VIEW_KEY);
-    return stored === "batch" || stored === "advanced" ? stored : "production";
+    if (stored === "advanced") return "publishing";
+    return stored === "batch" || stored === "publishing" ? stored : "production";
   } catch {
     return "production";
   }
@@ -206,10 +202,10 @@ function VideoProductionWorkspace({
         </button>
         <button
           type="button"
-          className={view === "advanced" ? "workspace-tabs__active" : ""}
-          onClick={() => setView("advanced")}
+          className={view === "publishing" ? "workspace-tabs__active" : ""}
+          onClick={() => setView("publishing")}
         >
-          高级制作与交付
+          社交发布
         </button>
       </nav>
 
@@ -227,44 +223,19 @@ function VideoProductionWorkspace({
         <BatchVideoJobPanel />
       ) : null}
 
-      {view === "advanced" ? <AdvancedVideoWorkspace /> : null}
+      {view === "publishing" ? <SocialPublishingWorkspace /> : null}
     </div>
   );
 }
 
-function AdvancedVideoWorkspace() {
-  const [videoProjectId, setVideoProjectId] = useState<number | undefined>();
-
+function SocialPublishingWorkspace() {
   return (
     <OperationalProductSelector
-      title="高级制作与交付"
-      description="用于单场景蓝图、渲染、合成、社交发布和演示快照；普通一键生产无需进入这里。"
-      storageKey={VIDEO_ADVANCED_PRODUCT_KEY}
+      title="社交发布"
+      description="选择商品后，将已完成并通过校验的成片发布到已连接的社交账号。"
+      storageKey={VIDEO_PUBLISHING_PRODUCT_KEY}
     >
-      {(product) => (
-        <div className="advanced-video-workspace">
-          {videoScriptVersionsEnabled ? (
-            <AdvancedVideoScriptVersionPanel
-              productId={product.id}
-              qwenEnabled={qwenVideoScriptGenerationEnabled}
-            />
-          ) : null}
-          <InitialVideoProjectPanel
-            product={product}
-            onGenerated={setVideoProjectId}
-          />
-          <VideoRenderPreflightPanel
-            product={product}
-            videoProjectId={videoProjectId}
-          />
-          <VideoCompositionPanel
-            product={product}
-            videoProjectId={videoProjectId}
-          />
-          <SocialPublishingPanel productId={product.id} />
-          <PresentationSnapshotPanel productId={product.id} />
-        </div>
-      )}
+      {(product) => <SocialPublishingPanel productId={product.id} />}
     </OperationalProductSelector>
   );
 }

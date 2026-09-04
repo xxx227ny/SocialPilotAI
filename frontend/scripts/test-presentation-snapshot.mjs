@@ -172,8 +172,8 @@ try {
   assert.doesNotMatch(panel, /Qwen|Wanx|Google|YouTube/);
 
   const page = read("src", "pages", "ContentStudioPage.tsx");
-  assert.match(page, /<PresentationSnapshotPanel productId=\{product\.id\} \/>/);
-  assert.match(page, /高级制作与交付/);
+  assert.doesNotMatch(page, /<PresentationSnapshotPanel productId=\{product\.id\} \/>/);
+  assert.match(page, /社交发布/);
   const api = read("src", "api", "presentationSnapshots.ts");
   assert.match(api, /apiClient\.post<PresentationSnapshotCreateResult>/);
   assert.match(api, /\/presentation-snapshots\/\$\{snapshotId\}/);

@@ -281,12 +281,9 @@ try {
       "showBatchVideoJobs && <BatchVideoJobPanel />",
     ),
   );
-  assert.ok(
-    page.includes(
-      "qwenEnabled={qwenVideoScriptGenerationEnabled}",
-    ),
-  );
-  assert.ok(page.includes("<AdvancedVideoScriptVersionPanel"));
+  assert.ok(page.includes("社交发布"));
+  assert.ok(page.includes("<SocialPublishingPanel productId={product.id}"));
+  assert.ok(!page.includes("<AdvancedVideoScriptVersionPanel"));
   assert.ok(!panel.includes("preflightQwenVideoScript"));
   assert.ok(!panel.includes("createQwenVideoScriptJob"));
   assert.ok(!/Promise\.all\s*\(\s*result\.variants/i.test(panel));
@@ -296,7 +293,7 @@ try {
       "confirmAndCreateQwenJob(qwenApi,variant.id",
     ),
   );
-  staticAssertions += 16;
+  staticAssertions += 17;
 
   let presentationQwenRequests = 0;
   if (state.shouldMountBatchVideoFlow(true, true)) {
