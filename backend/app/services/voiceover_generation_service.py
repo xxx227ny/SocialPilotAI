@@ -85,6 +85,7 @@ class VoiceoverGenerationService:
                 job=ExecutionJobRead.model_validate(existing), reused=True
             )
         job = ExecutionJob(
+            workspace_id=self.session.info.get("workspace_id"),
             job_type=VOICEOVER_GENERATE_V1,
             source_type="video_composition",
             source_id=composition.id,

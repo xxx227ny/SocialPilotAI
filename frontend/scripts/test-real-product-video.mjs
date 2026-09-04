@@ -231,6 +231,18 @@ try {
   );
   assert.equal(
     state.productionBatchRecoverable(
+      { status: "FAILED" },
+      [
+        {
+          status: "FAILED",
+          safe_error_code: "PRODUCTION_WANX_IMAGE_FAILED",
+        },
+      ],
+    ),
+    true,
+  );
+  assert.equal(
+    state.productionBatchRecoverable(
       { status: "PARTIAL_FAILED" },
       [
         { status: "SUCCEEDED" },
@@ -512,6 +524,7 @@ try {
   assert.ok(
     productVideoApi.includes("confirm_uncertain_voiceover_replacement"),
   );
+  assert.ok(productVideoApi.includes("retry_failed_images"));
   assert.ok(!enhancementApi.includes("`/api/v1/video-composition"));
   assert.ok(!productVideoApi.includes("`/api/v1/video-render-artifacts"));
   safety += 5;

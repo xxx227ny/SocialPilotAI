@@ -233,6 +233,7 @@ def test_short_voiceover_is_padded_by_worker_and_full_timeline_preflight_passes(
         video_artifact_storage_root=str(tmp_path),
     )
     product, composition, version = _source(db_session, tmp_path, "short")
+    db_session.info["workspace_id"] = 41
     provider = FakeTts(frames=480000)
     request = _request(composition, version, "short")
     first = VoiceoverGenerationService(db_session, settings).enqueue(
@@ -249,6 +250,7 @@ def test_short_voiceover_is_padded_by_worker_and_full_timeline_preflight_passes(
         "Fake:1.000:15000".encode()
     ).hexdigest()
     assert first.job.input_digest == expected_digest
+    assert db_session.get(ExecutionJob, first.job.id).workspace_id == 41
 
     worker = _worker(db_session, settings, provider)
     assert worker.run_once().status == WorkerRunStatus.SUCCEEDED

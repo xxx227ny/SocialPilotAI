@@ -207,6 +207,7 @@ def resume_product_video_production_batch(
         confirm_uncertain_voiceover_replacement=bool(
             data and data.confirm_uncertain_voiceover_replacement
         ),
+        retry_failed_images=bool(data and data.retry_failed_images),
     )
 
 

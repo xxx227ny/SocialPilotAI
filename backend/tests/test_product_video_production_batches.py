@@ -1215,6 +1215,86 @@ def test_advance_enqueues_wanx_jobs_once_and_recovers_exact_assets(
         assert manifest["missing_platforms"] == []
 
 
+def test_explicit_image_retry_replaces_only_failed_jobs(
+    client: TestClient, db_session: Session, tmp_path
+) -> None:
+    product, asset, selections = create_three_platform_sources(db_session)
+    app.dependency_overrides[get_settings] = lambda: _settings(tmp_path)
+    payload = {
+        "reference_product_asset_id": asset.id,
+        "reference_product_asset_sha256": asset.sha256,
+        "selections": selections[:1],
+    }
+    checked = client.post(
+        f"/api/v1/products/{product.id}/real-product-video/three-platform-preflight",
+        json=payload,
+    ).json()
+    created = client.post(
+        f"/api/v1/products/{product.id}/real-product-video/production-batches",
+        json={
+            **payload,
+            "input_digest": checked["input_digest"],
+            "idempotency_key": "production-image-explicit-retry",
+            "cost_confirmed": True,
+        },
+    ).json()
+    batch_id = created["batch"]["id"]
+    root = (
+        f"/api/v1/products/{product.id}/real-product-video/"
+        f"production-batches/{batch_id}"
+    )
+    advanced = client.post(f"{root}/advance").json()
+    original_ids = advanced["items"][0]["stage_state_json"]["wanx_job_ids"]
+    assert len(original_ids) == 2
+
+    failed_job = db_session.get(ExecutionJob, original_ids[0])
+    successful_job = db_session.get(ExecutionJob, original_ids[1])
+    generated = ProductAsset(
+        product_id=product.id,
+        file_name="generated-preserved.png",
+        file_path="product-images/generated-preserved.png",
+        file_type="png",
+        content_type="image/png",
+        size_bytes=101,
+        sha256="e" * 64,
+        width=720,
+        height=1280,
+        storage_identity="product-images/generated-preserved.png",
+    )
+    db_session.add(generated)
+    db_session.flush()
+    failed_job.status = "FAILED"
+    failed_job.safe_error_code = "WANX_IMAGE_FAILED"
+    failed_job.completed_at = failed_job.created_at
+    successful_job.status = "SUCCEEDED"
+    successful_job.result_entity_type = "product_asset"
+    successful_job.result_entity_id = generated.id
+    successful_job.completed_at = successful_job.created_at
+    db_session.commit()
+
+    failed = client.post(f"{root}/advance").json()
+    assert failed["batch"]["status"] == "FAILED"
+    assert failed["items"][0]["safe_error_code"] == "PRODUCTION_WANX_IMAGE_FAILED"
+    unchanged = client.post(f"{root}/resume").json()
+    assert unchanged["batch"]["status"] == "FAILED"
+    assert db_session.query(ExecutionJob).count() == 2
+
+    retried = client.post(f"{root}/resume", json={"retry_failed_images": True}).json()
+    retry_ids = retried["items"][0]["stage_state_json"]["wanx_job_ids"]
+    assert retried["batch"]["status"] == "RUNNING"
+    assert retried["items"][0]["status"] == "RUNNING"
+    assert retried["items"][0]["safe_error_code"] is None
+    assert retried["items"][0]["stage_state_json"]["wanx_image_retry_count"] == 1
+    assert retry_ids[1] == successful_job.id
+    assert retry_ids[0] != failed_job.id
+    assert db_session.get(ExecutionJob, retry_ids[0]).status == "QUEUED"
+    assert db_session.query(ExecutionJob).count() == 3
+
+    repeated = client.post(f"{root}/resume", json={"retry_failed_images": True}).json()
+    assert repeated["batch"]["status"] == "RUNNING"
+    assert db_session.query(ExecutionJob).count() == 3
+
+
 def test_advance_failure_and_controls_are_provider_job_scoped(
     client: TestClient, db_session: Session, tmp_path
 ) -> None:

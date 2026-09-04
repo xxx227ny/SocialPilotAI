@@ -113,6 +113,7 @@ class WanxProductImageService:
                 job=ExecutionJobRead.model_validate(completed), reused=True
             )
         job = ExecutionJob(
+            workspace_id=self.session.info.get("workspace_id"),
             job_type=WANX_PRODUCT_IMAGE_GENERATE_V1,
             source_type="video_storyboard_scene_version",
             source_id=scene.id,

@@ -246,6 +246,7 @@ def test_wanx_job_freezes_and_resolves_exact_product_reference(
         enable_real_product_video=True,
         product_asset_storage_root=str(tmp_path / "images"),
     )
+    db_session.info["workspace_id"] = 37
     service = WanxProductImageService(db_session, settings)
     request = WanxProductImageSubmitRequest(
         script_version_id=version.id,
@@ -280,6 +281,7 @@ def test_wanx_job_freezes_and_resolves_exact_product_reference(
     assert service.reference_content(product.id, asset.id, digest) == content
     stored_job = db_session.get(ExecutionJob, submitted.job.id)
     assert stored_job is not None
+    assert stored_job.workspace_id == 37
     stored_job.status = "SUCCEEDED"
     stored_job.result_entity_type = "product_asset"
     stored_job.result_entity_id = asset.id

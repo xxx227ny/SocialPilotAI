@@ -1474,6 +1474,11 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
 
   async function continueProductionBatch() {
     if (!production) return;
+    const hasFailedImages = production.items.some(
+      (item) =>
+        item.status === "FAILED" &&
+        item.safe_error_code === "PRODUCTION_WANX_IMAGE_FAILED",
+    );
     const hasUncertainVoiceover = production.items.some(
       (item) =>
         item.status === "FAILED" &&
@@ -1483,6 +1488,14 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
       hasUncertainVoiceover &&
       !window.confirm(
         "上一次千问配音结果不确定。确认使用当前通道为失败平台创建一次替换配音？原任务记录会保留，本次可能产生一次重复费用。",
+      )
+    ) {
+      return;
+    }
+    if (
+      hasFailedImages &&
+      !window.confirm(
+        "确认仅重试失败平台的万象商品画面？已成功画面和其他平台不会重新生成；本次会重新调用失败画面，可能产生相应费用。",
       )
     ) {
       return;
@@ -1510,6 +1523,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
               product.id,
               production.batch.id,
               hasUncertainVoiceover,
+              hasFailedImages,
               active.signal,
             )
           : production;

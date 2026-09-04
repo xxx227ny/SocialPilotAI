@@ -94,6 +94,7 @@ PLATFORM_REQUEST_NAMES = {
 }
 SHOT_MOTIONS = ("zoom_in", "pan_right", "zoom_out", "pan_left")
 MAX_HAPPYHORSE_REFRESHES = 90
+MAX_WANX_IMAGE_EXPLICIT_RETRIES = 1
 MAX_VOICEOVER_EXPLICIT_RETRIES = 1
 MAX_VOICEOVER_CONFIG_RETRIES = 1
 MAX_VOICEOVER_MANUAL_RATE_LIMIT_RETRIES = 3
@@ -238,6 +239,7 @@ class ProductVideoProductionBatchService:
         batch_id: int,
         *,
         confirm_uncertain_voiceover_replacement: bool = False,
+        retry_failed_images: bool = False,
     ) -> ProductVideoProductionCreateRead:
         batch = self._required(product_id, batch_id)
         if batch.status == "PAUSED":
@@ -250,6 +252,18 @@ class ProductVideoProductionBatchService:
         elif batch.status in {"PARTIAL_FAILED", "FAILED"}:
             recovered = False
             for item in batch.items:
+                if (
+                    retry_failed_images
+                    and item.status == "FAILED"
+                    and item.safe_error_code == "PRODUCTION_WANX_IMAGE_FAILED"
+                    and item.stage == "GENERATING_IMAGES"
+                    and self._prepare_wanx_image_recovery(batch, item)
+                ):
+                    item.status = "RUNNING"
+                    item.safe_error_code = None
+                    item.completed_at = None
+                    recovered = True
+                    continue
                 voiceover_job_id = item.stage_state_json.get("voiceover_job_id")
                 voiceover_job = (
                     self.session.get(ExecutionJob, voiceover_job_id)
@@ -327,6 +341,87 @@ class ProductVideoProductionBatchService:
                 self._sync_batch_status(batch)
                 self.session.commit()
         return self._create_read(self._required(product_id, batch_id), reused=True)
+
+    def _prepare_wanx_image_recovery(
+        self,
+        batch: ProductVideoProductionBatch,
+        item: ProductVideoProductionItem,
+    ) -> bool:
+        retry_count = item.stage_state_json.get("wanx_image_retry_count", 0)
+        raw_job_ids = item.stage_state_json.get("wanx_job_ids")
+        if (
+            not isinstance(retry_count, int)
+            or retry_count < 0
+            or retry_count >= MAX_WANX_IMAGE_EXPLICIT_RETRIES
+            or not isinstance(raw_job_ids, list)
+            or not raw_job_ids
+            or not all(isinstance(job_id, int) and job_id > 0 for job_id in raw_job_ids)
+        ):
+            return False
+        jobs = list(
+            self.session.scalars(
+                select(ExecutionJob)
+                .where(ExecutionJob.id.in_(raw_job_ids))
+                .order_by(ExecutionJob.id)
+            ).all()
+        )
+        if len(jobs) != len(raw_job_ids):
+            return False
+        jobs_by_scene: dict[int, ExecutionJob] = {}
+        for job in jobs:
+            scene_sequence = job.input_payload.get("scene_sequence")
+            if not isinstance(scene_sequence, int) or scene_sequence in jobs_by_scene:
+                return False
+            jobs_by_scene[scene_sequence] = job
+        version = self.session.get(VideoScriptVersion, item.script_version_id)
+        if (
+            version is None
+            or version.product_id != batch.product_id
+            or len(version.scenes) != len(jobs_by_scene)
+        ):
+            return False
+        retry_number = retry_count + 1
+        service = WanxProductImageService(self.session, self.settings)
+        replacement_job_ids: list[int] = []
+        replaced = False
+        for scene in sorted(version.scenes, key=lambda value: value.sequence):
+            previous = jobs_by_scene.get(scene.sequence)
+            if (
+                previous is None
+                or previous.status == "SUBMIT_UNKNOWN"
+                or previous.uncertain
+            ):
+                return False
+            if previous.status == "SUCCEEDED":
+                replacement_job_ids.append(previous.id)
+                continue
+            if previous.status not in {"FAILED", "CANCELLED"}:
+                return False
+            submitted = service.enqueue(
+                batch.product_id,
+                WanxProductImageSubmitRequest(
+                    script_version_id=version.id,
+                    scene_sequence=scene.sequence,
+                    reference_product_asset_id=batch.reference_product_asset_id,
+                    reference_product_asset_sha256=batch.reference_product_asset_sha256,
+                    idempotency_key=(
+                        f"production:{batch.id}:item:{item.id}:wanx:"
+                        f"{scene.sequence}:retry:{retry_number}"
+                    ),
+                    cost_confirmed=True,
+                ),
+            )
+            replacement_job_ids.append(submitted.job.id)
+            replaced = True
+        if not replaced:
+            return False
+        item.stage_state_json = {
+            **item.stage_state_json,
+            "wanx_job_ids": replacement_job_ids,
+            "wanx_product_asset_ids": [],
+            "wanx_image_retry_count": retry_number,
+        }
+        return True
 
     def _prepare_legacy_wanx_submit_recovery(
         self, item: ProductVideoProductionItem
