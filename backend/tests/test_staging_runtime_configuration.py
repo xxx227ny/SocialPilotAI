@@ -42,6 +42,10 @@ def test_runtime_regeneration_preserves_only_server_email_credentials() -> None:
     assert "QWEN_API_KEY" not in config
     assert "DASHSCOPE_API_KEY" not in config
     assert "WANX_API_KEY" not in config
+    assert config["QWEN_VIDEO_SCRIPT_COST_MIN"] == "0.01"
+    assert config["QWEN_VIDEO_SCRIPT_COST_MAX"] == "0.05"
+    assert config["QWEN_VIDEO_SCRIPT_COST_CURRENCY"] == "CNY"
+    assert "qwen-plus cn-beijing" in str(config["QWEN_VIDEO_SCRIPT_COST_BASIS"])
 
 
 def test_new_runtime_generates_valid_encryption_key_and_no_shared_keys() -> None:
@@ -53,3 +57,5 @@ def test_new_runtime_generates_valid_encryption_key_and_no_shared_keys() -> None
     assert config["ACCOUNT_PUBLIC_WEB_ORIGIN"] == module.PUBLIC_ORIGIN
     shared_keys = ("QWEN_API_KEY", "DASHSCOPE_API_KEY", "WANX_API_KEY")
     assert not any(key in config for key in shared_keys)
+    assert config["QWEN_VIDEO_SCRIPT_COST_MIN"] == "0.01"
+    assert config["QWEN_VIDEO_SCRIPT_COST_MAX"] == "0.05"

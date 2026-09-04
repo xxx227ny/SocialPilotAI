@@ -68,6 +68,17 @@ def build_runtime_config(existing: dict[str, object]) -> dict[str, object]:
         "ENABLE_VIDEO_COMPOSITION": "true",
         "ENABLE_VIDEO_COMPOSITION_ENHANCEMENT": "true",
         "ENABLE_QWEN_VIDEO_SCRIPT_GENERATION": "true",
+        # Qwen Plus in cn-beijing is token billed. This conservative per-script
+        # envelope intentionally sits above the expected four-act 15-second
+        # prompt/response cost so users can approve a bounded amount before any
+        # Provider call. Keep the dated basis visible in Preflight results.
+        "QWEN_VIDEO_SCRIPT_COST_MIN": "0.01",
+        "QWEN_VIDEO_SCRIPT_COST_MAX": "0.05",
+        "QWEN_VIDEO_SCRIPT_COST_CURRENCY": "CNY",
+        "QWEN_VIDEO_SCRIPT_COST_BASIS": (
+            "qwen-plus cn-beijing official token pricing; conservative "
+            "per-script envelope reviewed 2026-09-04"
+        ),
         "ENABLE_REAL_PRODUCT_VIDEO": "true",
         "ENABLE_HAPPYHORSE_PRODUCT_VIDEO": "true",
         "ENABLE_GROWTH_EXECUTION": "true",

@@ -469,6 +469,7 @@ try {
   );
   assert.ok(apiClient.includes("export function apiContentUrl"));
   assert.ok(apiClient.includes("当前工作区的商品素材存储已达到上限"));
+  assert.ok(apiClient.includes("服务器尚未配置千问脚本费用区间"));
   assert.ok(enhancementApi.includes("apiContentUrl("));
   assert.ok(productVideoApi.includes("apiContentUrl("));
   assert.ok(productVideoApi.includes("/download"));

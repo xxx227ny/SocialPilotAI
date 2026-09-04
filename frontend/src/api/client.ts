@@ -58,6 +58,8 @@ const SAFE_PROVIDER_MESSAGES: Record<string, string> = {
     "当前工作区的商品素材存储已达到上限；请删除未被任务引用的旧素材后重试。",
   "Workspace API Key is missing or unverified":
     "请先前往“API Key 设置”，绑定并验证你自己的阿里云百炼 API Key。",
+  "Batch Qwen script cost policy is inconsistent":
+    "服务器尚未配置千问脚本费用区间，本次检查没有调用模型或产生费用，请稍后重试。",
   "Qwen provider authentication failed":
     "千问认证失败；请重新验证当前工作区绑定的 API Key，并检查其所属地域。",
   "Qwen provider permission denied":
