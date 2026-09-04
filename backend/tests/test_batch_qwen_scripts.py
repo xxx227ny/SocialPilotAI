@@ -194,3 +194,34 @@ def test_batch_qwen_rejects_cross_batch_or_incomplete_platform_identity(
     assert response.status_code == 409
     assert db_session.query(ExecutionJob).count() == 0
     assert batch.qwen_script_calls_reserved == 0
+
+
+def test_single_platform_qwen_preflight_has_single_platform_costs(
+    client, db_session
+) -> None:
+    batch, variants = three_ready_variants(db_session)
+    strategy = strategy_for(db_session, variants[0].product_id)
+    app.dependency_overrides[get_settings] = lambda: qwen_settings()
+    before = db_session.query(ExecutionJob).count()
+
+    response = client.post(
+        f"/api/v1/batch-video-jobs/{batch.id}/qwen-scripts/preflight",
+        json={
+            "product_id": variants[0].product_id,
+            "variant_ids": [variants[0].id],
+            "strategy_id": strategy.id,
+            "copy_matrix_id": None,
+        },
+    )
+
+    assert response.status_code == 200
+    checked = response.json()
+    assert checked["variant_ids"] == [variants[0].id]
+    assert checked["estimated_provider_calls"] == 1
+    assert checked["wanx_image_generation_calls"] == 4
+    assert checked["dynamic_video_generation_calls"] == 1
+    assert checked["qwen_tts_generation_calls"] == 1
+    assert checked["known_downstream_cost"] == "2.65"
+    assert checked["total_known_cost_min"] == "2.67"
+    assert checked["total_known_cost_max"] == "2.73"
+    assert db_session.query(ExecutionJob).count() == before

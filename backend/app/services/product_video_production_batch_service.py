@@ -127,9 +127,9 @@ class ProductVideoProductionBatchService:
             ),
         )
         if checked.input_digest != data.input_digest:
-            raise AppError("Three-platform frozen Preflight mismatch", 409)
+            raise AppError("Product-video frozen Preflight mismatch", 409)
         if not checked.ready:
-            raise AppError("Three-platform production is not ready", 409)
+            raise AppError("Product-video production is not ready", 409)
 
         batch = ProductVideoProductionBatch(
             product_id=product_id,

@@ -161,7 +161,13 @@ class ThreePlatformVideoPreflightRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     reference_product_asset_id: int = Field(gt=0)
     reference_product_asset_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
-    selections: list[ProductVideoSelection] = Field(min_length=3, max_length=3)
+    selections: list[ProductVideoSelection] = Field(min_length=1, max_length=3)
+
+    @model_validator(mode="after")
+    def validate_selection_count(self) -> "ThreePlatformVideoPreflightRequest":
+        if len(self.selections) not in {1, 3}:
+            raise ValueError("Select either one platform or all three platforms")
+        return self
 
 
 class PlatformVideoProductionEstimate(BaseModel):

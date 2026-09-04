@@ -51,6 +51,41 @@ def _settings(tmp_path) -> Settings:
     )
 
 
+def test_create_persistent_single_platform_batch(
+    client: TestClient, db_session: Session, tmp_path
+) -> None:
+    product, asset, selections = create_three_platform_sources(db_session)
+    app.dependency_overrides[get_settings] = lambda: _settings(tmp_path)
+    payload = {
+        "reference_product_asset_id": asset.id,
+        "reference_product_asset_sha256": asset.sha256,
+        "selections": [selections[0]],
+    }
+    checked_response = client.post(
+        f"/api/v1/products/{product.id}/real-product-video/three-platform-preflight",
+        json=payload,
+    )
+    assert checked_response.status_code == 200
+    checked = checked_response.json()
+
+    created = client.post(
+        f"/api/v1/products/{product.id}/real-product-video/production-batches",
+        json={
+            **payload,
+            "input_digest": checked["input_digest"],
+            "idempotency_key": "single-platform-production-batch-1",
+            "cost_confirmed": True,
+        },
+    )
+
+    assert created.status_code == 201
+    body = created.json()
+    assert body["batch"]["provider_call_budget"] == 4
+    assert Decimal(body["batch"]["known_estimated_cost"]) == Decimal("1.20")
+    assert len(body["items"]) == 1
+    assert body["items"][0]["platform"] == "tiktok"
+
+
 def test_create_recover_and_control_persistent_three_platform_batch(
     client: TestClient, db_session: Session, tmp_path
 ) -> None:

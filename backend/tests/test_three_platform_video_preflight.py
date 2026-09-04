@@ -276,6 +276,45 @@ def test_three_platform_preflight_reports_missing_execution_requirements(
     assert "wanx_credentials" in response.json()["missing_requirements"]
 
 
+def test_single_platform_preflight_is_exact_and_costs_only_one_video(
+    client: TestClient, db_session: Session, tmp_path
+) -> None:
+    product, asset, selections = create_three_platform_sources(db_session)
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        _env_file=None,
+        enable_real_product_video=True,
+        enable_happyhorse_product_video=True,
+        enable_video_render_execution=True,
+        enable_video_composition=True,
+        enable_video_composition_enhancement=True,
+        qwen_api_key="fake-qwen-key",
+        wanx_api_key="fake-wanx-key",
+        product_asset_storage_root=str(tmp_path / "images"),
+        video_artifact_storage_root=str(tmp_path / "videos"),
+        wanx_image_estimated_cost=Decimal("0.10"),
+        happyhorse_estimated_cost=Decimal("1.00"),
+    )
+
+    response = client.post(
+        f"/api/v1/products/{product.id}/real-product-video/three-platform-preflight",
+        json={
+            "reference_product_asset_id": asset.id,
+            "reference_product_asset_sha256": asset.sha256,
+            "selections": [selections[0]],
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [item["platform"] for item in body["platforms"]] == ["tiktok"]
+    assert body["wanx_image_generation_calls"] == 2
+    assert body["happyhorse_generation_calls"] == 1
+    assert body["dynamic_video_generation_calls"] == 1
+    assert body["qwen_tts_generation_calls"] == 1
+    assert body["provider_call_count"] == 4
+    assert body["known_estimated_cost"] == "1.20"
+
+
 def test_three_platform_preflight_rejects_missing_strategy_before_provider_calls(
     client: TestClient, db_session: Session, tmp_path
 ) -> None:

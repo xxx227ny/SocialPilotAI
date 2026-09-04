@@ -55,6 +55,7 @@ import { realProductVideoEnabled } from "../../config/features";
 import { usePresentationMode } from "../../context/PresentationModeContext";
 import type { Product } from "../../types/product";
 import type {
+  BatchPlatform,
   BatchQwenScriptPreflight,
   BatchQwenScriptRequest,
 } from "../../types/batchVideo";
@@ -69,6 +70,8 @@ import type {
 import {
   buildThreePlatformPreflightPayload,
   buildBatchQwenScriptRequest,
+  buildSinglePlatformPreflightPayload,
+  buildSinglePlatformQwenScriptRequest,
   pollExactJob,
   preflightBatchScriptsWithCopyFallback,
   productionBatchTerminal,
@@ -109,6 +112,14 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
     useState<BatchQwenScriptPreflight | null>(null);
   const [oneClickCostConfirmed, setOneClickCostConfirmed] = useState(false);
   const [oneClickFeedback, setOneClickFeedback] = useState("");
+  const [singlePlatform, setSinglePlatform] =
+    useState<BatchPlatform>("tiktok");
+  const [singleRequest, setSingleRequest] =
+    useState<BatchQwenScriptRequest | null>(null);
+  const [singlePreflight, setSinglePreflight] =
+    useState<BatchQwenScriptPreflight | null>(null);
+  const [singleCostConfirmed, setSingleCostConfirmed] = useState(false);
+  const [singleFeedback, setSingleFeedback] = useState("");
   const [production, setProduction] =
     useState<ProductVideoProductionResult | null>(null);
   const [productionBatchId, setProductionBatchId] = useState("");
@@ -173,6 +184,10 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
     setOneClickPreflight(null);
     setOneClickCostConfirmed(false);
     setOneClickFeedback("");
+    setSingleRequest(null);
+    setSinglePreflight(null);
+    setSingleCostConfirmed(false);
+    setSingleFeedback("");
     setScriptBatchId(
       window.localStorage.getItem(`socialpilot.scriptBatch.${product.id}`) ?? "",
     );
@@ -242,13 +257,13 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
         setProductionBatchId(String(value.batch.id));
         if (value.batch.status === "SUCCEEDED") {
           setPhase("SUCCEEDED");
-          setMessage("已恢复上次三平台成片和下载结果。");
+          setMessage("已恢复上次成片和下载结果。");
         } else if (productionBatchTerminal(value.batch, value.items)) {
           setPhase("FAILED");
           setMessage("已恢复上次生产批次；可查看失败原因或恢复原任务。");
         } else {
           setPhase("GENERATING_IMAGES");
-          setMessage("已恢复正在进行的三平台生产批次，可继续推进。");
+          setMessage("已恢复正在进行的视频生产批次，可继续推进。");
         }
       })
       .catch(() => {
@@ -292,7 +307,9 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
           setPhase(refreshed.batch.status === "SUCCEEDED" ? "SUCCEEDED" : "FAILED");
           setMessage(
             refreshed.batch.status === "SUCCEEDED"
-              ? "三平台完整成片已生成，可分别预览和下载。"
+              ? refreshed.items.length === 1
+                ? "单平台完整成片已生成，可以预览和下载。"
+                : "三平台完整成片已生成，可分别预览和下载。"
               : "批次已结束，失败平台保留明确原因，成功平台结果仍可下载。",
           );
           return;
@@ -340,6 +357,10 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
     setOneClickPreflight(null);
     setOneClickCostConfirmed(false);
     setOneClickFeedback("");
+    setSingleRequest(null);
+    setSinglePreflight(null);
+    setSingleCostConfirmed(false);
+    setSingleFeedback("");
   }, [referenceAssetId, sources]);
 
   if (!realProductVideoEnabled || isPresentation) return null;
@@ -351,6 +372,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
       const feedback = "正在自动匹配当前商品的最新可用生产资料……";
       setMessage(feedback);
       setOneClickFeedback(feedback);
+      setSingleFeedback(feedback);
     }
     try {
       const context = await getProductVideoWorkflowContext(
@@ -381,6 +403,9 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
       setOneClickRequest(null);
       setOneClickPreflight(null);
       setOneClickCostConfirmed(false);
+      setSingleRequest(null);
+      setSinglePreflight(null);
+      setSingleCostConfirmed(false);
       const missingLabels: Record<string, string> = {
         three_platform_batch: "三平台批量任务",
         marketing_strategy: "营销策略",
@@ -393,6 +418,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
             .join("、")}。`;
       setMessage(feedback);
       setOneClickFeedback(feedback);
+      setSingleFeedback(feedback);
     } catch (error) {
       if (workflowContextOperation.current.current(active.id)) {
         const feedback = getApiErrorMessage(
@@ -401,6 +427,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
         );
         setMessage(feedback);
         setOneClickFeedback(feedback);
+        setSingleFeedback(feedback);
       }
     } finally {
       if (workflowContextOperation.current.current(active.id)) {
@@ -969,6 +996,76 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
     }
   }
 
+  async function checkSinglePlatformPreflight() {
+    const batchId = Number(scriptBatchId);
+    const inputIssue = oneClickPreflightInputIssue(
+      batchId,
+      strategyId,
+      Boolean(referenceAsset),
+    );
+    if (inputIssue) {
+      setMessage(inputIssue);
+      setSingleFeedback(inputIssue);
+      return;
+    }
+    const active = operation.current.begin();
+    setSingleRequest(null);
+    setSinglePreflight(null);
+    setSingleCostConfirmed(false);
+    const label = platformLabel(singlePlatform);
+    const checkingMessage = `正在核对 ${label} 单平台脚本和完整成片费用……`;
+    setMessage(checkingMessage);
+    setSingleFeedback(checkingMessage);
+    try {
+      const variants = await listBatchVideoVariants(batchId, active.signal);
+      const request = buildSinglePlatformQwenScriptRequest(
+        variants,
+        product.id,
+        singlePlatform,
+        strategyId,
+        copyMatrixId,
+      );
+      if (!request) {
+        const feedback = `当前批次没有可用于 ${label} 的“等待生成脚本”变体。请在“批量任务”中为该平台创建任务后重试。`;
+        setMessage(feedback);
+        setSingleFeedback(feedback);
+        return;
+      }
+      const fallback = await preflightBatchScriptsWithCopyFallback(
+        request,
+        (current) =>
+          preflightBatchQwenScripts(batchId, current, active.signal),
+        (error) =>
+          hasApiErrorMessage(error, "Target-platform copy is unavailable"),
+      );
+      if (!operation.current.current(active.id)) return;
+      if (fallback.ignoredIncompatibleCopyMatrix) {
+        setCopyMatrixId(null);
+        window.localStorage.removeItem(
+          `socialpilot.videoCopyMatrix.${product.id}`,
+        );
+      }
+      setSingleRequest(fallback.request);
+      setSinglePreflight(fallback.checked);
+      window.localStorage.setItem(
+        `socialpilot.scriptBatch.${product.id}`,
+        String(batchId),
+      );
+      const feedback = fallback.checked.ready_for_execution
+        ? fallback.ignoredIncompatibleCopyMatrix
+          ? `${label} 文案不在当前文案矩阵中，系统已安全改用商品资料与营销策略；检查已通过，请确认费用。`
+          : `${label} 单平台完整链路检查已通过，请确认调用次数和费用。`
+        : oneClickBlockedMessage(fallback.checked);
+      setMessage(feedback);
+      setSingleFeedback(feedback);
+    } catch (error) {
+      if (!operation.current.current(active.id)) return;
+      const feedback = getApiErrorMessage(error, `${label} 单平台前置检查失败。`);
+      setMessage(feedback);
+      setSingleFeedback(feedback);
+    }
+  }
+
   async function driveBatchQwenScripts(
     batchId: number,
     request: BatchQwenScriptRequest,
@@ -990,12 +1087,102 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
         const failures = current.items
           .filter((item) => item.status === "FAILED" || item.status === "SUBMIT_UNKNOWN")
           .map((item) => `${item.platform}:${item.safe_error_code ?? item.status}`);
-        throw new Error(`三平台脚本生成未完成：${failures.join("、")}`);
+        throw new Error(`平台脚本生成未完成：${failures.join("、")}`);
       }
-      setMessage("千问正在生成三个平台脚本，任务可按精确Batch恢复……");
+      setMessage(
+        request.variant_ids.length === 1
+          ? "千问正在生成所选平台脚本，任务可按精确批次恢复……"
+          : "千问正在生成三个平台脚本，任务可按精确批次恢复……",
+      );
       await waitForProduction(active.signal);
     }
-    throw new Error("三平台脚本等待超时，已保留Job，可稍后继续。");
+    throw new Error("平台脚本等待超时，已保留任务，可稍后继续。");
+  }
+
+  async function generateSinglePlatformVideo() {
+    const batchId = Number(scriptBatchId);
+    if (
+      !singleRequest ||
+      !singlePreflight?.ready_for_execution ||
+      !singleCostConfirmed ||
+      !referenceAsset?.sha256 ||
+      !Number.isInteger(batchId) ||
+      batchId <= 0
+    ) {
+      setMessage("请先检查所选平台的完整链路并确认费用。");
+      return;
+    }
+    const active = operation.current.begin();
+    const label = platformLabel(singlePlatform);
+    setPhase("GENERATING_SCRIPTS");
+    setResult(null);
+    setProduction(null);
+    setMessage(`正在复核费用并生成 ${label} 脚本……`);
+    try {
+      const current = singlePreflight;
+      await driveBatchQwenScripts(batchId, singleRequest, current, active);
+      const refreshedSources = await listProductVideoSources(
+        product.id,
+        active.signal,
+      );
+      const selectedVariantId = singleRequest.variant_ids[0];
+      const exactSource = refreshedSources.find(
+        (item) => item.variant_id === selectedVariantId,
+      );
+      if (!exactSource || exactSource.platform !== singlePlatform) {
+        throw new Error(`${label} 脚本已生成，但精确激活来源恢复失败。`);
+      }
+      setSources(refreshedSources);
+      setSourceId(exactSource.variant_id);
+      window.localStorage.setItem(
+        `socialpilot.videoSource.${product.id}`,
+        String(exactSource.variant_id),
+      );
+      const payload = buildSinglePlatformPreflightPayload(
+        exactSource,
+        referenceAsset,
+      );
+      if (!payload) throw new Error(`${label} 成片输入不完整。`);
+      const videoChecked = await preflightThreePlatformVideo(
+        product.id,
+        payload,
+        active.signal,
+      );
+      if (
+        !videoChecked.ready ||
+        videoChecked.wanx_image_generation_calls !==
+          current.wanx_image_generation_calls ||
+        videoChecked.dynamic_video_generation_calls !==
+          current.dynamic_video_generation_calls ||
+        videoChecked.dynamic_video_provider !== current.dynamic_video_provider ||
+        videoChecked.qwen_tts_generation_calls !==
+          current.qwen_tts_generation_calls ||
+        videoChecked.known_estimated_cost !== current.known_downstream_cost
+      ) {
+        throw new Error("脚本生成后的单平台调用次数或费用与确认值不一致。");
+      }
+      setPhase("GENERATING_IMAGES");
+      const created = await createProductVideoProductionBatch(
+        product.id,
+        {
+          ...payload,
+          input_digest: videoChecked.input_digest,
+          idempotency_key: `product-video-production:${product.id}:${videoChecked.input_digest}`,
+          cost_confirmed: true,
+        },
+        active.signal,
+      );
+      window.localStorage.setItem(
+        `socialpilot.productionBatch.${product.id}`,
+        String(created.batch.id),
+      );
+      setProductionBatchId(String(created.batch.id));
+      applyProduction(created);
+      setMessage(`${label} 正在生成画面、配音、字幕和最终成片；刷新页面后仍可恢复。`);
+      await driveProductionBatch(created, active);
+    } catch (error) {
+      fail(active.id, error, `${label} 单平台完整生产失败，现有批次和任务均已保留。`);
+    }
   }
 
   async function generateOneClickBatch() {
@@ -1146,7 +1333,11 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
         applyProduction(current);
         if (current.batch.status === "SUCCEEDED") {
           setPhase("SUCCEEDED");
-          setMessage("三平台完整成片已生成，可分别预览和下载。");
+          setMessage(
+            current.items.length === 1
+              ? "单平台完整成片已生成，可以预览和下载。"
+              : "三平台完整成片已生成，可分别预览和下载。",
+          );
         } else {
           setPhase("FAILED");
           setMessage("批次已结束，失败平台保留明确原因，成功平台结果仍可下载。");
@@ -1427,7 +1618,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
       {sources.length === 0 && (
         <p className="preflight-summary" role="status">
           当前商品还没有已激活脚本。批量任务中的“等待生成脚本”只是创建了变体槽位；
-          上传商品主图后，在下方填写批次与营销策略编号并完成费用确认，系统会自动生成并激活三平台脚本。
+          上传商品主图后，在下方选择单个平台或三个平台并完成费用确认，系统会自动生成并激活所需脚本。
         </p>
       )}
       <label>
@@ -1457,11 +1648,11 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
         </p>
       )}
       <fieldset>
-        <legend>一键生成：三平台脚本 → 画面 → 配音 → 成片</legend>
+        <legend>视频生成：单个平台或三个平台</legend>
         <p>
-          使用批量任务中同一商品的 TikTok、YouTube Shorts 和 Instagram
-          Reels 第一个“等待生成脚本”变体；首次执行不需要预先选择已激活脚本，
-          系统会自动生成并激活精确版本。所有记录均按精确编号固定。
+          选择单个平台时只会生成该平台的一条完整视频；选择三平台一键生成时，
+          会同时处理 TikTok、YouTube Shorts 和 Instagram Reels。
+          首次执行不需要预先选择已激活脚本，系统会自动生成并激活精确版本。
         </p>
         <button
           type="button"
@@ -1486,6 +1677,9 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
               setOneClickPreflight(null);
               setOneClickCostConfirmed(false);
               setOneClickFeedback("");
+              setSinglePreflight(null);
+              setSingleCostConfirmed(false);
+              setSingleFeedback("");
             }}
           />
         </label>
@@ -1505,6 +1699,9 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
               setOneClickPreflight(null);
               setOneClickCostConfirmed(false);
               setOneClickFeedback("");
+              setSinglePreflight(null);
+              setSingleCostConfirmed(false);
+              setSingleFeedback("");
             }}
           />
         </label>
@@ -1530,12 +1727,109 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
               setOneClickPreflight(null);
               setOneClickCostConfirmed(false);
               setOneClickFeedback("");
+              setSinglePreflight(null);
+              setSingleCostConfirmed(false);
+              setSingleFeedback("");
             }}
           />
         </label>
         <p>
-          文案矩阵为可选项；若其中没有 YouTube 文案，系统会自动使用商品资料与营销策略生成三平台脚本。
+          文案矩阵为可选项；若缺少所选平台文案，系统会自动使用商品资料与营销策略生成脚本。
         </p>
+        <fieldset>
+          <legend>生成单个平台视频</legend>
+          <label>
+            目标平台
+            <select
+              value={singlePlatform}
+              disabled={productionActive}
+              onChange={(event) => {
+                setSinglePlatform(event.target.value as BatchPlatform);
+                setSingleRequest(null);
+                setSinglePreflight(null);
+                setSingleCostConfirmed(false);
+                setSingleFeedback("");
+              }}
+            >
+              <option value="tiktok">TikTok</option>
+              <option value="youtube">YouTube Shorts</option>
+              <option value="instagram">Instagram Reels</option>
+            </select>
+          </label>
+          <button
+            type="button"
+            disabled={
+              productionActive ||
+              !["IDLE", "FAILED", "SUCCEEDED"].includes(phase)
+            }
+            aria-describedby="single-platform-preflight-feedback"
+            onClick={() => void checkSinglePlatformPreflight()}
+          >
+            检查所选平台的调用与费用
+          </button>
+          <p
+            id="single-platform-preflight-feedback"
+            className="preflight-summary"
+            role="status"
+            aria-live="polite"
+          >
+            {singleFeedback ||
+              oneClickPreflightInputIssue(
+                Number(scriptBatchId),
+                strategyId,
+                Boolean(referenceAsset),
+              ) ||
+              `将只检查并生成 ${platformLabel(singlePlatform)}；检查本身不会产生模型费用。`}
+          </p>
+          {singlePreflight && (
+            <div className="preflight-summary">
+              <p>
+                仅生成 {platformLabel(singlePlatform)}：千问脚本 {singlePreflight.estimated_provider_calls} 次 ·
+                万象图片 {singlePreflight.wanx_image_generation_calls} 次 · 动态视频（
+                {singlePreflight.dynamic_video_model}）{singlePreflight.dynamic_video_generation_calls} 次 ·
+                千问TTS {singlePreflight.qwen_tts_generation_calls} 次
+              </p>
+              <p>
+                已知费用区间：{singlePreflight.total_known_cost_min}–
+                {singlePreflight.total_known_cost_max} {singlePreflight.currency}。
+                千问TTS尚未计价，最终总费用可能更高。
+              </p>
+              <p>视频变体：{singlePreflight.variant_ids[0]}；其他两个平台不会生成，也不会产生调用费用。</p>
+              <div className="model-cost-confirmation-block">
+                <label className="model-cost-confirmation">
+                  <input
+                    type="checkbox"
+                    checked={singleCostConfirmed}
+                    disabled={!singlePreflight.ready_for_execution}
+                    onChange={(event) =>
+                      setSingleCostConfirmed(event.target.checked)
+                    }
+                  />
+                  <span>我已确认该平台的模型调用、已知费用区间及未计价的千问TTS</span>
+                </label>
+                {!singlePreflight.ready_for_execution && (
+                  <p className="model-cost-confirmation__blocked" role="alert">
+                    当前检查尚未通过。{oneClickBlockedMessage(singlePreflight)}
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                disabled={
+                  !singleCostConfirmed ||
+                  !singlePreflight.ready_for_execution ||
+                  productionActive ||
+                  !["IDLE", "FAILED", "SUCCEEDED"].includes(phase)
+                }
+                onClick={() => void generateSinglePlatformVideo()}
+              >
+                确认并生成 {platformLabel(singlePlatform)} 单独视频
+              </button>
+            </div>
+          )}
+        </fieldset>
+        <h5>一键生成三个平台视频</h5>
+        <p>一次生成三个平台各一条完整视频；任一平台失败不会阻塞其他平台。</p>
         <button
           type="button"
           disabled={
@@ -1613,6 +1907,8 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
           </div>
         )}
       </fieldset>
+      <details>
+        <summary>已激活脚本高级入口（通常无需使用）</summary>
       <p>万象将根据商品主参考图生成真实动态商品演示；阶段：{phaseLabel(phase)}</p>
       <button
         type="button"
@@ -1687,6 +1983,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
       <p>
         三个平台独立推进：一个平台失败不会阻塞其他平台；刷新页面后可按精确批次继续。
       </p>
+      </details>
       <div className="production-batch-recovery">
         <label>
           恢复已有生产批次
@@ -1708,7 +2005,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
         <small>恢复只读取已有结果，不会重新生成，也不会产生模型费用。</small>
       </div>
       {production && (
-        <section className="production-batch-status" aria-label="三平台生产进度">
+        <section className="production-batch-status" aria-label="视频生产进度">
           <header>
             <strong>生产批次 #{production.batch.id}</strong>
             <span>状态：{productionBatchStatusLabel(production.batch.status)}</span>
@@ -1833,7 +2130,9 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
               )}
               download
             >
-              {production.items.filter(
+              {production.items.length === 1
+                ? "下载单平台成片与字幕"
+                : production.items.filter(
                 (item) =>
                   item.status === "SUCCEEDED" &&
                   item.final_video_artifact_id !== null &&
@@ -1847,7 +2146,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
                         item.final_video_artifact_id !== null &&
                         item.subtitle_artifact_id !== null,
                     ).length
-                  }/3）`}
+                  }/${production.items.length}）`}
             </a>
           )}
         </section>
@@ -1949,13 +2248,21 @@ function saveWorkflowContextValue(key: string, value: number | null) {
   }
 }
 
+function platformLabel(platform: BatchPlatform) {
+  return {
+    tiktok: "TikTok",
+    youtube: "YouTube Shorts",
+    instagram: "Instagram Reels",
+  }[platform];
+}
+
 function oneClickPreflightInputIssue(
   batchId: number,
   strategyId: number,
   hasReferenceAsset: boolean,
 ) {
   if (!Number.isInteger(batchId) || batchId <= 0) {
-    return "暂时不能检查：当前商品缺少三平台批次。请先到“批量任务”同时勾选 YouTube、TikTok、Instagram 创建一个批次，再返回这里点击“自动匹配最新可用资料”。";
+    return "暂时不能检查：当前商品缺少可用视频批次。请先到“批量任务”选择商品和至少一个目标平台创建批次，再返回这里点击“自动匹配最新可用资料”。";
   }
   if (!Number.isInteger(strategyId) || strategyId <= 0) {
     return "暂时不能检查：当前商品缺少营销策略，请先在“文案矩阵”生成并保存营销策略。";

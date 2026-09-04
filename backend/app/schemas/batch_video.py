@@ -2,7 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.schemas.execution import ExecutionJobRead
 from app.schemas.video_script_version import QwenScriptPreflightRead
@@ -135,9 +135,15 @@ class BatchQwenScriptRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     product_id: int = Field(gt=0)
-    variant_ids: list[int] = Field(min_length=3, max_length=3)
+    variant_ids: list[int] = Field(min_length=1, max_length=3)
     strategy_id: int = Field(gt=0)
     copy_matrix_id: int | None = Field(default=None, gt=0)
+
+    @model_validator(mode="after")
+    def validate_variant_count(self) -> "BatchQwenScriptRequest":
+        if len(self.variant_ids) not in {1, 3}:
+            raise ValueError("Select either one platform or all three platforms")
+        return self
 
 
 class BatchQwenScriptPreflightRead(BatchQwenScriptRequest):

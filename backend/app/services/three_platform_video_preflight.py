@@ -50,10 +50,11 @@ class ThreePlatformVideoPreflightService:
         ):
             raise AppError("Three-platform reference image was not found", 404)
         if (
-            len({item.variant_id for item in data.selections}) != 3
-            or len({item.script_version_id for item in data.selections}) != 3
+            len({item.variant_id for item in data.selections}) != len(data.selections)
+            or len({item.script_version_id for item in data.selections})
+            != len(data.selections)
         ):
-            raise AppError("Three-platform selections must be unique", 422)
+            raise AppError("Product-video selections must be unique", 422)
 
         selected: dict[str, tuple[BatchVideoVariant, VideoScriptVersion]] = {}
         for item in data.selections:
@@ -76,7 +77,7 @@ class ThreePlatformVideoPreflightService:
                 raise AppError("Three-platform source identity is invalid", 409)
             if variant.platform in selected:
                 raise AppError(
-                    "Three-platform selections must cover each platform", 422
+                    "Product-video selections must cover distinct platforms", 422
                 )
             validate_video_script_source_identity(
                 self.session,
@@ -85,12 +86,14 @@ class ThreePlatformVideoPreflightService:
                 platform=variant.platform,
             )
             selected[variant.platform] = (variant, version)
-        if set(selected) != set(PLATFORM_ORDER):
+        if len(data.selections) == 3 and set(selected) != set(PLATFORM_ORDER):
             raise AppError("Three-platform selections must cover each platform", 422)
 
         dynamic_provider, dynamic_model, dynamic_cost = self._dynamic_provider()
         platforms: list[PlatformVideoProductionEstimate] = []
         for platform in PLATFORM_ORDER:
+            if platform not in selected:
+                continue
             variant, version = selected[platform]
             scene_count = len(version.scenes)
             known_cost = (
@@ -112,7 +115,7 @@ class ThreePlatformVideoPreflightService:
 
         missing = self._missing_requirements()
         material = {
-            "contract": "three-platform-product-video-preflight-v1",
+            "contract": "product-video-preflight-v2",
             "product_id": product_id,
             "reference_product_asset_id": reference.id,
             "reference_product_asset_sha256": reference.sha256,
@@ -132,17 +135,19 @@ class ThreePlatformVideoPreflightService:
             input_digest=digest,
             platforms=platforms,
             wanx_image_generation_calls=wanx_calls,
-            happyhorse_generation_calls=(3 if dynamic_provider == "happyhorse" else 0),
-            dynamic_video_generation_calls=3,
+            happyhorse_generation_calls=(
+                len(platforms) if dynamic_provider == "happyhorse" else 0
+            ),
+            dynamic_video_generation_calls=len(platforms),
             dynamic_video_provider=dynamic_provider,
             dynamic_video_model=dynamic_model,
-            qwen_tts_generation_calls=3,
+            qwen_tts_generation_calls=len(platforms),
             known_estimated_cost=sum(
                 (item.known_estimated_cost for item in platforms), Decimal("0")
             ),
             ready=not missing,
             missing_requirements=missing,
-            provider_call_count=wanx_calls + 6,
+            provider_call_count=wanx_calls + (2 * len(platforms)),
         )
 
     def _missing_requirements(self) -> list[str]:

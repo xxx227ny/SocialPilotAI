@@ -203,7 +203,7 @@ class BatchQwenScriptService:
         batch = repository.get_batch(batch_id)
         if batch is None:
             raise AppError("Batch Qwen script resource was not found", 404)
-        if len(set(data.variant_ids)) != 3:
+        if len(set(data.variant_ids)) != len(data.variant_ids):
             raise AppError("Batch Qwen script Variants must be unique", 422)
         variants = [repository.get_variant(item) for item in data.variant_ids]
         if any(item is None for item in variants):
@@ -216,8 +216,11 @@ class BatchQwenScriptService:
             for item in exact
         ):
             raise AppError("Batch Qwen script source identity is invalid", 409)
-        if {item.platform for item in exact} != set(PLATFORMS):
+        selected_platforms = {item.platform for item in exact}
+        if len(exact) == 3 and selected_platforms != set(PLATFORMS):
             raise AppError("Batch Qwen script requires the three target platforms", 422)
+        if len(exact) == 1 and exact[0].platform not in PLATFORMS:
+            raise AppError("Batch Qwen script platform is unsupported", 422)
         return sorted(exact, key=lambda item: PLATFORMS.index(item.platform))
 
     def _can_recover_exact_job(

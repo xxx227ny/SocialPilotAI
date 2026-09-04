@@ -99,6 +99,36 @@ try {
     null,
   );
   behavior++;
+
+  const singlePlatformRequest = state.buildSinglePlatformQwenScriptRequest(
+    [
+      { id: 9, product_id: 3, platform: "instagram", variant_index: 2, status: "READY_FOR_SCRIPT" },
+      { id: 8, product_id: 3, platform: "instagram", variant_index: 1, status: "READY_FOR_SCRIPT" },
+      { id: 7, product_id: 3, platform: "youtube", variant_index: 1, status: "READY_FOR_SCRIPT" },
+    ],
+    3,
+    "instagram",
+    21,
+    31,
+  );
+  assert.deepEqual(singlePlatformRequest, {
+    product_id: 3,
+    variant_ids: [8],
+    strategy_id: 21,
+    copy_matrix_id: 31,
+  });
+  assert.equal(
+    state.buildSinglePlatformQwenScriptRequest([], 3, "tiktok", 21, null),
+    null,
+  );
+  assert.deepEqual(
+    state.buildSinglePlatformPreflightPayload(
+      { variant_id: 8, script_version_id: 18, platform: "instagram" },
+      { id: 4, sha256: "b".repeat(64) },
+    ).selections,
+    [{ variant_id: 8, script_version_id: 18 }],
+  );
+  behavior++;
   const productionItem = {
     status: "RUNNING",
     stage: "GENERATING_VOICEOVER",
@@ -370,7 +400,7 @@ try {
     "已有生产批次编号",
     "按批次编号加载已有成片",
     "不会重新生成，也不会产生模型费用",
-    "三平台生产进度",
+    "视频生产进度",
     "进度自动刷新已开启",
     "立即刷新进度",
     "自动刷新暂时中断；不会重复提交任务或产生费用",
@@ -390,10 +420,16 @@ try {
     "批量下载三平台成片与字幕",
     "批量下载已完成成片",
     "检查脚本到成片的完整调用与费用",
-    "暂时不能检查：当前商品缺少三平台批次",
+    "暂时不能检查：当前商品缺少可用视频批次",
     'aria-describedby="one-click-preflight-feedback"',
     'aria-live="polite"',
     "确认并一键生成三平台完整成片",
+    "生成单个平台视频",
+    "检查所选平台的调用与费用",
+    "确认并生成 {platformLabel(singlePlatform)} 单独视频",
+    "其他两个平台不会生成，也不会产生调用费用",
+    "buildSinglePlatformQwenScriptRequest",
+    "buildSinglePlatformPreflightPayload",
     "buildBatchQwenScriptRequest",
     "preflightBatchScriptsWithCopyFallback",
     "preflightBatchQwenScripts",
@@ -418,7 +454,7 @@ try {
     "生成15秒动态商品视频",
     ":voiceover-v1",
   ]) {
-    assert.ok(panel.includes(required));
+    assert.ok(panel.includes(required), required);
     safety++;
   }
   assert.ok(page.includes("<RealProductVideoPanel product={product}"));

@@ -1,5 +1,6 @@
 import type { ExecutionJob } from "../../types/execution";
 import type {
+  BatchPlatform,
   BatchQwenScriptPreflight,
   BatchQwenScriptRequest,
   BatchVideoVariant,
@@ -200,6 +201,50 @@ export function buildBatchQwenScriptRequest(
     variant_ids: selected.map((variant) => variant.id),
     strategy_id: strategyId,
     copy_matrix_id: copyMatrixId,
+  };
+}
+
+export function buildSinglePlatformQwenScriptRequest(
+  variants: BatchVideoVariant[],
+  productId: number,
+  platform: BatchPlatform,
+  strategyId: number,
+  copyMatrixId: number | null,
+): BatchQwenScriptRequest | null {
+  const selected = variants
+    .filter(
+      (variant) =>
+        variant.product_id === productId &&
+        variant.platform === platform &&
+        variant.status === "READY_FOR_SCRIPT",
+    )
+    .sort(
+      (left, right) =>
+        left.variant_index - right.variant_index || left.id - right.id,
+    )[0];
+  if (!selected || strategyId <= 0) return null;
+  return {
+    product_id: productId,
+    variant_ids: [selected.id],
+    strategy_id: strategyId,
+    copy_matrix_id: copyMatrixId,
+  };
+}
+
+export function buildSinglePlatformPreflightPayload(
+  source: ProductVideoSource | null,
+  reference: { id: number; sha256?: string | null } | null,
+) {
+  if (!source || !reference?.sha256) return null;
+  return {
+    reference_product_asset_id: reference.id,
+    reference_product_asset_sha256: reference.sha256,
+    selections: [
+      {
+        variant_id: source.variant_id,
+        script_version_id: source.script_version_id,
+      },
+    ],
   };
 }
 
