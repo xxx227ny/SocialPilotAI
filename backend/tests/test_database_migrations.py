@@ -187,7 +187,7 @@ def test_workspace_product_numbers_backfill_from_one_per_workspace(
     finally:
         connection.close()
 
-    migration_service._run_alembic(database, "upgrade", HEAD_REVISION)  # noqa: SLF001
+    result = upgrade_sqlite_database(database, tmp_path / "backups")
 
     connection = sqlite3.connect(database)
     try:
@@ -202,6 +202,9 @@ def test_workspace_product_numbers_backfill_from_one_per_workspace(
 
     assert products == [(20, 1, 1), (21, 2, 1), (22, 2, 2)]
     assert workspaces == [(1, 2), (2, 3)]
+    assert result.previous_revision == "0032_product_create_idempotency"
+    assert result.current_revision == HEAD_REVISION
+    assert result.backup_manifest_path is not None
 
 
 def test_empty_database_upgrades_to_complete_head_schema(tmp_path: Path) -> None:
