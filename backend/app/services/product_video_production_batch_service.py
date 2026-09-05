@@ -63,6 +63,7 @@ from app.schemas.video_render_artifact import VideoRenderArtifactCreate
 from app.services.happyhorse_product_video_service import (
     HappyHorseProductVideoService,
 )
+from app.services.production_batch_lock import serialized_batch_control
 from app.services.three_platform_video_preflight import (
     ThreePlatformVideoPreflightService,
 )
@@ -193,6 +194,7 @@ class ProductVideoProductionBatchService:
     def get(self, product_id: int, batch_id: int) -> ProductVideoProductionCreateRead:
         return self._create_read(self._required(product_id, batch_id), reused=True)
 
+    @serialized_batch_control
     def advance(
         self, product_id: int, batch_id: int
     ) -> ProductVideoProductionCreateRead:
@@ -223,6 +225,7 @@ class ProductVideoProductionBatchService:
         self.session.commit()
         return self._create_read(self._required(product_id, batch_id), reused=True)
 
+    @serialized_batch_control
     def pause(self, product_id: int, batch_id: int) -> ProductVideoProductionCreateRead:
         batch = self._required(product_id, batch_id)
         if batch.status in {"WAITING", "RUNNING"}:
@@ -233,6 +236,7 @@ class ProductVideoProductionBatchService:
             self.session.commit()
         return self._create_read(self._required(product_id, batch_id), reused=True)
 
+    @serialized_batch_control
     def resume(
         self,
         product_id: int,
@@ -396,10 +400,19 @@ class ProductVideoProductionBatchService:
         ):
             return False
         retry_number = retry_count + 1
+        # Validate the entire recovery before creating any replacement jobs.
+        scenes = sorted(version.scenes, key=lambda value: value.sequence)
+        if any(
+            (previous := jobs_by_scene.get(scene.sequence)) is None
+            or previous.uncertain
+            or previous.status not in {"SUCCEEDED", "FAILED", "CANCELLED"}
+            for scene in scenes
+        ):
+            return False
         service = WanxProductImageService(self.session, self.settings)
         replacement_job_ids: list[int] = []
         replaced = False
-        for scene in sorted(version.scenes, key=lambda value: value.sequence):
+        for scene in scenes:
             previous = jobs_by_scene.get(scene.sequence)
             if (
                 previous is None
@@ -425,6 +438,7 @@ class ProductVideoProductionBatchService:
                     ),
                     cost_confirmed=True,
                 ),
+                commit=False,
             )
             replacement_job_ids.append(submitted.job.id)
             replaced = True
@@ -511,6 +525,7 @@ class ProductVideoProductionBatchService:
         job.lease_expires_at = None
         return True
 
+    @serialized_batch_control
     def cancel(
         self, product_id: int, batch_id: int
     ) -> ProductVideoProductionCreateRead:
@@ -562,6 +577,7 @@ class ProductVideoProductionBatchService:
                     ),
                     cost_confirmed=True,
                 ),
+                commit=False,
             )
             job_ids.append(submitted.job.id)
         item.stage_state_json = {
@@ -604,6 +620,17 @@ class ProductVideoProductionBatchService:
         if not all(job.status == "SUCCEEDED" for job in jobs):
             return
 
+        version = self.session.get(VideoScriptVersion, item.script_version_id)
+        by_scene = {job.input_payload.get("scene_sequence"): job for job in jobs}
+        if (
+            version is None
+            or version.product_id != batch.product_id
+            or len(by_scene) != len(jobs)
+            or set(by_scene) != {scene.sequence for scene in version.scenes}
+        ):
+            self._fail_item(item, "PRODUCTION_WANX_JOB_IDENTITY_INVALID")
+            return
+        jobs = [by_scene[scene.sequence] for scene in version.scenes]
         asset_ids: list[int] = []
         for job in jobs:
             asset = (

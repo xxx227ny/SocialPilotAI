@@ -5,7 +5,6 @@ import { getVideoRenderArtifacts } from "../api/videos";
 import { OperationalProductSelector } from "../components/product/OperationalProductSelector";
 import { SocialPublishingPanel } from "../components/product/SocialPublishingPanel";
 import { DemoContextBar } from "../components/showcase/DemoContextBar";
-import { LiveWanxGenerationPanel } from "../components/video/LiveWanxGenerationPanel";
 import { BatchVideoJobPanel } from "../components/video/BatchVideoJobPanel";
 import { RealProductVideoPanel } from "../components/video/RealProductVideoPanel";
 import { shouldMountBatchVideoFlow } from "../components/video/batchVideoJobState";
@@ -15,7 +14,6 @@ import { VerifiedWanxOutput } from "../components/video/VerifiedWanxOutput";
 import { PresentationDeliveryEvidence } from "../components/video/PresentationDeliveryEvidence";
 import { selectPresentationDeliveryEvidence } from "../components/video/selectPresentationDeliveryEvidence";
 import {
-  isLiveWanxDemoEnabled,
   selectLatestPlayableArtifact,
 } from "../components/video/liveWanxGeneration";
 import { useDemoSnapshot } from "../hooks/useDemoSnapshot";
@@ -33,9 +31,6 @@ export function ContentStudioPage() {
   const [deliveryLoadFailed, setDeliveryLoadFailed] = useState(false);
   const videoProjectId = snapshot?.video_project?.id;
   const productId = snapshot?.product.id;
-  const liveWanxEnabled = isLiveWanxDemoEnabled(
-    import.meta.env.VITE_ENABLE_LIVE_WANX_DEMO,
-  );
   const showBatchVideoJobs = shouldMountBatchVideoFlow(
     batchVideoJobsEnabled,
     isPresentation,
@@ -113,12 +108,6 @@ export function ContentStudioPage() {
                 />
               )}
             </>
-          )}
-          {liveWanxEnabled && !isPresentation && (
-            <LiveWanxGenerationPanel
-              videoProjectId={snapshot.video_project.id}
-              onArtifactReady={loadArtifacts}
-            />
           )}
           <section className="video-blueprint-cta">
             <div><span>END CARD</span><h2>从生活方式故事走向购买行动</h2></div>

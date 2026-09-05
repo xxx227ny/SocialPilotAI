@@ -195,7 +195,7 @@ def register(
     except ValueError as exc:
         db.rollback()
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=422,
             detail="注册信息无效。",
         ) from exc
     _set_session_cookie(
@@ -340,7 +340,7 @@ def update_password(
     except ValueError as exc:
         db.rollback()
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=422,
             detail="新密码不能与当前密码相同。",
         ) from exc
     if token is None:
@@ -452,7 +452,7 @@ def complete_password_reset(
     if result == "UNCHANGED":
         db.rollback()
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=422,
             detail="新密码不能与当前密码相同。",
         )
     db.commit()

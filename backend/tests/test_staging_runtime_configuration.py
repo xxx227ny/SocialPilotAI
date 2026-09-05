@@ -59,3 +59,15 @@ def test_new_runtime_generates_valid_encryption_key_and_no_shared_keys() -> None
     assert not any(key in config for key in shared_keys)
     assert config["QWEN_VIDEO_SCRIPT_COST_MIN"] == "0.01"
     assert config["QWEN_VIDEO_SCRIPT_COST_MAX"] == "0.05"
+
+
+def test_regeneration_preserves_social_identity_and_explicit_disabled_flags():
+    module = _load_module()
+    existing = {key: f"test-{key}" for key in module.PRESERVED_SOCIAL_KEYS}
+    existing["ENABLE_SOCIAL_ACCOUNT_BINDING"] = "true"
+    existing["ENABLE_YOUTUBE_PUBLISHING"] = False
+    existing["SOCIAL_TOKEN_ENCRYPTION_KEY"] = Fernet.generate_key().decode("ascii")
+    config = module.build_runtime_config(existing)
+    for key in module.PRESERVED_SOCIAL_KEYS:
+        assert config[key] == existing[key]
+    assert "QWEN_API_KEY" not in config

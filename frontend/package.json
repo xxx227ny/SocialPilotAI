@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "test": "node scripts/run-tests.mjs",
     "test:read-cache": "node scripts/test-read-resource-cache.mjs",
     "test:growth-readability": "node scripts/test-growth-readability.mjs",
     "test:business-value": "node scripts/test-business-value.mjs",

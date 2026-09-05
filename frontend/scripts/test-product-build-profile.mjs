@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { productSocialOverrides, socialFeatures } from "./product-social-features.mjs";
 
 const profile = readFileSync(new URL("./build-product.mjs", import.meta.url), "utf8");
 
@@ -37,4 +38,10 @@ for (const feature of [
   assert.match(profile, new RegExp(`VITE_ENABLE_${feature}: "false"`));
 }
 
-console.log("Product build profile passed: full personal-Key workflow enabled; unconfigured social publishing disabled.");
+assert.deepEqual(productSocialOverrides(), {});
+for (const name of socialFeatures) {
+  assert.deepEqual(productSocialOverrides(name), { [`VITE_ENABLE_${name}`]: "true" });
+}
+assert.throws(() => productSocialOverrides("INVALID"));
+assert.match(profile, /productSocialOverrides\(process.env.SOCIALPILOT_SOCIAL_FEATURES\)/);
+console.log("Product build profile passed: social release flags explicit and validated.");

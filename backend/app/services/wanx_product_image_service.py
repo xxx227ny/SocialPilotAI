@@ -48,7 +48,11 @@ class WanxProductImageService:
         self.session, self.settings = session, settings
 
     def enqueue(
-        self, product_id: int, data: WanxProductImageSubmitRequest
+        self,
+        product_id: int,
+        data: WanxProductImageSubmitRequest,
+        *,
+        commit: bool = True,
     ) -> JobSubmitRead:
         if not self.settings.enable_real_product_video:
             raise AppError("Real product video execution is disabled", 503)
@@ -128,7 +132,10 @@ class WanxProductImageService:
             status="QUEUED",
         )
         self.session.add(job)
-        self.session.commit()
+        if commit:
+            self.session.commit()
+        else:
+            self.session.flush()
         self.session.refresh(job)
         return JobSubmitRead(job=ExecutionJobRead.model_validate(job), reused=False)
 

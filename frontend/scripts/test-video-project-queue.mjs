@@ -275,26 +275,8 @@ try {
     );
   }
 
-  const component = readFileSync(
-    join(root, "src", "components", "video", "InitialVideoProjectPanel.tsx"),
-    "utf8",
-  );
-  matches(component, /enqueueInitialVideoProject/);
-  matches(component, /listInitialVideoProjectJobs/);
-  matches(component, /getInitialVideoProjectJob/);
-  matches(component, /getVideoProject\(resultId/);
-  matches(component, /preflight\.input_digest/);
-  matches(component, /preflight\.preflight_digest/);
-  matches(component, /cost_confirmed: true/);
-  matches(component, /SUBMIT_UNKNOWN/);
-  matches(component, /Explicit retry/);
-  matches(component, /if \(isPresentation\) return null/);
-  matches(component, /controllerRef\.current = controller/);
-  matches(component, /submitLockRef\.current === identity/);
-  matches(component, /retryLockRef\.current === identity/);
-  matches(component, /retryInitialVideoProjectJob\([\s\S]*controller\.signal/);
-  doesNotMatch(component, /getLatestVideoProjectForProduct/);
-  doesNotMatch(component, /executeInitialVideoProject/);
+  const page = readFileSync(join(root, "src/pages/ContentStudioPage.tsx"), "utf8");
+  doesNotMatch(page, /InitialVideoProjectPanel/);
 
   const api = readFileSync(join(root, "src", "api", "videos.ts"), "utf8");
   matches(api, /\/video-projects\/preflight/);

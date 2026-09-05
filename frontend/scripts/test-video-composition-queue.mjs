@@ -47,12 +47,9 @@ try {
   assert.equal(state.shouldPollComposition({status:"FAILED"}),false);
   controller.abort();
   assert.equal(state.isCurrentCompositionOperation(identity,identity),false);
-  const panel=await fs.readFile(path.join(root,"src/components/video/VideoCompositionPanel.tsx"),"utf8");
-  assert.ok(panel.includes("明确选择来源视频"));
-  assert.ok(panel.includes("确定性静音 AAC 占位音轨"));
-  assert.ok(!panel.includes("latest"));
-  assert.ok(panel.includes("isPresentation"));
-  console.log("Video Composition Queue: 11 checks passed");
+  const page=await fs.readFile(path.join(root,"src/pages/ContentStudioPage.tsx"),"utf8");
+  assert.ok(!page.includes("VideoCompositionPanel"));
+  console.log("Video Composition Queue state and retired panel checks passed");
 } finally {
   if (path.dirname(out) !== root) {
     throw new Error("Unsafe test output directory");

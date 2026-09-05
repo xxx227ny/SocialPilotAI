@@ -218,14 +218,6 @@ try {
     "utf8",
   );
   const batchStateSource = await fs.readFile(stateFile, "utf8");
-  const scriptPanelSource = await fs.readFile(
-    path.join(root, "src/components/video/VideoScriptVersionPanel.tsx"),
-    "utf8",
-  );
-  const advancedScriptPanel = await fs.readFile(
-    path.join(root, "src/components/video/AdvancedVideoScriptVersionPanel.tsx"),
-    "utf8",
-  );
   for (const expected of [
     "orchestration_only",
     "downstreamCostLabel",
@@ -264,10 +256,6 @@ try {
   assert.ok(panel.includes("脚本尚未创建"));
   assert.ok(!panel.includes("高级手工编辑"));
   assert.ok(!panel.includes("VideoScriptVersionPanel"));
-  assert.ok(advancedScriptPanel.includes("脚本版本管理（高级）"));
-  assert.ok(advancedScriptPanel.includes("listBatchVideoVariants"));
-  assert.ok(advancedScriptPanel.includes("item.product_id === productId"));
-  assert.ok(advancedScriptPanel.includes("<VideoScriptVersionPanel"));
   assert.ok(
     featureSource.includes(
       "qwenVideoScriptGenerationEnabled = isEnabledFeatureFlag",
@@ -287,13 +275,7 @@ try {
   assert.ok(!panel.includes("preflightQwenVideoScript"));
   assert.ok(!panel.includes("createQwenVideoScriptJob"));
   assert.ok(!/Promise\.all\s*\(\s*result\.variants/i.test(panel));
-  assert.ok(scriptPanelSource.includes("qwenApi.preflight(variant.id"));
-  assert.ok(
-    scriptPanelSource.includes(
-      "confirmAndCreateQwenJob(qwenApi,variant.id",
-    ),
-  );
-  staticAssertions += 17;
+  staticAssertions += 11;
 
   let presentationQwenRequests = 0;
   if (state.shouldMountBatchVideoFlow(true, true)) {

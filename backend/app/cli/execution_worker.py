@@ -16,6 +16,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.core.config import settings
 from app.core.provider_runtime import WorkspaceProviderRuntime
+from app.execution.production_scheduler import advance_pending_production_batches
 from app.execution.runtime_registry import build_execution_handler_registry
 from app.execution.worker import ExecutionWorker, WorkerRunStatus
 from app.services.database_migration_service import (
@@ -133,7 +134,11 @@ def main(argv: list[str] | None = None) -> int:
         stop_file.unlink(missing_ok=True)
         _write_status(status_file, "healthy", args.instance_id)
         stop_watcher.start()
+        next_production_tick = 0.0
         while not shutdown.is_set():
+            if time.monotonic() >= next_production_tick:
+                advance_pending_production_batches(session_factory, settings)
+                next_production_tick = time.monotonic() + 15
             result = worker.run_once()
             _write_status(status_file, "healthy", args.instance_id)
             if result.status == WorkerRunStatus.STOPPED:

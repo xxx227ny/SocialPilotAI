@@ -131,7 +131,7 @@ assert.match(
 const page = read("src", "pages", "ContentStudioPage.tsx");
 assert.match(page, /snapshot\?\.video_project\?\.id/);
 assert.match(page, /getVideoRenderArtifacts\(videoProjectId\)/);
-assert.match(page, /liveWanxEnabled && !isPresentation/);
+assert.doesNotMatch(page, /LiveWanxGenerationPanel/);
 assert.doesNotMatch(page, /VITE_ENABLE_YOUTUBE_PUBLISHING/);
 assert.match(
   page,

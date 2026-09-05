@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
+import { productSocialOverrides } from "./product-social-features.mjs";
 
 // A product release must be reproducible and must not inherit a developer's
 // machine-specific VITE_* variables or .env.local feature switches.
@@ -31,6 +32,7 @@ Object.assign(environment, {
   VITE_ENABLE_INSTAGRAM_PUBLISHING: "false",
   VITE_ENABLE_TIKTOK_PUBLISHING: "false",
 });
+Object.assign(environment, productSocialOverrides(process.env.SOCIALPILOT_SOCIAL_FEATURES));
 
 run(resolve("node_modules", "typescript", "bin", "tsc"), ["-b"]);
 run(resolve("node_modules", "vite", "bin", "vite.js"), ["build", "--mode", "product"]);

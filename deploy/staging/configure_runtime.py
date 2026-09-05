@@ -23,6 +23,19 @@ PRESERVED_ACCOUNT_EMAIL_KEYS = (
     "ACCOUNT_SMTP_TIMEOUT_SECONDS",
     "ACCOUNT_REQUIRE_VERIFIED_EMAIL",
 )
+PRESERVED_SOCIAL_KEYS = (
+    "ENABLE_SOCIAL_ACCOUNT_BINDING", "ENABLE_INSTAGRAM_ACCOUNT_BINDING",
+    "ENABLE_TIKTOK_ACCOUNT_BINDING", "ENABLE_PINTEREST_ACCOUNT_BINDING",
+    "ENABLE_YOUTUBE_PUBLISHING", "ENABLE_INSTAGRAM_PUBLISHING",
+    "ENABLE_TIKTOK_PUBLISHING", "GOOGLE_OAUTH_CLIENT_ID",
+    "GOOGLE_OAUTH_CLIENT_SECRET", "GOOGLE_OAUTH_REDIRECT_URI",
+    "SOCIAL_TOKEN_ENCRYPTION_KEY", "SOCIAL_TOKEN_ENCRYPTION_KEY_ID",
+    "SOCIAL_FRONTEND_BASE_URL", "FRONTEND_SOCIAL_REDIRECT_PATH",
+    "INSTAGRAM_APP_ID", "INSTAGRAM_APP_SECRET", "INSTAGRAM_OAUTH_REDIRECT_URI",
+    "INSTAGRAM_GRAPH_API_VERSION", "TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET",
+    "TIKTOK_OAUTH_REDIRECT_URI", "PINTEREST_CLIENT_ID", "PINTEREST_CLIENT_SECRET",
+    "PINTEREST_OAUTH_REDIRECT_URI", "USER_CREDENTIAL_ENCRYPTION_KEY_ID",
+)
 
 
 def load_existing_config() -> dict[str, object]:
@@ -105,9 +118,9 @@ def build_runtime_config(existing: dict[str, object]) -> dict[str, object]:
         "ACCOUNT_ACTION_TOKEN_RETENTION_SECONDS": "604800",
     }
     # Email delivery belongs to the server, while Qwen/Wanx credentials belong
-    # to each user workspace. Preserve only the explicit SMTP allowlist when a
-    # runtime file is regenerated; never copy shared Provider credentials.
-    for key in PRESERVED_ACCOUNT_EMAIL_KEYS:
+    # to each user workspace. Preserve server OAuth and encryption identity too;
+    # never copy shared generation Provider credentials.
+    for key in (*PRESERVED_ACCOUNT_EMAIL_KEYS, *PRESERVED_SOCIAL_KEYS):
         value = existing.get(key)
         if value is not None and str(value).strip():
             config[key] = value

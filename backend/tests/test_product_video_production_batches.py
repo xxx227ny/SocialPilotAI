@@ -1369,6 +1369,21 @@ def test_explicit_image_retry_replaces_only_failed_jobs(
     assert unchanged["batch"]["status"] == "FAILED"
     assert db_session.query(ExecutionJob).count() == 2
 
+    # A later pending scene must block the entire recovery before any enqueue.
+    successful_job.status = "QUEUED"
+    successful_job.result_entity_type = None
+    successful_job.result_entity_id = None
+    successful_job.completed_at = None
+    db_session.commit()
+    blocked = client.post(f"{root}/resume", json={"retry_failed_images": True}).json()
+    assert blocked["batch"]["status"] == "FAILED"
+    assert db_session.query(ExecutionJob).count() == 2
+    successful_job.status = "SUCCEEDED"
+    successful_job.result_entity_type = "product_asset"
+    successful_job.result_entity_id = generated.id
+    successful_job.completed_at = successful_job.created_at
+    db_session.commit()
+
     retried = client.post(f"{root}/resume", json={"retry_failed_images": True}).json()
     retry_ids = retried["items"][0]["stage_state_json"]["wanx_job_ids"]
     assert retried["batch"]["status"] == "RUNNING"
@@ -1383,6 +1398,31 @@ def test_explicit_image_retry_replaces_only_failed_jobs(
     repeated = client.post(f"{root}/resume", json={"retry_failed_images": True}).json()
     assert repeated["batch"]["status"] == "RUNNING"
     assert db_session.query(ExecutionJob).count() == 3
+
+    retry_asset = ProductAsset(
+        product_id=product.id,
+        file_name="retried.png",
+        file_path="product-images/retried.png",
+        file_type="png",
+        content_type="image/png",
+        size_bytes=101,
+        sha256="f" * 64,
+        width=720,
+        height=1280,
+        storage_identity="product-images/retried.png",
+    )
+    db_session.add(retry_asset)
+    db_session.flush()
+    retry_job = db_session.get(ExecutionJob, retry_ids[0])
+    retry_job.status = "SUCCEEDED"
+    retry_job.result_entity_type = "product_asset"
+    retry_job.result_entity_id = retry_asset.id
+    db_session.commit()
+    completed = client.post(f"{root}/advance").json()
+    assert completed["items"][0]["stage"] == "PREPARING_VIDEO"
+    assert completed["items"][0]["stage_state_json"]["wanx_product_asset_ids"] == [
+        retry_asset.id, generated.id,
+    ]
 
 
 def test_advance_failure_and_controls_are_provider_job_scoped(

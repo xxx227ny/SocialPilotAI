@@ -31,7 +31,7 @@ packages = ["app"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["."]
+pythonpath = [".", ".."]
 addopts = "-p no:cacheprovider"
 markers = [
     "smoke: tests that call external services",
