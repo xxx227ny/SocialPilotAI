@@ -57,11 +57,19 @@ test creates two non-billable validation accounts, uses synthetic provider keys,
 verifies one synthetic key through the non-generation model-list endpoint, and
 checks secure cookies plus cross-workspace product and credential isolation.
 It never starts text, image, audio, or video generation.
+When email verification is required, use `--fixture-database` pointing to the
+staging database. This seeds only generated `@invalid.example` fixture identities
+as verified, then exercises real login; it does not test registration or SMTP.
+Do not disable the deployed email-verification policy for validation.
 
 `media_smoke_test.py` additionally accepts a verified local MP4 fixture. It
 creates an isolated staging artifact without provider calls, then validates
 public HTTPS byte ranges, low-bitrate fast-start preview generation, browser
 cache headers, shared-CDN denial, and cross-workspace media protection.
+Run from the release directory as the service user (`socialpilot`), not root.
+Stored artifacts intentionally have private permissions; a root-created fixture
+cannot be downloaded by the service. The media check rejects mismatched users
+before creating accounts. It also checks full-download hashes and suffix ranges.
 
 After non-billable staging smoke runs, inspect managed test accounts and expired
 account tokens with `cleanup_account_records.py --include-smoke-users`. The tool

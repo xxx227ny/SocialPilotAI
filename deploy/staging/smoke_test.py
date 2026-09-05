@@ -1,8 +1,10 @@
 """Non-billable deployed staging smoke test with two isolated users."""
 
 import argparse
+import re
 import secrets
 from datetime import UTC, datetime
+from pathlib import Path
 
 import httpx
 
@@ -15,16 +17,56 @@ def require_status(response: httpx.Response, expected: int) -> None:
         )
 
 
-def register(client: httpx.Client, email: str, password: str, name: str) -> dict:
-    response = client.post(
-        "/api/v1/auth/register",
-        json={
-            "email": email,
-            "password": password,
-            "workspace_name": name,
-        },
-    )
-    require_status(response, 201)
+def seed_validation_account(database: Path, email: str, password: str, name: str):
+    """Local-only fixture: no SMTP and no changes to real user verification."""
+    if not re.fullmatch(
+        r"(?:smoke-[ab]|media-(?:owner|other))-[0-9]{14}[0-9a-f]{6}@invalid\.example",
+        email,
+    ):
+        raise ValueError("Only generated smoke identities may be seeded")
+    if not database.is_file():
+        raise ValueError("Fixture database must already exist")
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    from app.models import User
+    from app.services.user_auth_service import register_user
+
+    engine = create_engine(f"sqlite:///{database.resolve().as_posix()}")
+    try:
+        with Session(engine) as session:
+            principal, _ = register_user(
+                session,
+                email=email,
+                password=password,
+                workspace_name=name,
+                session_ttl_seconds=3600,
+            )
+            session.get(User, principal.user_id).email_verified_at = datetime.now(UTC)
+            session.commit()
+    finally:
+        engine.dispose()
+
+
+def register(
+    client: httpx.Client,
+    email: str,
+    password: str,
+    name: str,
+    fixture_database: Path | None = None,
+) -> dict:
+    if fixture_database is not None:
+        seed_validation_account(fixture_database, email, password, name)
+        response = client.post(
+            "/api/v1/auth/login", json={"username": email, "password": password}
+        )
+        require_status(response, 200)
+    else:
+        response = client.post(
+            "/api/v1/auth/register",
+            json={"email": email, "password": password, "workspace_name": name},
+        )
+        require_status(response, 201)
     cookie = response.headers.get("set-cookie", "")
     if (
         "HttpOnly" not in cookie
@@ -113,6 +155,11 @@ def create_product(client: httpx.Client, name: str, request_key: str) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--origin", required=True)
+    parser.add_argument(
+        "--fixture-database",
+        type=Path,
+        help="Local synthetic verified users; does not test SMTP",
+    )
     arguments = parser.parse_args()
     origin = arguments.origin.rstrip("/")
     run_id = datetime.now(UTC).strftime("%Y%m%d%H%M%S") + secrets.token_hex(3)
@@ -152,21 +199,27 @@ def main() -> None:
             or anonymous.get("auth_mode") != "user"
             or anonymous.get("registration_enabled") is not True
             or not isinstance(anonymous.get("email_delivery_available"), bool)
-            or anonymous.get("email_verification_required") is not False
+            or not isinstance(anonymous.get("email_verification_required"), bool)
         ):
             raise RuntimeError("Unexpected anonymous session state")
+        if anonymous["email_verification_required"] and not arguments.fixture_database:
+            raise RuntimeError(
+                "Verified-email policy requires local --fixture-database"
+            )
 
         account_a = register(
             first,
             f"smoke-a-{run_id}@invalid.example",
             password_a,
             "Smoke Workspace A",
+            arguments.fixture_database,
         )
         account_b = register(
             second,
             f"smoke-b-{run_id}@invalid.example",
             password_b,
             "Smoke Workspace B",
+            arguments.fixture_database,
         )
         if account_a["workspace_id"] == account_b["workspace_id"]:
             raise RuntimeError("The two users received the same workspace")

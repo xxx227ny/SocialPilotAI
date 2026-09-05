@@ -3,12 +3,14 @@
 import argparse
 import hashlib
 import json
+import os
 import secrets
 from datetime import UTC, datetime
 from pathlib import Path
 from time import perf_counter
 
 import httpx
+from deploy.staging.smoke_test import register as register_fixture
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
@@ -31,17 +33,14 @@ def require_status(response: httpx.Response, expected: int) -> None:
         )
 
 
-def register(client: httpx.Client, run_id: str, suffix: str) -> dict:
-    response = client.post(
-        "/api/v1/auth/register",
-        json={
-            "email": f"media-{suffix}-{run_id}@invalid.example",
-            "password": "Media-" + secrets.token_urlsafe(20),
-            "workspace_name": f"Media Validation {suffix.upper()}",
-        },
+def register(client: httpx.Client, run_id: str, suffix: str, database: Path) -> dict:
+    return register_fixture(
+        client,
+        f"media-{suffix}-{run_id}@invalid.example",
+        "Media-" + secrets.token_urlsafe(20),
+        f"Media Validation {suffix.upper()}",
+        fixture_database=database,
     )
-    require_status(response, 201)
-    return response.json()
 
 
 def seed_artifact(
@@ -151,6 +150,10 @@ def main() -> None:
     parser.add_argument("--artifact-root", type=Path, required=True)
     parser.add_argument("--fixture", type=Path, required=True)
     arguments = parser.parse_args()
+    if hasattr(os, "geteuid") and os.geteuid() != arguments.artifact_root.stat().st_uid:
+        raise SystemExit(
+            "Run media validation as the artifact-directory owner, not root"
+        )
     origin = arguments.origin.rstrip("/")
     run_id = datetime.now(UTC).strftime("%Y%m%d%H%M%S") + secrets.token_hex(3)
     headers = {"Origin": origin}
@@ -163,8 +166,8 @@ def main() -> None:
             base_url=origin, headers=headers, timeout=30, trust_env=False
         ) as other,
     ):
-        owner_account = register(owner, run_id, "owner")
-        register(other, run_id, "other")
+        owner_account = register(owner, run_id, "owner", arguments.database)
+        register(other, run_id, "other", arguments.database)
         artifact_id, digest = seed_artifact(
             arguments.database,
             arguments.artifact_root,
@@ -189,11 +192,18 @@ def main() -> None:
         if "private" not in first.headers.get("cache-control", ""):
             raise RuntimeError("Private browser cache policy is missing")
         require_status(other.get(preview_path), 404)
+        require_status(other.get(source_path), 404)
+        downloaded = owner.get(source_path)
+        require_status(downloaded, 200)
+        if hashlib.sha256(downloaded.content).hexdigest() != digest:
+            raise RuntimeError("Downloaded video differs from the stored fixture")
+        tail = owner.get(source_path, headers={"Range": "bytes=-1024"})
+        require_status(tail, 206)
+        if tail.content != downloaded.content[-1024:]:
+            raise RuntimeError("Video seek range differs from the stored fixture")
 
     generated = (
-        arguments.artifact_root
-        / ".previews"
-        / f"{digest}-{PREVIEW_VERSION}.mp4"
+        arguments.artifact_root / ".previews" / f"{digest}-{PREVIEW_VERSION}.mp4"
     )
     preview_bytes = generated.read_bytes()
     moov = preview_bytes.find(b"moov")
