@@ -280,7 +280,7 @@ export function SocialPublishingPanel({ productId }: { productId: number }) {
       <AccountCards
         productId={productId}
         accounts={accounts}
-        readOnly={!youtubePublishingEnabled}
+        readOnly={!socialAccountBindingEnabled}
         onChanged={(account) => {
           setAccounts((current) => [
             account,

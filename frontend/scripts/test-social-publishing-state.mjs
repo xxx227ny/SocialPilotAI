@@ -143,7 +143,8 @@ try {
   );
   assert.match(component, /loadTaskHistory\s*\? listPublishTasks/);
   assert.match(component, /<ReadOnlyPublishTaskHistory tasks=\{tasks\} \/>/);
-  assert.match(component, /readOnly=\{!youtubePublishingEnabled\}/);
+  assert.match(component, /readOnly=\{!socialAccountBindingEnabled\}/);
+  assert.doesNotMatch(component, /readOnly=\{!youtubePublishingEnabled\}/);
   assert.match(component, /if \(isPresentation\) return null/);
   console.log("social publishing frontend state: 20 checks passed");
 } finally {
