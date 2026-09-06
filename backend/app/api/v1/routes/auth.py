@@ -20,6 +20,7 @@ from app.schemas.auth import (
     AccountActionRead,
     AuthSessionRead,
     ChangePasswordRequest,
+    DeleteAccountRequest,
     EmailVerificationCompleteRequest,
     LoginRequest,
     PasswordResetCompleteRequest,
@@ -36,6 +37,7 @@ from app.services.account_action_service import (
     reset_password_with_token,
     verify_email_with_token,
 )
+from app.services.account_deletion_service import delete_personal_account
 from app.services.account_email_service import (
     AccountEmailDeliveryError,
     AccountEmailSenderDep,
@@ -364,6 +366,58 @@ def update_password(
     )
 
 
+@router.post("/delete-account", response_model=AccountActionRead)
+def delete_account(
+    payload: DeleteAccountRequest,
+    response: Response,
+    settings: SettingsDep,
+    db: DbSession,
+    principal: ProductPrincipalDep,
+) -> AccountActionRead:
+    # Re-authentication read is complete. Reserve SQLite writes before checking
+    # throttling, ownership, or workers so concurrent attempts cannot bypass them.
+    if db.get_bind().dialect.name != "sqlite":
+        raise HTTPException(503, "当前数据库暂不支持自助注销。")
+    db.rollback()
+    db.connection().exec_driver_sql("BEGIN IMMEDIATE")
+    throttle = LoginThrottleService(
+        db,
+        max_failures=settings.user_auth_login_max_failures,
+        window_seconds=settings.user_auth_login_window_seconds,
+        lock_seconds=settings.user_auth_login_lock_seconds,
+    )
+    scope = f"delete-account:{principal.user_id}"
+    decision = throttle.check(scope, None)
+    if not decision.allowed:
+        db.rollback()
+        raise HTTPException(
+            429,
+            "密码尝试过多，请稍后再试。",
+            headers={"Retry-After": str(decision.retry_after_seconds)},
+        )
+    try:
+        deleted = delete_personal_account(
+            db, user_id=principal.user_id, password=payload.current_password
+        )
+        if not deleted:
+            throttle.record_failure(scope, None)
+            db.commit()
+            raise HTTPException(403, "当前密码不正确，账号未注销。")
+        throttle.clear(scope, None)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    response.delete_cookie(
+        SESSION_COOKIE_NAME,
+        path="/",
+        httponly=True,
+        secure=settings.user_auth_cookie_secure,
+        samesite="lax",
+    )
+    return AccountActionRead(message="账号已注销，可使用原邮箱重新注册。")
+
+
 @router.post("/sessions/revoke-others", response_model=SessionRevocationRead)
 def logout_other_devices(
     settings: SettingsDep,
@@ -506,9 +560,7 @@ def request_email_verification(
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=f"验证邮件已发送，请在 {retry_after_seconds} 秒后重试。",
-            headers={
-                "Retry-After": str(retry_after_seconds)
-            },
+            headers={"Retry-After": str(retry_after_seconds)},
         )
     try:
         email_sender.send_email_verification(user.email, token)

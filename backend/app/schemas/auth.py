@@ -24,6 +24,11 @@ class ChangePasswordRequest(BaseModel):
     new_password: str = Field(min_length=10, max_length=256)
 
 
+class DeleteAccountRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=256)
+    confirmation: Literal["注销当前账号"]
+
+
 class PasswordResetRequest(BaseModel):
     email: str = Field(min_length=5, max_length=320)
 

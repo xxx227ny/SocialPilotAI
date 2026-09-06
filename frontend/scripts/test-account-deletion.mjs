@@ -1,0 +1,24 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+
+const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
+const page = read("../src/pages/AccountSecurityPage.tsx");
+const context = read("../src/context/AuthContext.tsx");
+const api = read("../src/api/auth.ts");
+const login = read("../src/pages/LoginPage.tsx");
+assert.match(page, /申请注销账号/);
+assert.match(page, /用于注销的当前密码/);
+assert.match(page, /deleteConfirmation !== "注销当前账号"/);
+assert.match(page, /disabled=\{deleting \|\| submitting/);
+assert.match(page, /暂不注销/);
+assert.match(page, /setDeletePassword\(""\)/);
+assert.match(page, /不会立即物理抹除/);
+assert.match(page, /已发布到社交平台的视频不会删除/);
+assert.match(page, /未收到注销确认/);
+assert.match(api, /post<AccountAction>\("\/auth\/delete-account"/);
+assert.match(api, /timeout: 30_000/);
+assert.match(context, /await deleteAccountRequest\(password, confirmation\);[\s\S]*?applyLocalLogout\(\)/);
+assert.match(context, /clearReadResources\(\)/);
+assert.match(context, /clearCopyWorkspaceCache\(\)/);
+assert.match(login, /账号已注销/);
+console.log("Account deletion: 15 UI/API safety assertions passed.");

@@ -37,6 +37,13 @@ export async function logout(): Promise<AuthSession> {
   return (await apiClient.post<AuthSession>("/auth/logout")).data;
 }
 
+export async function deleteAccount(currentPassword: string, confirmation: string): Promise<AccountAction> {
+  return (await apiClient.post<AccountAction>("/auth/delete-account", {
+    current_password: currentPassword,
+    confirmation,
+  }, { timeout: 30_000 })).data;
+}
+
 export async function changePassword(
   currentPassword: string,
   newPassword: string,

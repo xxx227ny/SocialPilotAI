@@ -1,5 +1,6 @@
 import axios from "axios";
 import { type FormEvent, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import {
   changePassword,
@@ -17,7 +18,32 @@ export function AccountSecurityPage() {
     emailVerificationRetryAfterSeconds,
     refresh: refreshAuth,
     username,
+    deleteAccount,
   } = useAuth();
+  const navigate = useNavigate();
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const submitDeletion = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (deleting || deleteConfirmation !== "注销当前账号" || !deletePassword) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteAccount(deletePassword, deleteConfirmation);
+      setDeletePassword("");
+      navigate("/login?accountDeleted=1", { replace: true });
+    } catch (caught) {
+      const data = axios.isAxiosError(caught) ? caught.response?.data : undefined;
+      const detail = data?.detail ?? data?.error?.message;
+      setDeleteError(typeof detail === "string" ? detail : "未收到注销确认。请刷新核对登录状态，不要连续提交；原邮箱能够重新注册即表示注销已完成。");
+    } finally {
+      setDeleting(false);
+    }
+  };
   const readiness = useReadResource("system-readiness", getSystemReadiness);
   const emailDeliveryReady = readiness.data?.account_email.ready === true;
   const [currentPassword, setCurrentPassword] = useState("");
@@ -252,6 +278,29 @@ export function AccountSecurityPage() {
         <p className="settings-security-note">
           密码仅以不可逆摘要保存；退出其他设备不会删除商品、API Key 或任务数据。
         </p>
+      </article>
+      <article className="settings-card" aria-labelledby="delete-account-title">
+        <h2 id="delete-account-title">注销账号</h2>
+        <p>注销后所有设备退出登录，当前个人工作区的商品、任务、API Key 和社交绑定记录将被删除。同一邮箱可以重新注册，商品编号从 1 开始。</p>
+        <p className="settings-warning">此操作不能在页面撤销。请先下载需要保留的成片；服务器备份及未清理的离线素材文件不会立即物理抹除。已发布到社交平台的视频不会删除，平台侧授权请到对应平台撤销。</p>
+        {!deleteOpen ? (
+          <div className="settings-actions"><button type="button" className="button-danger" onClick={() => setDeleteOpen(true)}>申请注销账号</button></div>
+        ) : (
+          <form className="credential-form" onSubmit={submitDeletion}>
+            <p>即将注销：{username}</p>
+            <label>用于注销的当前密码
+              <input type="password" autoComplete="current-password" maxLength={256} required value={deletePassword} disabled={deleting} onChange={(event) => setDeletePassword(event.target.value)} />
+            </label>
+            <label>请输入“注销当前账号”确认
+              <input type="text" autoComplete="off" required value={deleteConfirmation} disabled={deleting} onChange={(event) => setDeleteConfirmation(event.target.value)} />
+            </label>
+            <div className="settings-actions">
+              <button type="submit" className="button-danger" disabled={deleting || submitting || revoking || sendingVerification || !deletePassword || deleteConfirmation !== "注销当前账号"}>{deleting ? "正在注销…" : "确认注销当前账号"}</button>
+              <button type="button" className="button-secondary" disabled={deleting} onClick={() => { setDeleteOpen(false); setDeletePassword(""); setDeleteConfirmation(""); setDeleteError(null); }}>暂不注销</button>
+            </div>
+          </form>
+        )}
+        {deleteError && <p className="settings-error" role="alert">{deleteError}</p>}
       </article>
     </section>
   );

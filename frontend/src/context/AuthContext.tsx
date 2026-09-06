@@ -13,6 +13,7 @@ import {
   login as loginRequest,
   logout as logoutRequest,
   register as registerRequest,
+  deleteAccount as deleteAccountRequest,
 } from "../api/auth";
 import { clearReadResources } from "../hooks/readResourceStore";
 import { clearCopyWorkspaceCache } from "../components/product/copyWorkspaceCache";
@@ -33,6 +34,7 @@ type AuthState = {
   login: (username: string, password: string) => Promise<void>;
   register: (email: string, password: string, workspaceName?: string) => Promise<void>;
   logout: () => Promise<void>;
+  deleteAccount: (password: string, confirmation: string) => Promise<void>;
   refresh: () => Promise<void>;
 };
 
@@ -180,6 +182,12 @@ export function AuthProvider({ children }: PropsWithChildren) {
     [applySession],
   );
 
+  const deleteAccount = useCallback(async (password: string, confirmation: string) => {
+    await deleteAccountRequest(password, confirmation);
+    window.sessionStorage.removeItem(LOGOUT_PENDING_KEY);
+    applyLocalLogout();
+  }, [applyLocalLogout]);
+
   const value = useMemo(
     () => ({
       checking,
@@ -197,6 +205,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       login,
       register,
       logout,
+      deleteAccount,
       refresh,
     }),
     [
@@ -215,6 +224,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       login,
       register,
       logout,
+      deleteAccount,
       refresh,
     ],
   );

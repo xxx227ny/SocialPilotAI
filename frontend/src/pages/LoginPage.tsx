@@ -43,8 +43,9 @@ export function LoginPage() {
   const [workspaceName, setWorkspaceName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
+  const accountDeleted = new URLSearchParams(location.search).get("accountDeleted") === "1";
+  const [message, setMessage] = useState<string | null>(accountDeleted ? "账号已注销。点击注册，可使用原邮箱创建全新工作区。" : null);
+  const [success, setSuccess] = useState(accountDeleted);
 
   const selectMode = (nextMode: LoginMode) => {
     setMode(nextMode);
