@@ -305,6 +305,7 @@ def expected_schema_fingerprint(revision: str) -> str:
         LOGIN_THROTTLES_REVISION,
         ACCOUNT_ACTION_TOKENS_REVISION,
         PRODUCT_CREATE_IDEMPOTENCY_REVISION,
+        WORKSPACE_PRODUCT_NUMBERS_REVISION,
         HEAD_REVISION,
     }:
         raise ValueError(f"Unknown expected revision: {revision}")
@@ -701,6 +702,7 @@ def get_database_migration_status(database_path: Path) -> DatabaseMigrationStatu
             LOGIN_THROTTLES_REVISION,
             ACCOUNT_ACTION_TOKENS_REVISION,
             PRODUCT_CREATE_IDEMPOTENCY_REVISION,
+            WORKSPACE_PRODUCT_NUMBERS_REVISION,
             HEAD_REVISION,
         }:
             raise IncompatibleSchemaError("Unsupported Alembic revision")
@@ -753,6 +755,7 @@ def get_database_migration_status(database_path: Path) -> DatabaseMigrationStatu
             PRODUCT_CREATE_IDEMPOTENCY_REVISION: (
                 "product_create_idempotency_runtime"
             ),
+            WORKSPACE_PRODUCT_NUMBERS_REVISION: "workspace_product_numbers_runtime",
         }
         return DatabaseMigrationStatus(
             state=state_by_revision[revision],
@@ -848,6 +851,7 @@ def _upgrade_sqlite_database_unlocked(
                     LOGIN_THROTTLES_REVISION,
                     ACCOUNT_ACTION_TOKENS_REVISION,
                     PRODUCT_CREATE_IDEMPOTENCY_REVISION,
+                    WORKSPACE_PRODUCT_NUMBERS_REVISION,
                     HEAD_REVISION,
                 }:
                     raise IncompatibleSchemaError(

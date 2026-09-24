@@ -1133,6 +1133,29 @@ def test_0031_database_is_safely_upgraded_to_product_idempotency_head(
     assert get_database_migration_status(database).state == "head"
 
 
+def test_0033_database_is_safely_upgraded_to_publish_final_video_head(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "workspace-product-numbers.db"
+    backups = tmp_path / "backups"
+    migration_service._run_alembic(  # noqa: SLF001
+        database,
+        "upgrade",
+        migration_service.WORKSPACE_PRODUCT_NUMBERS_REVISION,
+    )
+
+    before = get_database_migration_status(database)
+    result = upgrade_sqlite_database(database, backups)
+
+    assert before.revision == migration_service.WORKSPACE_PRODUCT_NUMBERS_REVISION
+    assert before.upgrade_required is True
+    assert result.previous_revision == before.revision
+    assert result.current_revision == HEAD_REVISION
+    assert len(list(backups.glob("*.manifest.json"))) == 1
+    assert result.backup_manifest_path is not None
+    assert get_database_migration_status(database).state == "head"
+
+
 def test_0021_runtime_is_recognized_and_safely_upgraded_to_0022(
     tmp_path: Path,
 ) -> None:
