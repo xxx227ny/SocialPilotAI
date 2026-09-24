@@ -20,6 +20,7 @@ from app.models.product import utc_now
 
 if TYPE_CHECKING:
     from app.models.product import Product
+    from app.models.video_composition import VideoCompositionEnhancementArtifact
     from app.models.video_render_artifact import VideoRenderArtifact
 
 
@@ -160,9 +161,19 @@ class PublishTask(Base):
     workspace_id: Mapped[int | None] = mapped_column(
         ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True, index=True
     )
+    final_video_artifact_id: Mapped[int | None] = mapped_column(
+        ForeignKey(
+            "video_composition_enhancement_artifacts.id", ondelete="RESTRICT"
+        ),
+        nullable=True,
+        index=True,
+    )
 
     social_account: Mapped[SocialAccount] = relationship(back_populates="publish_tasks")
     artifact: Mapped[VideoRenderArtifact] = relationship()
+    final_video_artifact: Mapped[VideoCompositionEnhancementArtifact | None] = (
+        relationship()
+    )
 
 
 class TikTokCreatorInfoSnapshot(Base):

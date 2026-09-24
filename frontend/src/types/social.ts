@@ -54,9 +54,29 @@ export interface PublishArtifactCandidate {
   created_at: string;
 }
 
+export interface AutoPublishDraft {
+  platform: "youtube" | "instagram";
+  artifact_id: number;
+  final_video_artifact_id: number;
+  production_item_id: number;
+  production_batch_id: number;
+  video_project_id: number;
+  script_version_id: number;
+  title: string;
+  description: string;
+  tags: string[];
+  content_type: "video/mp4";
+  size_bytes: number;
+  sha256: string;
+  duration_seconds: number;
+  copy_source: "copy_matrix" | "script";
+  complete_final_video: true;
+}
+
 export interface YouTubePublishingMetadata {
   social_account_id: number;
   artifact_id: number;
+  final_video_artifact_id?: number | null;
   title: string;
   description: string;
   tags: string[];
@@ -77,6 +97,7 @@ export interface YouTubePreflight {
   social_account_id: number;
   channel_id: string;
   artifact_id: number;
+  final_video_artifact_id: number | null;
   render_task_id: number;
   video_project_id: number;
   copy_matrix_id: number | null;
@@ -92,6 +113,7 @@ export interface PublishTask {
   product_id: number;
   social_account_id: number;
   artifact_id: number;
+  final_video_artifact_id: number | null;
   platform: "youtube" | "instagram" | "tiktok" | "pinterest";
   title: string;
   description: string;
@@ -147,6 +169,7 @@ export interface TikTokPublishPreflight {
 export interface InstagramPublishingMetadata {
   social_account_id: number;
   artifact_id: number;
+  final_video_artifact_id?: number | null;
   title: string;
   description: string;
   tags: string[];
@@ -167,6 +190,7 @@ export interface InstagramPublishPreflight {
   product_id: number;
   social_account_id: number;
   artifact_id: number;
+  final_video_artifact_id: number | null;
   render_task_id: number;
   video_project_id: number;
   copy_matrix_id: number;

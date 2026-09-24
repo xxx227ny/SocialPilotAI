@@ -811,6 +811,28 @@
   margin-top: 12px;
 }
 
+.social-publishing__auto-draft {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 6px;
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid #b9c8f4;
+  border-radius: 9px;
+  color: #34415d;
+  background: linear-gradient(135deg, #f3f6ff, #eef9f4);
+}
+
+.social-publishing__auto-draft span,
+.social-publishing__auto-draft small {
+  color: #5d6980;
+  font-size: 9px;
+}
+
+.social-publishing__auto-draft button {
+  justify-self: start;
+}
+
 .youtube-publisher__form label,
 .youtube-publisher__form fieldset {
   display: flex;

@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.core.exceptions import AppError
 from app.models import PublishTask, SocialAccount
+from app.providers.instagram_provider import InstagramProvider
 from app.repositories.social import SocialRepository
 from app.schemas.social import (
     InstagramFinalizePreflightRead,
@@ -23,6 +24,8 @@ from app.services.instagram_publish_preflight import (
 )
 from app.services.social_security import TokenCipher
 from app.services.video_artifact_storage import VideoArtifactStorage
+
+INSTAGRAM_TOKEN_REFRESH_SKEW = timedelta(days=7)
 
 
 class InstagramPublishService:
@@ -69,10 +72,36 @@ class InstagramPublishService:
             raise AppError("Instagram authorization has expired", 409)
         return TokenCipher(self.settings).decrypt(account.access_token_ciphertext)
 
+    def token_needs_refresh(self, account: SocialAccount) -> bool:
+        expires_at = _as_utc(account.token_expires_at)
+        return expires_at is not None and (
+            expires_at <= datetime.now(UTC) + INSTAGRAM_TOKEN_REFRESH_SKEW
+        )
+
+    async def refresh_access_token(
+        self, account: SocialAccount, provider: InstagramProvider
+    ) -> str:
+        if not account.access_token_ciphertext:
+            raise AppError("Instagram authorization is unavailable", 409)
+        cipher = TokenCipher(self.settings)
+        current = cipher.decrypt(account.access_token_ciphertext)
+        try:
+            refreshed = await provider.refresh_long_lived_token(current)
+        except Exception:
+            account.connection_status = "EXPIRED"
+            self.session.commit()
+            raise AppError("Instagram authorization refresh failed", 409) from None
+        account.access_token_ciphertext = cipher.encrypt(refreshed.access_token)
+        account.token_expires_at = refreshed.expires_at
+        account.connection_status = "CONNECTED"
+        self.session.commit()
+        return refreshed.access_token
+
     def freeze_task(self, task: PublishTask) -> FrozenInstagramPublishInput:
         metadata = InstagramPublishingMetadata(
             social_account_id=task.social_account_id,
             artifact_id=task.artifact_id,
+            final_video_artifact_id=task.final_video_artifact_id,
             title=task.title,
             description=task.description,
             tags=task.tags,
@@ -135,6 +164,7 @@ def instagram_refresh_task_digest(task: PublishTask) -> str:
             "product_id": task.product_id,
             "social_account_id": task.social_account_id,
             "artifact_id": task.artifact_id,
+            "final_video_artifact_id": task.final_video_artifact_id,
             "provider_container_id": task.provider_container_id,
             "request_digest": task.request_digest,
         }
@@ -150,6 +180,7 @@ def instagram_finalize_input_digest(task: PublishTask, account: SocialAccount) -
             "social_account_id": task.social_account_id,
             "professional_account_id": account.provider_account_id,
             "artifact_id": task.artifact_id,
+            "final_video_artifact_id": task.final_video_artifact_id,
             "provider_container_id": task.provider_container_id,
             "request_digest": task.request_digest,
             "status": "READY_TO_PUBLISH",

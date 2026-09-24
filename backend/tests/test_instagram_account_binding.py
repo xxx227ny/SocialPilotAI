@@ -523,3 +523,21 @@ def test_reel_provider_contract_uses_bearer_and_exact_endpoints(tmp_path) -> Non
     assert published.media_id == "fake-media-id"
     assert [request.method for request in calls] == ["POST", "POST", "GET", "POST"]
     assert all(LONG_TOKEN not in str(request.url) for request in calls)
+
+
+def test_instagram_long_lived_token_refresh_uses_exact_endpoint() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        assert request.url.path == "/refresh_access_token"
+        assert request.url.params["grant_type"] == "ig_refresh_token"
+        assert request.url.params["access_token"] == LONG_TOKEN
+        return httpx.Response(
+            200,
+            json={"access_token": "refreshed-instagram-token", "expires_in": 5184000},
+        )
+
+    provider = InstagramProvider(settings(), transport=httpx.MockTransport(handler))
+    refreshed = asyncio.run(provider.refresh_long_lived_token(LONG_TOKEN))
+
+    assert refreshed.access_token == "refreshed-instagram-token"
+    assert refreshed.expires_at > datetime.now(UTC) + timedelta(days=59)

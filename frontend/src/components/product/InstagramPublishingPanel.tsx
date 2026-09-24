@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import {
   finalizeInstagramPublish,
+  getInstagramAutoPublishDraft,
   getInstagramPublishJob,
   getPublishTask,
   listInstagramPublishArtifacts,
@@ -14,6 +15,7 @@ import {
 import { getApiErrorMessage } from "../../api/client";
 import type { ExecutionJob } from "../../types/execution";
 import type {
+  AutoPublishDraft,
   InstagramPublishPreflight,
   InstagramPublishingMetadata,
   PublishArtifactCandidate,
@@ -42,6 +44,7 @@ export function InstagramPublishingPanel({ productId, accounts, onTask }: {
 }) {
   const account = accounts.find((item) => item.platform === "instagram" && item.connection_status === "CONNECTED");
   const [artifacts, setArtifacts] = useState<PublishArtifactCandidate[]>([]);
+  const [autoDraft, setAutoDraft] = useState<AutoPublishDraft | null>(null);
   const [artifactId, setArtifactId] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -54,6 +57,7 @@ export function InstagramPublishingPanel({ productId, accounts, onTask }: {
   const [message, setMessage] = useState("");
   const [reading, setReading] = useState(false);
   const [pollCycle, setPollCycle] = useState(0);
+  const [autoPublish, setAutoPublish] = useState(false);
   const operation = useRef(0);
   const submit = useRef<InstagramPublishIdentity | null>(null);
   const refresh = useRef<InstagramPublishIdentity | null>(null);
@@ -75,15 +79,36 @@ export function InstagramPublishingPanel({ productId, accounts, onTask }: {
 
   useEffect(() => {
     const controller = new AbortController();
-    if (account) void listInstagramPublishArtifacts(productId, controller.signal)
-      .then((items) => {
+    if (account) {
+      setAutoDraft(null);
+      setArtifactId("");
+      void listInstagramPublishArtifacts(productId, controller.signal)
+        .then((items) => {
+          if (controller.signal.aborted) return;
+          setArtifacts(items);
+          setArtifactId((current) => current
+            || String(items[items.length - 1]?.artifact_id ?? ""));
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) setMessage("Instagram Artifact 读取失败");
+        });
+      void getInstagramAutoPublishDraft(productId, controller.signal)
+        .then((draft) => {
         if (controller.signal.aborted) return;
-        setArtifacts(items);
-        setArtifactId((current) => items.some((item) => String(item.artifact_id) === current)
-          ? current
-          : String(items[items.length - 1]?.artifact_id ?? ""));
-      })
-      .catch(() => { if (!controller.signal.aborted) setMessage("Instagram Artifact 读取失败"); });
+        setAutoDraft(draft);
+        setArtifactId(String(draft.artifact_id));
+        setTitle(draft.title);
+        setDescription(draft.description);
+        setTags(draft.tags.join(", "));
+        setMessage("");
+        })
+        .catch((error) => {
+          if (!controller.signal.aborted) {
+            setAutoDraft(null);
+            setMessage(getApiErrorMessage(error, "当前没有可一键发送的 Instagram 完整成片。"));
+          }
+        });
+    }
     return () => { controller.abort(); cancelAll(); };
   }, [productId, account?.id]);
 
@@ -123,12 +148,15 @@ export function InstagramPublishingPanel({ productId, accounts, onTask }: {
   function metadata(): InstagramPublishingMetadata | null {
     if (!account || !artifactId || !title.trim()) return null;
     return { social_account_id: account.id, artifact_id: Number(artifactId), title,
+      final_video_artifact_id: Number(artifactId) === autoDraft?.artifact_id
+        ? autoDraft.final_video_artifact_id
+        : null,
       description, tags: tags.split(",").map((value) => value.trim()).filter(Boolean),
       privacy_status: "public", made_for_kids: false, synthetic_media: true,
       notify_subscribers: false, share_to_feed: shareToFeed };
   }
 
-  function invalidate() { cancelAll(); setPreflight(null); setConfirmed(false); setJob(null); setTask(null); setMessage(""); }
+  function invalidate() { cancelAll(); setAutoPublish(false); setPreflight(null); setConfirmed(false); setJob(null); setTask(null); setMessage(""); }
 
   async function runPreflight() {
     const data = metadata(); if (!data || submit.current) return;
@@ -159,6 +187,58 @@ export function InstagramPublishingPanel({ productId, accounts, onTask }: {
     finally { if (canReleaseInstagramPublishLock(active, submit.current)) submit.current = null; }
   }
 
+  async function oneClickPublish() {
+    const data = metadata();
+    if (!data || !autoDraft || submit.current) return;
+    const active = identity(new AbortController());
+    submit.current = active;
+    setMessage("");
+    try {
+      const checked = await preflightInstagramPublish(
+        productId, data, active.controller.signal,
+      );
+      if (
+        !isCurrentInstagramPublishOperation(active, submit.current) ||
+        !checked.ready ||
+        checked.final_video_artifact_id !== autoDraft.final_video_artifact_id
+      ) {
+        if (isCurrentInstagramPublishOperation(active, submit.current)) {
+          setMessage(checked.missing_requirements.join("；") || "完整成片身份校验失败");
+        }
+        return;
+      }
+      setPreflight(checked);
+      const approved = window.confirm(
+        `确认公开发布到 Instagram「${account?.display_name ?? "当前账号"}」？\n\n` +
+        `视频：最新 15 秒完整成片\n文案：${autoDraft.description.slice(0, 120)}` +
+        `${autoDraft.description.length > 120 ? "…" : ""}\n\n` +
+        "确认后系统会自动完成上传、处理检查和公开发布。",
+      );
+      if (!approved || !isCurrentInstagramPublishOperation(active, submit.current)) return;
+      const created = await publishInstagram(productId, {
+        ...data,
+        input_digest: checked.input_digest,
+        preflight_digest: checked.preflight_digest,
+        preflight_expires_at: checked.expires_at,
+        idempotency_key: requestId("instagram-auto-submit"),
+        confirm_upload: true,
+      }, active.controller.signal);
+      if (
+        isCurrentInstagramPublishOperation(active, submit.current) &&
+        isExactInstagramJob(created.job, INSTAGRAM_PUBLISH_SUBMIT_V1, "product", productId)
+      ) {
+        setAutoPublish(true);
+        setJob(created.job);
+      }
+    } catch (error) {
+      if (isCurrentInstagramPublishOperation(active, submit.current)) {
+        setMessage(getApiErrorMessage(error, "Instagram 一键发布失败"));
+      }
+    } finally {
+      if (canReleaseInstagramPublishLock(active, submit.current)) submit.current = null;
+    }
+  }
+
   async function readExact() {
     const taskId = exactInstagramPublishTaskId(job); if (!taskId || !account || read.current) return;
     const active = identity(new AbortController(), job!.id, taskId); read.current = active; setReading(true);
@@ -180,8 +260,9 @@ export function InstagramPublishingPanel({ productId, accounts, onTask }: {
     finally { if (canReleaseInstagramPublishLock(active, refresh.current)) refresh.current = null; }
   }
 
-  async function enqueueFinalize() {
-    if (!task || !canEnqueueInstagramFinalize(task.status, job) || finalize.current || !window.confirm("确认公开发布此 Instagram Reel？")) return;
+  async function enqueueFinalize(alreadyConfirmed = false) {
+    if (!task || !canEnqueueInstagramFinalize(task.status, job) || finalize.current
+      || (!alreadyConfirmed && !window.confirm("确认公开发布此 Instagram Reel？"))) return;
     const active = identity(new AbortController(), null, task.id); finalize.current = active;
     try { const checked = await preflightInstagramFinalize(productId, task.id, active.controller.signal);
       if (!isCurrentInstagramPublishOperation(active, finalize.current)) return;
@@ -194,11 +275,32 @@ export function InstagramPublishingPanel({ productId, accounts, onTask }: {
     finally { if (canReleaseInstagramPublishLock(active, finalize.current)) finalize.current = null; }
   }
 
+  useEffect(() => {
+    if (!autoPublish || !task || instagramJobNeedsPolling(job)) return;
+    if (["SUCCEEDED", "FAILED", "SUBMIT_UNKNOWN"].includes(task.status)) {
+      setAutoPublish(false);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      if (task.status === "PROCESSING") void enqueueRefresh();
+      if (task.status === "READY_TO_PUBLISH") void enqueueFinalize(true);
+    }, 1500);
+    return () => window.clearTimeout(timer);
+  }, [autoPublish, task?.id, task?.status, job?.id, job?.status]);
+
   if (!account) return <p className="social-publishing__empty">请先连接当前 Product 的 Instagram Professional Account。</p>;
   return <div className="youtube-publisher" data-testid="instagram-publish-queue">
-    <header><div><span>INSTAGRAM REEL</span><h5>Reel 发布队列</h5></div><strong>公开发布必须单独确认</strong></header>
-    <p>Artifact 是单场景渲染 Artifact，不是完整 15 秒成片。Meta Content Publishing 不沿用 YouTube 的 made-for-kids 或 private 概念；AI 合成披露为本地审计策略。</p>
-    <select value={artifactId} onChange={(e) => { setArtifactId(e.target.value); invalidate(); }}><option value="">选择精确 Artifact</option>{artifacts.map((a) => <option key={a.artifact_id} value={a.artifact_id}>Artifact #{a.artifact_id} / RenderTask #{a.render_task_id}</option>)}</select>
+    <header><div><span>INSTAGRAM REEL</span><h5>完整成片一键发布</h5></div><strong>公开发布前会明确确认</strong></header>
+    {autoDraft ? <div className="social-publishing__auto-draft">
+      <strong>已自动匹配最新 15 秒完整成片</strong>
+      <span>{autoDraft.title}</span>
+      <small>成片 #{autoDraft.final_video_artifact_id} · {autoDraft.duration_seconds.toFixed(1)} 秒 · 文案与 {autoDraft.tags.length} 个标签将随视频发布</small>
+      <button disabled={submit.current !== null || autoPublish} onClick={() => void oneClickPublish()}>
+        {autoPublish ? "正在自动完成发布…" : "一键发布最新成片到 Instagram"}
+      </button>
+    </div> : null}
+    <p>系统发送视频工厂最终合成的完整成片，并自动携带该平台文案与标签；公开发布只需在开始时确认一次。</p>
+    <select value={artifactId} onChange={(e) => { setArtifactId(e.target.value); invalidate(); }}><option value="">选择精确 Artifact</option>{autoDraft && !artifacts.some((a) => a.artifact_id === autoDraft.artifact_id) ? <option value={autoDraft.artifact_id}>最新完整成片 #{autoDraft.final_video_artifact_id}</option> : null}{artifacts.map((a) => <option key={a.artifact_id} value={a.artifact_id}>Artifact #{a.artifact_id} / RenderTask #{a.render_task_id}</option>)}</select>
     <input aria-label="本地任务标签" value={title} onChange={(e) => { setTitle(e.target.value); invalidate(); }} />
     <textarea aria-label="Instagram caption 描述" value={description} onChange={(e) => { setDescription(e.target.value); invalidate(); }} />
     <input aria-label="hashtags" value={tags} onChange={(e) => { setTags(e.target.value); invalidate(); }} />

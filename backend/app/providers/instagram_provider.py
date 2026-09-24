@@ -157,6 +157,28 @@ class InstagramProvider:
             token, datetime.now(UTC) + timedelta(seconds=float(expires_in))
         )
 
+    async def refresh_long_lived_token(self, access_token: str) -> InstagramLongToken:
+        payload = await self._request(
+            "GET",
+            "https://graph.instagram.com/refresh_access_token",
+            params={
+                "grant_type": "ig_refresh_token",
+                "access_token": access_token,
+            },
+        )
+        token = payload.get("access_token")
+        expires_in = payload.get("expires_in")
+        if (
+            not isinstance(token, str)
+            or not token
+            or not isinstance(expires_in, (int, float))
+            or expires_in <= 0
+        ):
+            raise InstagramProviderError("invalid_provider_response")
+        return InstagramLongToken(
+            token, datetime.now(UTC) + timedelta(seconds=float(expires_in))
+        )
+
     async def get_professional_profile(
         self, *, user_id: str, access_token: str
     ) -> InstagramProfessionalProfile:

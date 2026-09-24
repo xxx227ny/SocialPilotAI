@@ -415,6 +415,9 @@ try {
   matches(panel, /useEffect\(\(\) => \{[\s\S]*\}, \[productId\]\);/, "Product change invalidates operations");
   matches(panel, /if \(isPresentation\) return null;/, "Presentation mode hides panel");
   matches(panel, /SUBMIT_UNKNOWN/, "SUBMIT_UNKNOWN is displayed as non-retryable");
+  matches(panel, /Number\(artifactId\) === autoDraft\?\.artifact_id[\s\S]*\? autoDraft\.final_video_artifact_id[\s\S]*: null/, "manual artifact selection never inherits the automatic final-video identity");
+  matches(panel, /一键发送最新成片到 YouTube/, "complete final video has a one-click action");
+  matches(panel, /getYouTubeAutoPublishDraft/, "automatic draft supplies the platform copy");
   matches(api, /\/execution-jobs\/\$\{jobId\}/, "API polls local execution Job");
   excludes(api, /youtube\.com|googleapis\.com/, "API has no Provider endpoint");
   excludes(api, /timeout:\s*0/, "queue requests have bounded client behavior");

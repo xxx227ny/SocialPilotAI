@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.core.exceptions import AppError
-from app.models import VideoRenderArtifact
+from app.models import CopyMatrix, MarketingStrategy, VideoRenderArtifact
 from app.repositories.product import ProductRepository
 from app.repositories.social import SocialRepository
 from app.schemas.social import (
@@ -26,9 +26,12 @@ from app.services.instagram_media_probe import (
     InstagramMediaSpecification,
     validate_instagram_reel_media,
 )
+from app.services.social_publish_source import (
+    SocialPublishSourceService,
+    VerifiedSocialPublishSource,
+)
 from app.services.video_artifact_storage import VideoArtifactStorage
 from app.services.video_render_operation_service import (
-    VerifiedVideoArtifact,
     VideoArtifactAccessService,
 )
 
@@ -41,10 +44,11 @@ class FrozenInstagramPublishInput:
     social_account_id: int
     professional_account_id: str
     artifact_id: int
+    final_video_artifact_id: int | None
     render_task_id: int
     video_project_id: int
-    copy_matrix_id: int
-    marketing_strategy_id: int
+    copy_matrix_id: int | None
+    marketing_strategy_id: int | None
     content_type: str
     size_bytes: int
     sha256: str
@@ -52,7 +56,7 @@ class FrozenInstagramPublishInput:
     media: InstagramMediaSpecification
     caption: str
     input_digest: str
-    verified: VerifiedVideoArtifact
+    verified: VerifiedSocialPublishSource
 
 
 class InstagramPublishPreflightService:
@@ -66,6 +70,9 @@ class InstagramPublishPreflightService:
         self.session = session
         self.settings = settings
         self.artifact_access = VideoArtifactAccessService(session, artifact_storage)
+        self.publish_sources = SocialPublishSourceService(
+            session, settings, artifact_storage
+        )
         self.media_probe = media_probe
         self.products = ProductRepository(session)
         self.social = SocialRepository(session)
@@ -107,6 +114,7 @@ class InstagramPublishPreflightService:
             social_account_id=frozen.social_account_id,
             professional_account_id=frozen.professional_account_id,
             artifact_id=frozen.artifact_id,
+            final_video_artifact_id=frozen.final_video_artifact_id,
             render_task_id=frozen.render_task_id,
             video_project_id=frozen.video_project_id,
             copy_matrix_id=frozen.copy_matrix_id,
@@ -134,24 +142,38 @@ class InstagramPublishPreflightService:
             or account.platform != "instagram"
         ):
             raise AppError("Instagram account not found for Product", 404)
-        verified = self.artifact_access.resolve_verified(data.artifact_id)
+        verified = self.publish_sources.resolve(
+            product_id=product_id,
+            platform="instagram",
+            artifact_id=data.artifact_id,
+            final_video_artifact_id=data.final_video_artifact_id,
+        )
         task = verified.artifact.video_render_task
-        project = task.video_project if task is not None else None
-        copy_matrix = project.copy_matrix if project is not None else None
-        strategy = project.marketing_strategy if project is not None else None
-        if (
-            task is None
-            or project is None
-            or copy_matrix is None
-            or strategy is None
-            or project.product_id != product_id
-            or project.platform != "Instagram Reels"
-            or copy_matrix.product_id != product_id
-            or strategy.product_id != product_id
-            or project.copy_matrix_id != copy_matrix.id
-            or project.marketing_strategy_id != strategy.id
-            or copy_matrix.marketing_strategy_id != strategy.id
-        ):
+        project = verified.project
+        script = verified.script_version
+        copy_matrix = (
+            self.session.get(CopyMatrix, script.copy_matrix_id)
+            if script is not None and script.copy_matrix_id is not None
+            else project.copy_matrix
+        )
+        strategy = (
+            self.session.get(MarketingStrategy, script.strategy_id)
+            if script is not None and script.strategy_id is not None
+            else project.marketing_strategy
+        )
+        legacy_identity_invalid = (
+            verified.final_artifact is None
+            and (
+                copy_matrix is None
+                or strategy is None
+                or copy_matrix.product_id != product_id
+                or strategy.product_id != product_id
+                or project.copy_matrix_id != copy_matrix.id
+                or project.marketing_strategy_id != strategy.id
+                or copy_matrix.marketing_strategy_id != strategy.id
+            )
+        )
+        if task is None or legacy_identity_invalid:
             raise AppError("Instagram artifact source identity is invalid", 409)
         actual_size = verified.path.stat().st_size
         actual_sha = _sha256_file(verified.path)
@@ -168,7 +190,11 @@ class InstagramPublishPreflightService:
             raise AppError("Instagram Reel media is not eligible", 409) from None
         caption = build_instagram_caption(data.description, data.tags)
         path_identity = hashlib.sha256(
-            str(verified.artifact.storage_path).encode("utf-8")
+            str(
+                verified.final_artifact.storage_path
+                if verified.final_artifact is not None
+                else verified.artifact.storage_path
+            ).encode("utf-8")
         ).hexdigest()
         stable = {
             "contract": "instagram-reel-submit-v1",
@@ -188,6 +214,7 @@ class InstagramPublishPreflightService:
             },
             "artifact": {
                 "id": verified.artifact.id,
+                "final_video_artifact_id": verified.final_video_artifact_id,
                 "sha256": actual_sha,
                 "size_bytes": actual_size,
                 "content_type": verified.content_type,
@@ -215,13 +242,17 @@ class InstagramPublishPreflightService:
                 "scenes": project.scenes,
                 "cta": project.cta,
             },
-            "copy_matrix": {
+            "copy_matrix": None
+            if copy_matrix is None
+            else {
                 "id": copy_matrix.id,
                 "product_id": copy_matrix.product_id,
                 "marketing_strategy_id": copy_matrix.marketing_strategy_id,
                 "copies": copy_matrix.copies,
             },
-            "strategy": {
+            "strategy": None
+            if strategy is None
+            else {
                 "id": strategy.id,
                 "product_id": strategy.product_id,
                 "positioning": strategy.positioning,
@@ -248,10 +279,11 @@ class InstagramPublishPreflightService:
             social_account_id=account.id,
             professional_account_id=account.provider_account_id,
             artifact_id=verified.artifact.id,
+            final_video_artifact_id=verified.final_video_artifact_id,
             render_task_id=task.id,
             video_project_id=project.id,
-            copy_matrix_id=copy_matrix.id,
-            marketing_strategy_id=strategy.id,
+            copy_matrix_id=copy_matrix.id if copy_matrix is not None else None,
+            marketing_strategy_id=strategy.id if strategy is not None else None,
             content_type=verified.content_type,
             size_bytes=actual_size,
             sha256=actual_sha,

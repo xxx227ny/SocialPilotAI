@@ -46,10 +46,11 @@ class InstagramPublishSubmitV1Input(BaseModel):
     social_account_id: int = Field(gt=0)
     professional_account_id: str = Field(min_length=1, max_length=255)
     artifact_id: int = Field(gt=0)
+    final_video_artifact_id: int | None = Field(default=None, gt=0)
     render_task_id: int = Field(gt=0)
     video_project_id: int = Field(gt=0)
-    copy_matrix_id: int = Field(gt=0)
-    marketing_strategy_id: int = Field(gt=0)
+    copy_matrix_id: int | None = Field(default=None, gt=0)
+    marketing_strategy_id: int | None = Field(default=None, gt=0)
     publish_task_id: int = Field(gt=0)
     preflight_input_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     frozen_input_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -133,7 +134,13 @@ class InstagramPublishSubmitV1Handler:
                     _mark_failed(session, task, "submit_state_invalid")
                     return HandlerResult.failed("INSTAGRAM_SUBMIT_STATE_INVALID")
                 account = service.account(task)
-                token = service.access_token(account)
+                if service.token_needs_refresh(account):
+                    context.before_provider_call(may_submit_external=False)
+                    token = asyncio.run(
+                        service.refresh_access_token(account, self.provider)
+                    )
+                else:
+                    token = service.access_token(account)
                 frozen = service.freeze_task(task)
             except AppError:
                 if task is not None:
@@ -218,7 +225,13 @@ class InstagramPublishRefreshV1Handler:
                 return HandlerResult.failed("INSTAGRAM_REFRESH_IDENTITY_MISMATCH")
             try:
                 account = service.account(task)
-                token = service.access_token(account)
+                if service.token_needs_refresh(account):
+                    context.before_provider_call(may_submit_external=False)
+                    token = asyncio.run(
+                        service.refresh_access_token(account, self.provider)
+                    )
+                else:
+                    token = service.access_token(account)
             except AppError:
                 return HandlerResult.failed("INSTAGRAM_REFRESH_VALIDATION_FAILED")
             try:
@@ -292,7 +305,13 @@ class InstagramPublishFinalizeV1Handler:
                     != data.preflight_digest
                 ):
                     return HandlerResult.failed("INSTAGRAM_FINALIZE_DIGEST_MISMATCH")
-                token = service.access_token(account)
+                if service.token_needs_refresh(account):
+                    context.before_provider_call(may_submit_external=False)
+                    token = asyncio.run(
+                        service.refresh_access_token(account, self.provider)
+                    )
+                else:
+                    token = service.access_token(account)
             except AppError:
                 return HandlerResult.failed("INSTAGRAM_FINALIZE_VALIDATION_FAILED")
             try:
@@ -330,6 +349,7 @@ def _submit_identity_matches(
         or task.product_id != data.product_id
         or task.social_account_id != data.social_account_id
         or task.artifact_id != data.artifact_id
+        or task.final_video_artifact_id != data.final_video_artifact_id
         or task.request_digest != data.preflight_input_digest
         or data.frozen_input_digest
         != instagram_job_input_digest(data.preflight_input_digest, task.id)

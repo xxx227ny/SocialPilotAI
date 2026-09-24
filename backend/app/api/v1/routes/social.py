@@ -22,6 +22,7 @@ from app.core.config import Settings, get_settings
 from app.db.session import get_db
 from app.schemas.execution import ExecutionJobCreateRead
 from app.schemas.social import (
+    AutoPublishDraftRead,
     DisconnectRead,
     DisconnectRequest,
     InstagramConnectRead,
@@ -60,6 +61,7 @@ from app.schemas.social import (
     YouTubePublishingMetadata,
     YouTubePublishRequest,
 )
+from app.services.auto_social_publish_service import AutoSocialPublishService
 from app.services.instagram_account_service import InstagramAccountService
 from app.services.instagram_publish_job_service import InstagramPublishJobService
 from app.services.instagram_publish_preflight import InstagramPublishPreflightService
@@ -383,6 +385,19 @@ def list_youtube_publish_artifacts(
     )
 
 
+@router.get(
+    "/products/{product_id}/publishing/youtube/auto-draft",
+    response_model=AutoPublishDraftRead,
+)
+def get_youtube_auto_publish_draft(
+    product_id: int,
+    db: DbSession,
+    settings: SettingsDep,
+    storage: VideoArtifactStorageDep,
+) -> AutoPublishDraftRead:
+    return AutoSocialPublishService(db, settings, storage).draft(product_id, "youtube")
+
+
 @router.post(
     "/products/{product_id}/publishing/youtube/preflight",
     response_model=YouTubePreflightRead,
@@ -476,6 +491,21 @@ def list_instagram_publish_artifacts(
     return InstagramPublishPreflightService(
         db, settings, storage, probe
     ).list_candidates(product_id)
+
+
+@router.get(
+    "/products/{product_id}/publishing/instagram/auto-draft",
+    response_model=AutoPublishDraftRead,
+)
+def get_instagram_auto_publish_draft(
+    product_id: int,
+    db: DbSession,
+    settings: SettingsDep,
+    storage: VideoArtifactStorageDep,
+) -> AutoPublishDraftRead:
+    return AutoSocialPublishService(db, settings, storage).draft(
+        product_id, "instagram"
+    )
 
 
 @router.post(

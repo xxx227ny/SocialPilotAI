@@ -10,6 +10,7 @@ import {
   disconnectTikTokAccount,
   disconnectSocialAccount,
   getPublishTask,
+  getYouTubeAutoPublishDraft,
   getYouTubePublishJob,
   listPublishArtifacts,
   listPublishTasks,
@@ -32,6 +33,7 @@ import {
 import { usePresentationMode } from "../../context/PresentationModeContext";
 import type { ExecutionJob } from "../../types/execution";
 import type {
+  AutoPublishDraft,
   PublishArtifactCandidate,
   PublishTask,
   SocialAccount,
@@ -345,7 +347,8 @@ export function SocialPublishingPanel({ productId }: { productId: number }) {
           key={productId}
           productId={productId}
           accounts={accounts.filter(
-            (account) => account.connection_status === "CONNECTED",
+            (account) => account.platform === "youtube" &&
+              account.connection_status === "CONNECTED",
           )}
           artifacts={artifacts}
           onTask={(task) => {
@@ -804,6 +807,7 @@ function YouTubePublisher({
 }) {
   const [accountId, setAccountId] = useState("");
   const [artifactId, setArtifactId] = useState("");
+  const [autoDraft, setAutoDraft] = useState<AutoPublishDraft | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState("");
@@ -841,6 +845,9 @@ function YouTubePublisher({
     return {
       social_account_id: Number(accountId),
       artifact_id: Number(artifactId),
+      final_video_artifact_id: Number(artifactId) === autoDraft?.artifact_id
+        ? autoDraft.final_video_artifact_id
+        : null,
       title,
       description,
       tags: tags.split(",").map((value) => value.trim()).filter(Boolean),
@@ -948,8 +955,35 @@ function YouTubePublisher({
   useEffect(() => {
     setArtifactId((current) => artifacts.some(
       (artifact) => String(artifact.artifact_id) === current,
-    ) ? current : String(artifacts[artifacts.length - 1]?.artifact_id ?? ""));
-  }, [artifacts]);
+    ) || current === String(autoDraft?.artifact_id ?? "")
+      ? current
+      : String(autoDraft?.artifact_id ?? artifacts[artifacts.length - 1]?.artifact_id ?? ""));
+  }, [artifacts, autoDraft?.artifact_id]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    if (accounts.length === 0) {
+      setAutoDraft(null);
+      return () => controller.abort();
+    }
+    setAccountId((current) => current || String(accounts[0].id));
+    void getYouTubeAutoPublishDraft(productId, controller.signal)
+      .then((draft) => {
+        if (controller.signal.aborted) return;
+        setAutoDraft(draft);
+        setArtifactId(String(draft.artifact_id));
+        setTitle(draft.title);
+        setDescription(draft.description);
+        setTags(draft.tags.join(", "));
+        setMessage("");
+      })
+      .catch((caught) => {
+        if (controller.signal.aborted) return;
+        setAutoDraft(null);
+        setMessage(getApiErrorMessage(caught, "当前没有可一键发送的 15 秒完整成片。"));
+      });
+    return () => controller.abort();
+  }, [productId, accounts[0]?.id]);
 
   async function runPreflight() {
     const data = metadata();
@@ -1201,6 +1235,75 @@ function YouTubePublisher({
     }
   }
 
+  async function oneClickPublish() {
+    const data = metadata();
+    const channel = accounts.find((account) => account.id === Number(accountId));
+    if (!data || !autoDraft || madeForKids === "") {
+      setMessage("请先明确是否为儿童内容；系统会自动使用最新 15 秒完整成片和配套文案。");
+      return;
+    }
+    if (preflightRef.current || submitRef.current) return;
+    cancelOperations();
+    const active = identity(new AbortController());
+    submitRef.current = active;
+    setState("working");
+    setMessage("");
+    try {
+      const checked = await preflightYouTubePublish(
+        productId, data, active.controller.signal,
+      );
+      if (
+        !isCurrent(active, submitRef.current) ||
+        !checked.ready ||
+        checked.final_video_artifact_id !== autoDraft.final_video_artifact_id
+      ) {
+        if (isCurrent(active, submitRef.current)) {
+          setState("failed");
+          setMessage(checked.missing_requirements.join("；") || "完整成片身份校验失败。");
+        }
+        return;
+      }
+      setPreflight(checked);
+      const approved = window.confirm(
+        `确认发送到 YouTube「${channel?.display_name ?? "当前频道"}」？\n\n` +
+        `视频：最新 15 秒完整成片\n标题：${autoDraft.title}\n` +
+        "可见性：Private（私密）\nAI 合成内容披露：开启",
+      );
+      if (!approved || !isCurrent(active, submitRef.current)) {
+        setState("idle");
+        return;
+      }
+      const created = await publishYouTube(
+        productId,
+        {
+          ...data,
+          input_digest: checked.input_digest,
+          preflight_digest: checked.preflight_digest,
+          preflight_expires_at: checked.expires_at,
+          idempotency_key: createIdempotencyKey(),
+          confirm_upload: true,
+        },
+        active.controller.signal,
+      );
+      if (!isCurrent(active, submitRef.current)) return;
+      const exact = selectExactYouTubeSubmitJob(
+        [created.job], productId, Number(accountId), Number(artifactId),
+        checked.input_digest,
+      );
+      if (!exact) throw new Error("YouTube 发布任务身份不匹配");
+      setJob(exact);
+      setState("idle");
+    } catch (caught) {
+      if (!isCurrent(active, submitRef.current)) return;
+      setState("failed");
+      setMessage(getApiErrorMessage(caught, "YouTube 一键发送失败。"));
+    } finally {
+      if (canReleaseYouTubePublishLock(active, submitRef.current)) {
+        submitRef.current = null;
+      }
+    }
+  }
+
   const selectedArtifact = artifacts.find(
     (artifact) => artifact.artifact_id === Number(artifactId),
   );
@@ -1227,6 +1330,23 @@ function YouTubePublisher({
         </p>
       ) : (
         <div className="youtube-publisher__form">
+          {autoDraft ? (
+            <div className="social-publishing__auto-draft">
+              <strong>已自动匹配最新 15 秒完整成片</strong>
+              <span>{autoDraft.title}</span>
+              <small>
+                成片 #{autoDraft.final_video_artifact_id} · {autoDraft.duration_seconds.toFixed(1)} 秒 ·
+                文案与 {autoDraft.tags.length} 个标签将随视频发送
+              </small>
+              <button
+                type="button"
+                onClick={() => void oneClickPublish()}
+                disabled={state === "working" || madeForKids === ""}
+              >
+                {state === "working" ? "正在安全发送…" : "一键发送最新成片到 YouTube"}
+              </button>
+            </div>
+          ) : null}
           <label>
             YouTube Channel
             <select value={accountId} onChange={(event) => {
@@ -1248,6 +1368,13 @@ function YouTubePublisher({
               invalidate();
             }}>
               <option value="">请选择 Artifact</option>
+              {autoDraft && !artifacts.some((artifact) =>
+                artifact.artifact_id === autoDraft.artifact_id
+              ) ? (
+                <option value={autoDraft.artifact_id}>
+                  最新完整成片 #{autoDraft.final_video_artifact_id}
+                </option>
+              ) : null}
               {artifacts.map((artifact) => (
                 <option key={artifact.artifact_id} value={artifact.artifact_id}>
                   Artifact #{artifact.artifact_id} · RenderTask #

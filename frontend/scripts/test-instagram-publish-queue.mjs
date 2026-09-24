@@ -53,7 +53,11 @@ try {
   check(state.canEnqueueInstagramRefresh("READY_TO_PUBLISH", refreshJob("FAILED")), false, "Refresh requires PROCESSING Task");
   check(state.canEnqueueInstagramFinalize("PROCESSING", finalizeJob("FAILED")), false, "Finalize requires READY_TO_PUBLISH Task");
   const panel = readFileSync(join(process.cwd(), "src/components/product/InstagramPublishingPanel.tsx"), "utf8");
-  for (const phrase of ["准备并上传 Reel", "刷新处理状态", "确认公开发布", "重新读取精确 PublishTask 结果", "单场景渲染 Artifact", "SUBMIT_UNKNOWN"]) check(panel.includes(phrase), true, phrase);
+  for (const phrase of ["准备并上传 Reel", "刷新处理状态", "确认公开发布", "重新读取精确 PublishTask 结果", "最新 15 秒完整成片", "一键发布最新成片到 Instagram", "SUBMIT_UNKNOWN"]) check(panel.includes(phrase), true, phrase);
+  check(panel.includes("final_video_artifact_id"), true, "final video identity is pinned");
+  check(panel.includes("getInstagramAutoPublishDraft"), true, "auto draft includes platform copy");
+  check(panel.includes("Number(artifactId) === autoDraft?.artifact_id"), true, "manual artifact never inherits the automatic final-video identity");
+  check(panel.includes("listInstagramPublishArtifacts(productId, controller.signal)"), true, "legacy artifacts still load independently");
   check(panel.includes("setPollCycle((value) => value + 1)"), true, "poll error schedules same exact Job again");
   for (const forbidden of ["latest", "listPublishTasks", "media_publish", "provider_video_id"]) check(panel.includes(forbidden), false, `forbidden ${forbidden}`);
   console.log(`Instagram publish queue scenarios: ${scenarios} passed`);

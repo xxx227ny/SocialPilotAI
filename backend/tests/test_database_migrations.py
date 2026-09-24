@@ -132,6 +132,7 @@ def business_snapshot(path: Path) -> str:
                 record.pop("create_request_key", None)
                 record.pop("create_request_digest", None)
                 record.pop("display_number", None)
+                record.pop("final_video_artifact_id", None)
                 payload[table_name].append(record)
     finally:
         connection.close()
@@ -1026,7 +1027,7 @@ def test_stage3f_head_contains_product_media_bridge_columns(tmp_path: Path) -> N
         }
     finally:
         connection.close()
-    assert HEAD_REVISION == "0033_workspace_product_numbers"
+    assert HEAD_REVISION == "0034_publish_final_video_artifacts"
     assert {"provider_region", "provider_workspace_ref"} <= credential_columns
     assert {
         "scope_hash",

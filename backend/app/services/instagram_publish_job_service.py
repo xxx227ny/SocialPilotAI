@@ -78,6 +78,7 @@ class InstagramPublishJobService:
             social_account_id=checked.social_account_id,
             professional_account_id=checked.professional_account_id,
             artifact_id=checked.artifact_id,
+            final_video_artifact_id=checked.final_video_artifact_id,
             render_task_id=checked.render_task_id,
             video_project_id=checked.video_project_id,
             copy_matrix_id=checked.copy_matrix_id,
@@ -193,6 +194,7 @@ class InstagramPublishJobService:
             product_id=product_id,
             social_account_id=data.social_account_id,
             artifact_id=data.artifact_id,
+            final_video_artifact_id=data.final_video_artifact_id,
             platform="instagram",
             idempotency_key=key,
             request_digest=data.input_digest,
@@ -251,6 +253,7 @@ class InstagramPublishJobService:
             or payload.product_id != product_id
             or payload.social_account_id != data.social_account_id
             or payload.artifact_id != data.artifact_id
+            or payload.final_video_artifact_id != data.final_video_artifact_id
             or task is None
             or not _task_matches(task, product_id, data)
             or frozen is None
@@ -365,6 +368,7 @@ def _task_matches(
         task.product_id == product_id
         and task.social_account_id == data.social_account_id
         and task.artifact_id == data.artifact_id
+        and task.final_video_artifact_id == data.final_video_artifact_id
         and task.request_digest == data.input_digest
         and task.title == data.title
         and task.description == data.description

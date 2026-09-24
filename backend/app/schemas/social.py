@@ -128,6 +128,25 @@ class PublishArtifactCandidateRead(BaseModel):
     created_at: datetime
 
 
+class AutoPublishDraftRead(BaseModel):
+    platform: Literal["youtube", "instagram"]
+    artifact_id: int
+    final_video_artifact_id: int
+    production_item_id: int
+    production_batch_id: int
+    video_project_id: int
+    script_version_id: int
+    title: str
+    description: str
+    tags: list[str]
+    content_type: Literal["video/mp4"]
+    size_bytes: int
+    sha256: str
+    duration_seconds: float
+    copy_source: Literal["copy_matrix", "script"]
+    complete_final_video: Literal[True] = True
+
+
 class InstagramMediaSpecificationRead(BaseModel):
     container: str
     video_codec: str
@@ -142,6 +161,7 @@ class InstagramMediaSpecificationRead(BaseModel):
 class InstagramPublishingMetadata(BaseModel):
     social_account_id: int = Field(gt=0)
     artifact_id: int = Field(gt=0)
+    final_video_artifact_id: int | None = Field(default=None, gt=0)
     title: str = Field(min_length=1, max_length=100)
     description: str = Field(default="", max_length=2200)
     tags: list[str] = Field(default_factory=list, max_length=30)
@@ -195,10 +215,11 @@ class InstagramSubmitPreflightRead(BaseModel):
     social_account_id: int
     professional_account_id: str
     artifact_id: int
+    final_video_artifact_id: int | None
     render_task_id: int
     video_project_id: int
-    copy_matrix_id: int
-    marketing_strategy_id: int
+    copy_matrix_id: int | None
+    marketing_strategy_id: int | None
     content_type: Literal["video/mp4", "video/quicktime"]
     size_bytes: int
     sha256: str
@@ -359,6 +380,7 @@ class InstagramFinalizeRequest(BaseModel):
 class YouTubePublishingMetadata(BaseModel):
     social_account_id: int = Field(gt=0)
     artifact_id: int = Field(gt=0)
+    final_video_artifact_id: int | None = Field(default=None, gt=0)
     title: str = Field(min_length=1, max_length=100)
     description: str = Field(default="", max_length=5000)
     tags: list[str] = Field(default_factory=list, max_length=30)
@@ -400,6 +422,7 @@ class YouTubePreflightRead(BaseModel):
     social_account_id: int
     channel_id: str
     artifact_id: int
+    final_video_artifact_id: int | None
     render_task_id: int
     video_project_id: int
     copy_matrix_id: int | None
@@ -425,6 +448,7 @@ class PublishTaskRead(BaseModel):
     product_id: int
     social_account_id: int
     artifact_id: int
+    final_video_artifact_id: int | None
     platform: Literal["youtube", "instagram", "tiktok"]
     title: str
     description: str

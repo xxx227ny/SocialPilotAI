@@ -44,6 +44,7 @@ class YouTubePublishSubmitV1Input(BaseModel):
     social_account_id: int = Field(gt=0)
     channel_id: str = Field(min_length=1, max_length=255)
     artifact_id: int = Field(gt=0)
+    final_video_artifact_id: int | None = Field(default=None, gt=0)
     render_task_id: int = Field(gt=0)
     video_project_id: int = Field(gt=0)
     copy_matrix_id: int | None = Field(default=None, gt=0)
@@ -135,7 +136,9 @@ class YouTubePublishSubmitV1Handler:
                 return HandlerResult.failed("YOUTUBE_AUTHORIZATION_FAILED")
             try:
                 verified, _ = service._verify_artifact(
-                    task.product_id, task.artifact_id
+                    task.product_id,
+                    task.artifact_id,
+                    task.final_video_artifact_id,
                 )
                 session_uri = asyncio.run(
                     service._provider().initiate_upload_session(
@@ -259,6 +262,7 @@ def youtube_publish_task_digest(task: PublishTask) -> str:
         "product_id": task.product_id,
         "social_account_id": task.social_account_id,
         "artifact_id": task.artifact_id,
+        "final_video_artifact_id": task.final_video_artifact_id,
         "provider_video_id": task.provider_video_id,
         "status": task.status,
     }
@@ -275,6 +279,7 @@ def _submit_identity_matches(
         task.product_id != data.product_id
         or task.social_account_id != data.social_account_id
         or task.artifact_id != data.artifact_id
+        or task.final_video_artifact_id != data.final_video_artifact_id
         or task.request_digest != data.frozen_input_digest
         or task.preflight_digest != data.preflight_digest
         or data.preflight_digest
@@ -284,6 +289,7 @@ def _submit_identity_matches(
     metadata = YouTubePublishingMetadata(
         social_account_id=task.social_account_id,
         artifact_id=task.artifact_id,
+        final_video_artifact_id=task.final_video_artifact_id,
         title=task.title,
         description=task.description,
         tags=task.tags,

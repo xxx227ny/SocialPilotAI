@@ -1,6 +1,7 @@
 import { apiClient } from "./client";
 import type { ExecutionJob, ExecutionJobCreateResult } from "../types/execution";
 import type {
+  AutoPublishDraft,
   PublishArtifactCandidate,
   PublishTask,
   SocialAccount,
@@ -164,6 +165,17 @@ export async function listPublishArtifacts(
   return response.data;
 }
 
+export async function getYouTubeAutoPublishDraft(
+  productId: number,
+  signal?: AbortSignal,
+) {
+  const response = await apiClient.get<AutoPublishDraft>(
+    `/products/${productId}/publishing/youtube/auto-draft`,
+    { signal },
+  );
+  return response.data;
+}
+
 export async function preflightYouTubePublish(
   productId: number,
   data: YouTubePublishingMetadata,
@@ -260,6 +272,17 @@ export async function getYouTubePublishJob(
 export async function listInstagramPublishArtifacts(productId: number, signal?: AbortSignal) {
   const response = await apiClient.get<PublishArtifactCandidate[]>(
     `/products/${productId}/publishing/instagram/artifacts`, { signal },
+  );
+  return response.data;
+}
+
+export async function getInstagramAutoPublishDraft(
+  productId: number,
+  signal?: AbortSignal,
+) {
+  const response = await apiClient.get<AutoPublishDraft>(
+    `/products/${productId}/publishing/instagram/auto-draft`,
+    { signal },
   );
   return response.data;
 }

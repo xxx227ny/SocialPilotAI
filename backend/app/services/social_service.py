@@ -36,6 +36,10 @@ from app.schemas.social import (
     YouTubePublishingMetadata,
     YouTubePublishRequest,
 )
+from app.services.social_publish_source import (
+    SocialPublishSourceService,
+    VerifiedSocialPublishSource,
+)
 from app.services.social_security import (
     TokenCipher,
     digest_oauth_state,
@@ -309,6 +313,7 @@ class YouTubePublishingService:
         self.repository = SocialRepository(session)
         self.products = ProductRepository(session)
         self.artifact_access = VideoArtifactAccessService(session, storage)
+        self.publish_sources = SocialPublishSourceService(session, settings, storage)
 
     def list_candidates(self, product_id: int) -> list[PublishArtifactCandidateRead]:
         self._require_product(product_id)
@@ -337,7 +342,9 @@ class YouTubePublishingService:
         self._require_publishing_enabled()
         self._require_product(product_id)
         account = self._require_account(product_id, data.social_account_id)
-        verified, project = self._verify_artifact(product_id, data.artifact_id)
+        verified, project = self._verify_artifact(
+            product_id, data.artifact_id, data.final_video_artifact_id
+        )
         missing: list[str] = []
         if account.connection_status != "CONNECTED":
             missing.append("YouTube account is not connected")
@@ -386,6 +393,7 @@ class YouTubePublishingService:
             social_account_id=account.id,
             channel_id=account.provider_account_id,
             artifact_id=verified.artifact.id,
+            final_video_artifact_id=verified.final_video_artifact_id,
             render_task_id=task.id,
             video_project_id=project.id,
             copy_matrix_id=project.copy_matrix_id,
@@ -421,6 +429,7 @@ class YouTubePublishingService:
             product_id=product_id,
             social_account_id=data.social_account_id,
             artifact_id=data.artifact_id,
+            final_video_artifact_id=data.final_video_artifact_id,
             platform="youtube",
             idempotency_key=storage_key,
             request_digest=request_digest,
@@ -449,7 +458,9 @@ class YouTubePublishingService:
                 reused=True,
                 external_call=False,
             )
-        verified, _ = self._verify_artifact(product_id, data.artifact_id)
+        verified, _ = self._verify_artifact(
+            product_id, data.artifact_id, data.final_video_artifact_id
+        )
         account = self._require_account(product_id, data.social_account_id)
         try:
             access_token = await self._access_token(account)
@@ -601,15 +612,18 @@ class YouTubePublishingService:
         return tokens.access_token
 
     def _verify_artifact(
-        self, product_id: int, artifact_id: int
-    ) -> tuple[VerifiedVideoArtifact, object]:
-        verified = self.artifact_access.resolve_verified(artifact_id)
-        task = verified.artifact.video_render_task
-        project = task.video_project
-        if project is None or project.product_id != product_id:
-            raise AppError("Artifact does not belong to Product", 404)
-        if project.platform != "YouTube Shorts":
-            raise AppError("Artifact is not a YouTube Shorts video", 409)
+        self,
+        product_id: int,
+        artifact_id: int,
+        final_video_artifact_id: int | None = None,
+    ) -> tuple[VerifiedSocialPublishSource, object]:
+        verified = self.publish_sources.resolve(
+            product_id=product_id,
+            platform="youtube",
+            artifact_id=artifact_id,
+            final_video_artifact_id=final_video_artifact_id,
+        )
+        project = verified.project
         if verified.content_type not in {"video/mp4", "video/webm"}:
             raise AppError("Artifact video type is not supported", 409)
         return verified, project
@@ -649,7 +663,7 @@ class YouTubePublishingService:
         self,
         product_id: int,
         account: SocialAccount,
-        verified: VerifiedVideoArtifact,
+        verified: VerifiedSocialPublishSource,
         project: object,
         data: YouTubePublishingMetadata,
     ) -> str:
@@ -660,6 +674,7 @@ class YouTubePublishingService:
             "account_id": account.id,
             "channel_id": account.provider_account_id,
             "artifact_id": verified.artifact.id,
+            "final_video_artifact_id": verified.final_video_artifact_id,
             "render_task_id": task.id,
             "video_project_id": project.id,
             "copy_matrix_id": project.copy_matrix_id,
@@ -683,6 +698,7 @@ class YouTubePublishingService:
                 "product_id": product_id,
                 "account_id": data.social_account_id,
                 "artifact_id": data.artifact_id,
+                "final_video_artifact_id": data.final_video_artifact_id,
                 "title": data.title,
                 "description": data.description,
                 "tags": data.tags,
