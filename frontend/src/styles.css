@@ -742,9 +742,15 @@
 }
 
 .social-publishing__notice {
+  margin: 12px 0 0;
   padding: 9px 11px;
+  border: 1px solid #d8e0ee;
   border-radius: 7px;
-  font-size: 9px;
+  color: #26334f;
+  background: #eef3fa;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.5;
 }
 
 .social-publishing__notice.is-success {
@@ -782,8 +788,9 @@
 
 .social-account-card small,
 .youtube-publish-task span {
-  color: #6f7a91;
-  font-size: 8px;
+  color: #536078;
+  font-size: 10px;
+  line-height: 1.5;
 }
 
 .social-account-card__actions {
@@ -952,6 +959,13 @@
   padding: 10px;
   border-left: 3px solid #5669d4;
   background: #f1f4fb;
+}
+
+.youtube-publish-task strong {
+  color: #1f2b46;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.45;
 }
 
 .youtube-publish-task button {

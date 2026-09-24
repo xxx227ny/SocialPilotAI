@@ -398,6 +398,7 @@ try {
     "utf8",
   );
   const api = readFileSync(join(root, "src/api/social.ts"), "utf8");
+  const styles = readFileSync(join(root, "src/styles.css"), "utf8");
   excludes(panel, /recoveredTasks\s*\[\s*0\s*\]/, "no recoveredTasks[0]");
   excludes(panel, /getLatest|latestPublish|latestTask/i, "no latest recovery");
   excludes(panel, /upload_video|initiate_upload_session|upload_media|get_video_status/, "no direct Provider call");
@@ -429,6 +430,8 @@ try {
   matches(panel, /一键发送最新成片到 YouTube/, "complete final video has a one-click action");
   matches(panel, /发布前必选：是否主要面向儿童/, "audience choice is next to one-click action");
   matches(panel, /youtubePublishFailureMessage\(job\.safe_error_code\)/, "failed Job shows actionable feedback");
+  matches(styles, /\.social-publishing__notice\s*\{[\s\S]*color:\s*#26334f;[\s\S]*font-size:\s*12px;/, "local Job status has explicit readable contrast and size");
+  matches(styles, /\.youtube-publish-task strong\s*\{[\s\S]*color:\s*#1f2b46;[\s\S]*font-size:\s*14px;/, "PublishTask heading has explicit readable contrast and size");
   matches(panel, /getYouTubeAutoPublishDraft/, "automatic draft supplies the platform copy");
   matches(api, /\/execution-jobs\/\$\{jobId\}/, "API polls local execution Job");
   excludes(api, /youtube\.com|googleapis\.com/, "API has no Provider endpoint");
