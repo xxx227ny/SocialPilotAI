@@ -200,6 +200,16 @@ export function SocialPublishingPanel({ productId }: { productId: number }) {
     };
   }, [load]);
 
+  useEffect(() => {
+    if (window.location.hash !== "#social-account-binding") return;
+    window.requestAnimationFrame(() => {
+      document.getElementById("social-account-binding")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  }, [productId]);
+
   if (isPresentation) return null;
 
   const oauthStatus = new URLSearchParams(window.location.search).get(
@@ -210,7 +220,11 @@ export function SocialPublishingPanel({ productId }: { productId: number }) {
   const pinterestOAuthStatus = readPinterestOAuthStatus(window.location.search);
 
   return (
-    <section className="social-publishing" data-testid="social-publishing">
+    <section
+      id="social-account-binding"
+      className="social-publishing"
+      data-testid="social-publishing"
+    >
       <header className="social-publishing__header">
         <div>
           <span>SOCIAL PUBLISHING</span>

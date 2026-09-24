@@ -12,6 +12,9 @@ assert.match(api, /confirm_disconnect: true/);
 assert.match(app, /settings\/social-accounts/);
 assert.match(layout, /社媒账号/);
 assert.match(page, /社媒账号中心/);
+assert.match(page, /\/content-studio\?view=publishing#social-account-binding/);
+assert.match(page, /前往视频工厂绑定新账号/);
+assert.doesNotMatch(page, /前往商品中心绑定新账号/);
 assert.match(page, /关联商品/);
 assert.match(page, /解除本系统绑定/);
 assert.match(page, /只会删除 SocialPilot 保存的授权信息/);
@@ -19,4 +22,4 @@ assert.match(page, /不会返回或展示平台访问令牌/);
 assert.doesNotMatch(page, /access_token|refresh_token|ciphertext/);
 assert.doesNotMatch(api, /localStorage|sessionStorage/);
 
-console.log("Social account center frontend checks passed: 12 assertions.");
+console.log("Social account center frontend checks passed: 15 assertions.");

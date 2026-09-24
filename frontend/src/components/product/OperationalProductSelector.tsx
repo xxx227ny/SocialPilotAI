@@ -9,11 +9,13 @@ export function OperationalProductSelector({
   title,
   description,
   storageKey,
+  autoSelectSingle = false,
   children,
 }: {
   title: string;
   description: string;
   storageKey?: string;
+  autoSelectSingle?: boolean;
   children: (
     product: Product,
     updateProduct: (product: Product) => void,
@@ -38,6 +40,26 @@ export function OperationalProductSelector({
   );
   const selected = useReadResource(`product:${selectedId}`, loadSelectedProduct);
   const selectedProduct = selected.data;
+
+  useEffect(() => {
+    if (
+      autoSelectSingle &&
+      selectedId === 0 &&
+      productList.loadedAt !== null &&
+      !productList.loading &&
+      !productList.error &&
+      products.length === 1
+    ) {
+      setSelectedId(products[0].id);
+    }
+  }, [
+    autoSelectSingle,
+    productList.loadedAt,
+    productList.loading,
+    productList.error,
+    products,
+    selectedId,
+  ]);
 
   useEffect(() => {
     // Only discard a remembered choice after a successful authoritative read.

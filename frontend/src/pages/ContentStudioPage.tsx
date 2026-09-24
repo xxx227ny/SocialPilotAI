@@ -130,6 +130,10 @@ const VIDEO_PRODUCTION_PRODUCT_KEY = "socialpilot.videoWorkspace.productionProdu
 const VIDEO_PUBLISHING_PRODUCT_KEY = "socialpilot.videoWorkspace.publishingProduct";
 
 function restoredVideoWorkspaceView(): VideoWorkspaceView {
+  const requested = new URLSearchParams(window.location.search).get("view");
+  if (requested === "production" || requested === "batch" || requested === "publishing") {
+    return requested;
+  }
   try {
     const stored = window.localStorage.getItem(VIDEO_WORKSPACE_VIEW_KEY);
     if (stored === "advanced") return "publishing";
@@ -223,6 +227,7 @@ function SocialPublishingWorkspace() {
       title="社交发布"
       description="选择商品后，将已完成并通过校验的成片发布到已连接的社交账号。"
       storageKey={VIDEO_PUBLISHING_PRODUCT_KEY}
+      autoSelectSingle
     >
       {(product) => <SocialPublishingPanel productId={product.id} />}
     </OperationalProductSelector>

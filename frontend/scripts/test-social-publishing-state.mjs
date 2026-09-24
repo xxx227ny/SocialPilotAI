@@ -121,6 +121,28 @@ try {
     join(root, "src", "components", "product", "SocialPublishingPanel.tsx"),
     "utf8",
   );
+  const studio = readFileSync(
+    join(root, "src", "pages", "ContentStudioPage.tsx"),
+    "utf8",
+  );
+  const selector = readFileSync(
+    join(root, "src", "components", "product", "OperationalProductSelector.tsx"),
+    "utf8",
+  );
+  assert.match(
+    studio,
+    /new URLSearchParams\(window\.location\.search\)\.get\("view"\)/,
+  );
+  assert.match(
+    studio,
+    /storageKey=\{VIDEO_PUBLISHING_PRODUCT_KEY\}[\s\S]*autoSelectSingle/,
+  );
+  assert.match(
+    selector,
+    /autoSelectSingle[\s\S]*products\.length === 1[\s\S]*setSelectedId\(products\[0\]\.id\)/,
+  );
+  assert.match(component, /id="social-account-binding"/);
+  assert.match(component, /#social-account-binding[\s\S]*scrollIntoView/);
   const tiktokCard = component.match(
     /function TikTokAccountCard[\s\S]*?function AccountCards/,
   )?.[0];
@@ -146,7 +168,7 @@ try {
   assert.match(component, /readOnly=\{!socialAccountBindingEnabled\}/);
   assert.doesNotMatch(component, /readOnly=\{!youtubePublishingEnabled\}/);
   assert.match(component, /if \(isPresentation\) return null/);
-  console.log("social publishing frontend state: 20 checks passed");
+  console.log("social publishing frontend state: 25 checks passed");
 } finally {
   rmSync(output, { recursive: true, force: true });
 }

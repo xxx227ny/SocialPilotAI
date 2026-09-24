@@ -499,7 +499,10 @@ def test_oauth_state_is_one_time_and_tokens_are_encrypted(
 
     assert cross_session.status_code == 400
     assert first.status_code == 303
-    assert first.headers["location"].endswith("/products?youtube_oauth=connected")
+    assert first.headers["location"].endswith(
+        "/content-studio?view=publishing&youtube_oauth=connected"
+        "#social-account-binding"
+    )
     assert replay.status_code == 409
     assert oauth_session.consumed_at is not None
     assert account.access_token_ciphertext != ACCESS_TOKEN
@@ -536,7 +539,8 @@ def test_youtube_public_https_callback_redirects_to_configured_origin(
 
     assert response.status_code == 303
     assert response.headers["location"] == (
-        "https://47.242.222.177/products?youtube_oauth=connected"
+        "https://47.242.222.177/content-studio?"
+        "view=publishing&youtube_oauth=connected#social-account-binding"
     )
 
 
@@ -594,7 +598,10 @@ def test_expired_and_denied_oauth_are_safe(
         follow_redirects=False,
     )
     assert denied.status_code == 303
-    assert denied.headers["location"].endswith("/products?youtube_oauth=denied")
+    assert denied.headers["location"].endswith(
+        "/content-studio?view=publishing&youtube_oauth=denied"
+        "#social-account-binding"
+    )
     assert provider.exchange_calls == 0
 
 

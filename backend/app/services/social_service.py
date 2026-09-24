@@ -294,8 +294,11 @@ class SocialAccountService:
         return path
 
     def _frontend_redirect(self, path: str, status: str) -> str:
+        if path != "/products":
+            raise AppError("Social OAuth redirect is not allowed", 503)
         base = validated_social_frontend_origin(self.settings)
-        return f"{base}{path}?{urlencode({'youtube_oauth': status})}"
+        query = urlencode({"view": "publishing", "youtube_oauth": status})
+        return f"{base}/content-studio?{query}#social-account-binding"
 
 
 class YouTubePublishingService:

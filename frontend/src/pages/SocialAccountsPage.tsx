@@ -100,7 +100,12 @@ export function SocialAccountsPage() {
         </div>
 
         <div className="settings-actions">
-          <Link className="settings-link-button" to="/products">前往商品中心绑定新账号</Link>
+          <Link
+            className="settings-link-button"
+            to="/content-studio?view=publishing#social-account-binding"
+          >
+            前往视频工厂绑定新账号
+          </Link>
           <button type="button" className="button-secondary" onClick={() => void load()} disabled={loading}>刷新状态</button>
         </div>
 
