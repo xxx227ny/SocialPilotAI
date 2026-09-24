@@ -1045,6 +1045,14 @@ export function GrowthCopilotPanel({
         >
           下载CSV填写模板
         </button>
+        <a
+          className="growth-panel__download"
+          download="SocialPilot-模拟真实广告投放-2026-09.csv"
+          href="/samples/socialpilot-realistic-ad-campaigns-2026-09.csv"
+          title="4个平台、14天、56条模拟广告投放记录"
+        >
+          下载模拟数据（56条）
+        </a>
         <label>
           <input
             accept=".csv,text/csv"
@@ -1080,14 +1088,14 @@ export function GrowthCopilotPanel({
         </button>
       </div>
       <ol className="growth-panel__steps" aria-label="投流优化操作步骤">
-        <li>下载模板并替换示例行，平台建议填写 TikTok、Instagram、Facebook 或 Pinterest。</li>
+        <li>可下载空白填写模板，或直接下载56条模拟真实投放数据进行测试。</li>
         <li>导入CSV后确认总体及分平台的点击率、转化率、单次转化成本和ROAS。</li>
         <li>运行前置检查，确认费用后调用千问生成建议，再生成内部预算方案。</li>
         <li>仅在沙箱中确认执行；可查看监控记录并按精确执行编号回滚。</li>
       </ol>
       <p className="growth-panel__boundary">
         CSV列名固定为 platform、campaign_name、date、impressions、clicks、conversions、spend、revenue。
-        导入会追加广告投放记录但不会调用AI；请勿重复导入同一文件。
+        模拟数据金额按美元口径编制。导入会追加广告投放记录但不会调用AI；请勿重复导入同一文件。
       </p>
       {notice && <p className="growth-panel__status">{notice}</p>}
 

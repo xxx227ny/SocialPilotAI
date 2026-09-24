@@ -57,6 +57,8 @@ try {
   const parent = read("src", "components", "GrowthCopilotPanel.tsx");
   const page = read("src", "pages", "GrowthCopilotPage.tsx");
   const api = read("src", "api", "growth.ts");
+  const campaignSample = read("public", "samples", "socialpilot-realistic-ad-campaigns-2026-09.csv");
+  const campaignRows = campaignSample.trim().split(/\r?\n/);
   assert.match(panel, /setTimeout/);
   assert.doesNotMatch(panel, /setInterval/);
   assert.match(panel, /外部广告账户尚未连接/);
@@ -69,6 +71,22 @@ try {
   assert.match(parent, /下载CSV填写模板/);
   assert.match(parent, /SocialPilot-广告投放数据模板\.csv/);
   assert.match(parent, /platform,campaign_name,date,impressions,clicks,conversions,spend,revenue/);
+  assert.match(parent, /下载模拟数据（56条）/);
+  assert.match(parent, /socialpilot-realistic-ad-campaigns-2026-09\.csv/);
+  assert.equal(campaignRows.length, 57);
+  assert.equal(campaignRows[0], "platform,campaign_name,date,impressions,clicks,conversions,spend,revenue");
+  const parsedCampaignRows = campaignRows.slice(1).map((row) => row.split(","));
+  assert.deepEqual([...new Set(parsedCampaignRows.map((row) => row[0]))].sort(), ["Facebook", "Instagram", "Pinterest", "TikTok"]);
+  for (const [index, row] of parsedCampaignRows.entries()) {
+    assert.equal(row.length, 8, `sample row ${index + 2} must have 8 columns`);
+    const impressions = Number(row[3]);
+    const clicks = Number(row[4]);
+    const conversions = Number(row[5]);
+    assert.ok(Number.isInteger(impressions) && impressions >= 0);
+    assert.ok(Number.isInteger(clicks) && clicks >= 0 && clicks <= impressions);
+    assert.ok(Number.isInteger(conversions) && conversions >= 0 && conversions <= clicks);
+    assert.ok(Number(row[6]) >= 0 && Number(row[7]) >= 0);
+  }
   assert.match(parent, /投流优化操作步骤/);
   assert.match(page, /AI 投流策略优化/);
   assert.match(parent, /preserveRecommendationIfUnchanged/);
