@@ -237,6 +237,32 @@ def test_session_initialization_failure_is_failed_without_media_upload(
     assert provider.media_calls == 0
 
 
+def test_invalid_youtube_tags_have_specific_safe_job_failure(
+    client: TestClient, db_session: Session, tmp_path: Path
+) -> None:
+    provider = QueueYouTubeProvider()
+    provider.session_error = YouTubeProviderError(
+        "upload_session_invalid_tags", status_code=400
+    )
+    settings, storage, _, _, job_id = enqueue_submit(
+        client, db_session, tmp_path, provider
+    )
+
+    result = run_youtube_worker(
+        db_session, settings, storage, provider, "youtube-handler-invalid-tags"
+    )
+
+    assert result.status == WorkerRunStatus.FAILED
+    job = db_session.get(ExecutionJob, job_id)
+    task = db_session.scalar(select(PublishTask))
+    assert job is not None
+    assert task is not None
+    assert job.safe_error_code == "YOUTUBE_METADATA_INVALID_TAGS"
+    assert task.safe_error_code == "upload_session_invalid_tags"
+    assert provider.session_calls == 1
+    assert provider.media_calls == 0
+
+
 def test_media_exception_is_submit_unknown_and_never_retried(
     client: TestClient, db_session: Session, tmp_path: Path
 ) -> None:

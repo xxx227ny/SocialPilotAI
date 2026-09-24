@@ -148,14 +148,31 @@ def _product_tags(product: Product, *, include_shorts: bool) -> list[str]:
         source.append("Shorts")
     tags: list[str] = []
     for value in source:
-        tag = " ".join(str(value).split()).strip().lstrip("#")[:100]
-        if tag and tag.casefold() not in {item.casefold() for item in tags}:
+        # Product categories commonly use ``>`` separators and selling points can
+        # be sentence-length.  YouTube accepts a list of search keywords, not a
+        # category breadcrumb, so split those values and keep each keyword short.
+        segments = str(value).replace("<", ">").split(">")
+        for segment in segments:
+            tag = " ".join(segment.replace(",", " ").split()).strip().lstrip("#")
+            if len(tag) > 60:
+                shortened = tag[:60].rsplit(" ", 1)[0].strip()
+                tag = shortened or tag[:60]
+            if not tag or tag.casefold() in {item.casefold() for item in tags}:
+                continue
+            candidate = [*tags, tag]
+            if _youtube_tag_length(candidate) > 500:
+                continue
             tags.append(tag)
-        if len(tags) == 20:
-            break
-    while len(",".join(tags)) > 500:
-        tags.pop()
+            if len(tags) == 20:
+                return tags
     return tags
+
+
+def _youtube_tag_length(tags: list[str]) -> int:
+    """Return YouTube's documented tag length, including quotes and commas."""
+    return sum(len(tag) + (2 if " " in tag else 0) for tag in tags) + max(
+        0, len(tags) - 1
+    )
 
 
 def _fit_instagram_caption(description: str, tags: list[str]) -> list[str]:

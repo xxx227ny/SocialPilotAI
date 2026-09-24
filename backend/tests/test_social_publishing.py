@@ -1095,6 +1095,40 @@ def test_provider_http_errors_have_safe_classification(
     assert raised.value.uncertain is False
 
 
+def test_provider_preserves_only_allow_listed_google_error_reason() -> None:
+    response = httpx.Response(
+        400,
+        request=httpx.Request("POST", "https://provider.invalid/fake"),
+        json={
+            "error": {
+                "message": "must never be persisted",
+                "errors": [
+                    {"reason": "invalidTags", "message": "sensitive details"}
+                ],
+            }
+        },
+    )
+
+    with pytest.raises(YouTubeProviderError) as raised:
+        YouTubeProvider._raise_for_status(response, phase="upload_session")
+
+    assert raised.value.safe_error_code == "upload_session_invalid_tags"
+    assert "sensitive" not in str(raised.value)
+
+
+def test_provider_unknown_google_error_reason_uses_status_fallback() -> None:
+    response = httpx.Response(
+        400,
+        request=httpx.Request("POST", "https://provider.invalid/fake"),
+        json={"error": {"errors": [{"reason": "untrustedProviderText"}]}},
+    )
+
+    with pytest.raises(YouTubeProviderError) as raised:
+        YouTubeProvider._raise_for_status(response, phase="upload_session")
+
+    assert raised.value.safe_error_code == "upload_session_invalid_request"
+
+
 def test_revoke_token_uses_form_body(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

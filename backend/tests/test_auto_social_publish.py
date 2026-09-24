@@ -24,9 +24,34 @@ from app.models import (
     VideoRenderTask,
     VideoScriptVersion,
 )
-from app.services.auto_social_publish_service import AutoSocialPublishService
+from app.services.auto_social_publish_service import (
+    AutoSocialPublishService,
+    _product_tags,
+    _youtube_tag_length,
+)
 from app.services.social_publish_source import SocialPublishSourceService
 from app.services.video_artifact_storage import LocalVideoArtifactStorage
+
+
+def test_youtube_product_tags_remove_breadcrumbs_and_use_documented_limit() -> None:
+    product = Product(
+        name=(
+            "VitaBlend Portable Blender - Personal Size USB Rechargeable "
+            "Smoothie Maker with 6 Blades"
+        ),
+        category="Home & Kitchen > Kitchen & Dining > Small Appliances",
+        selling_points=["A very long selling point " * 8, "Blend anywhere"],
+        target_markets=["US"],
+    )
+
+    tags = _product_tags(product, include_shorts=True)
+
+    assert tags
+    assert "Shorts" in tags
+    assert all("<" not in tag and ">" not in tag for tag in tags)
+    assert all(len(tag) <= 60 for tag in tags)
+    assert _youtube_tag_length(tags) <= 500
+    assert "Kitchen & Dining" in tags
 
 
 @pytest.mark.parametrize(

@@ -53,6 +53,7 @@ import {
   selectExactYouTubeSubmitJob,
   shouldContinueYouTubePublishPolling,
   youtubePublishJobNeedsPolling,
+  youtubePublishFailureMessage,
   shouldLoadPublishTaskHistory,
   shouldLoadSocialData,
 } from "./socialPublishingState";
@@ -1162,6 +1163,12 @@ function YouTubePublisher({
     };
   }, [job?.id, job?.status]);
 
+  useEffect(() => {
+    if (job?.status === "FAILED") {
+      setMessage(youtubePublishFailureMessage(job.safe_error_code));
+    }
+  }, [job?.id, job?.status, job?.safe_error_code]);
+
   async function readExactPublishTaskResult(targetJob: ExecutionJob) {
     if (
       !canStartExactYouTubePublishResultRead(
@@ -1352,10 +1359,47 @@ function YouTubePublisher({
                 成片 #{autoDraft.final_video_artifact_id} · {autoDraft.duration_seconds.toFixed(1)} 秒 ·
                 文案与 {autoDraft.tags.length} 个标签将随视频发送
               </small>
+              <div
+                className="social-publishing__audience-choice"
+                role="group"
+                aria-label="是否为儿童内容"
+              >
+                <strong>发布前必选：是否主要面向儿童</strong>
+                <label>
+                  <input
+                    type="radio"
+                    name={`made-for-kids-${productId}`}
+                    checked={madeForKids === "yes"}
+                    onChange={() => {
+                      setMadeForKids("yes");
+                      invalidate();
+                    }}
+                  />
+                  是
+                </label>
+                <label>
+                  <input
+                    type="radio"
+                    name={`made-for-kids-${productId}`}
+                    checked={madeForKids === "no"}
+                    onChange={() => {
+                      setMadeForKids("no");
+                      invalidate();
+                    }}
+                  />
+                  否
+                </label>
+              </div>
+              {madeForKids === "" ? (
+                <small className="social-publishing__required-hint">
+                  选择后即可启用一键发送；普通商品广告通常选择“否”。
+                </small>
+              ) : null}
               <button
                 type="button"
                 onClick={() => void oneClickPublish()}
                 disabled={state === "working" || madeForKids === ""}
+                title={madeForKids === "" ? "请先选择是否为儿童内容" : ""}
               >
                 {state === "working" ? "正在安全发送…" : "一键发送最新成片到 YouTube"}
               </button>
@@ -1429,7 +1473,7 @@ function YouTubePublisher({
               invalidate();
             }} />
           </label>
-          <fieldset>
+          {!autoDraft ? <fieldset>
             <legend>是否为儿童内容（必须明确选择）</legend>
             <label>
               <input
@@ -1455,7 +1499,7 @@ function YouTubePublisher({
               />
               否
             </label>
-          </fieldset>
+          </fieldset> : null}
           <button
             type="button"
             onClick={() => void runPreflight()}

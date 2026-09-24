@@ -138,6 +138,16 @@ try {
     );
   }
   check(
+    state.youtubePublishFailureMessage("YOUTUBE_METADATA_INVALID_TAGS"),
+    "YouTube 拒绝了视频标签；系统已阻止上传，请重新读取自动文案后再试。",
+    "invalid tags have actionable Chinese feedback",
+  );
+  check(
+    state.youtubePublishFailureMessage("UNKNOWN_SAFE_CODE"),
+    "YouTube 未接受本次上传；视频尚未发送，请重新读取后再试。",
+    "unknown publish failure remains safe and non-retry-claiming",
+  );
+  check(
     state.shouldContinueYouTubePublishPolling(active, active, job()),
     true,
     "QUEUED reschedules",
@@ -417,6 +427,8 @@ try {
   matches(panel, /SUBMIT_UNKNOWN/, "SUBMIT_UNKNOWN is displayed as non-retryable");
   matches(panel, /Number\(artifactId\) === autoDraft\?\.artifact_id[\s\S]*\? autoDraft\.final_video_artifact_id[\s\S]*: null/, "manual artifact selection never inherits the automatic final-video identity");
   matches(panel, /一键发送最新成片到 YouTube/, "complete final video has a one-click action");
+  matches(panel, /发布前必选：是否主要面向儿童/, "audience choice is next to one-click action");
+  matches(panel, /youtubePublishFailureMessage\(job\.safe_error_code\)/, "failed Job shows actionable feedback");
   matches(panel, /getYouTubeAutoPublishDraft/, "automatic draft supplies the platform copy");
   matches(api, /\/execution-jobs\/\$\{jobId\}/, "API polls local execution Job");
   excludes(api, /youtube\.com|googleapis\.com/, "API has no Provider endpoint");

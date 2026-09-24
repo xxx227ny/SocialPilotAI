@@ -49,6 +49,7 @@ interface YouTubeExecutionJob {
   status: string;
   result_entity_type: string | null;
   result_entity_id: number | null;
+  safe_error_code?: string | null;
 }
 
 export const YOUTUBE_PUBLISH_SUBMIT_V1 = "youtube.publish.submit.v1";
@@ -157,6 +158,20 @@ export function youtubePublishJobNeedsPolling(
   job: YouTubeExecutionJob | null,
 ): boolean {
   return job?.status === "QUEUED" || job?.status === "RUNNING";
+}
+
+export function youtubePublishFailureMessage(code: string | null | undefined): string {
+  return {
+    YOUTUBE_METADATA_INVALID_TAGS: "YouTube 拒绝了视频标签；系统已阻止上传，请重新读取自动文案后再试。",
+    YOUTUBE_METADATA_INVALID_TITLE: "YouTube 拒绝了视频标题，请修改标题后再试。",
+    YOUTUBE_METADATA_INVALID_DESCRIPTION: "YouTube 拒绝了视频描述，请修改描述后再试。",
+    YOUTUBE_METADATA_INVALID: "YouTube 拒绝了视频元数据，请重新读取自动文案后再试。",
+    YOUTUBE_UPLOAD_LIMIT_EXCEEDED: "该 YouTube 频道已达到上传次数限制，请稍后再试。",
+    YOUTUBE_QUOTA_EXCEEDED: "YouTube API 配额暂时不足，请稍后再试。",
+    YOUTUBE_PERMISSION_DENIED: "当前 YouTube 授权没有上传权限，请重新连接频道。",
+    YOUTUBE_PRIVACY_FORBIDDEN: "当前频道不允许使用所选隐私设置。",
+    YOUTUBE_AUTHORIZATION_FAILED: "YouTube 授权已失效，请重新连接频道。",
+  }[code ?? ""] ?? "YouTube 未接受本次上传；视频尚未发送，请重新读取后再试。";
 }
 
 export type YouTubePublishPollOutcome = YouTubeExecutionJob | "LOCAL_READ_ERROR";

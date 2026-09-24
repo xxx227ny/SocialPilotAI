@@ -14,6 +14,18 @@ YOUTUBE_UPLOAD_SCOPE = "https://www.googleapis.com/auth/youtube.upload"
 YOUTUBE_READONLY_SCOPE = "https://www.googleapis.com/auth/youtube.readonly"
 YOUTUBE_SCOPES = (YOUTUBE_UPLOAD_SCOPE, YOUTUBE_READONLY_SCOPE)
 CONNECT_ATTEMPT_LIMIT = 2
+_SAFE_GOOGLE_ERROR_REASONS = {
+    "invalidCategoryId": "invalid_category",
+    "invalidDescription": "invalid_description",
+    "invalidTags": "invalid_tags",
+    "invalidTitle": "invalid_title",
+    "invalidVideoMetadata": "invalid_metadata",
+    "mediaBodyRequired": "media_required",
+    "uploadLimitExceeded": "upload_limit_exceeded",
+    "forbidden": "permission_denied",
+    "forbiddenPrivacySetting": "privacy_setting_forbidden",
+    "quotaExceeded": "quota_exceeded",
+}
 
 
 class YouTubeProviderError(Exception):
@@ -408,7 +420,8 @@ class YouTubeProvider:
         if response.is_success:
             return
         status = response.status_code
-        base_code = {
+        provider_reason = _safe_google_error_reason(response)
+        base_code = provider_reason or {
             400: "invalid_request",
             401: "authentication_failed",
             403: "permission_denied",
@@ -440,6 +453,29 @@ class YouTubeProvider:
             expires_at=expires_at,
             scopes=scopes,
         )
+
+
+def _safe_google_error_reason(response: httpx.Response) -> str | None:
+    """Extract only an allow-listed Google reason; never persist response text."""
+    try:
+        payload = response.json()
+    except ValueError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    error = payload.get("error")
+    if not isinstance(error, dict):
+        return None
+    errors = error.get("errors")
+    if not isinstance(errors, list):
+        return None
+    for item in errors:
+        if not isinstance(item, dict):
+            continue
+        reason = item.get("reason")
+        if isinstance(reason, str) and reason in _SAFE_GOOGLE_ERROR_REASONS:
+            return _SAFE_GOOGLE_ERROR_REASONS[reason]
+    return None
 
 
 async def _file_chunks(path: Path) -> AsyncIterator[bytes]:

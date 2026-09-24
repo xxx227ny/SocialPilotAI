@@ -156,7 +156,9 @@ class YouTubePublishSubmitV1Handler:
                 return HandlerResult.failed("YOUTUBE_SESSION_INITIALIZATION_FAILED")
             except YouTubeProviderError as exc:
                 _mark_failed(session, task, exc.safe_error_code)
-                return HandlerResult.failed("YOUTUBE_SESSION_INITIALIZATION_FAILED")
+                return HandlerResult.failed(
+                    _youtube_session_failure_code(exc.safe_error_code)
+                )
             except Exception:
                 _mark_failed(session, task, "upload_session_failed")
                 return HandlerResult.failed("YOUTUBE_SESSION_INITIALIZATION_FAILED")
@@ -333,6 +335,19 @@ def _mark_failed(session: Session, task: PublishTask, code: str) -> None:
     task.safe_error_code = code
     task.completed_at = datetime.now(UTC)
     session.commit()
+
+
+def _youtube_session_failure_code(provider_code: str) -> str:
+    return {
+        "upload_session_invalid_tags": "YOUTUBE_METADATA_INVALID_TAGS",
+        "upload_session_invalid_title": "YOUTUBE_METADATA_INVALID_TITLE",
+        "upload_session_invalid_description": "YOUTUBE_METADATA_INVALID_DESCRIPTION",
+        "upload_session_invalid_metadata": "YOUTUBE_METADATA_INVALID",
+        "upload_session_upload_limit_exceeded": "YOUTUBE_UPLOAD_LIMIT_EXCEEDED",
+        "upload_session_quota_exceeded": "YOUTUBE_QUOTA_EXCEEDED",
+        "upload_session_permission_denied": "YOUTUBE_PERMISSION_DENIED",
+        "upload_session_privacy_setting_forbidden": "YOUTUBE_PRIVACY_FORBIDDEN",
+    }.get(provider_code, "YOUTUBE_SESSION_INITIALIZATION_FAILED")
 
 
 def _mark_submit_unknown(session: Session, task: PublishTask, code: str) -> None:

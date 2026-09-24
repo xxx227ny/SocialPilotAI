@@ -389,20 +389,39 @@ class YouTubePublishingMetadata(BaseModel):
     synthetic_media: Literal[True] = True
     notify_subscribers: Literal[False] = False
 
-    @field_validator("title", "description")
+    @field_validator("title")
     @classmethod
-    def clean_text(cls, value: str) -> str:
-        return value.strip()
+    def clean_title(cls, value: str) -> str:
+        cleaned = value.strip()
+        if "<" in cleaned or ">" in cleaned:
+            raise ValueError("YouTube titles cannot contain angle brackets")
+        return cleaned
+
+    @field_validator("description")
+    @classmethod
+    def clean_description(cls, value: str) -> str:
+        cleaned = value.strip()
+        if "<" in cleaned or ">" in cleaned:
+            raise ValueError("YouTube descriptions cannot contain angle brackets")
+        if len(cleaned.encode("utf-8")) > 5000:
+            raise ValueError("YouTube descriptions must be at most 5000 bytes")
+        return cleaned
 
     @field_validator("tags")
     @classmethod
     def clean_tags(cls, values: list[str]) -> list[str]:
         cleaned = [value.strip() for value in values if value.strip()]
+        if any("<" in value or ">" in value for value in cleaned):
+            raise ValueError("YouTube tags cannot contain angle brackets")
         if any(len(value) > 100 for value in cleaned):
             raise ValueError("Each tag must be at most 100 characters")
-        if len(",".join(cleaned)) > 500:
+        cleaned = list(dict.fromkeys(cleaned))
+        weighted_length = sum(
+            len(value) + (2 if " " in value else 0) for value in cleaned
+        ) + max(0, len(cleaned) - 1)
+        if weighted_length > 500:
             raise ValueError("Combined tags must be at most 500 characters")
-        return list(dict.fromkeys(cleaned))
+        return cleaned
 
     @model_validator(mode="after")
     def require_title(self) -> YouTubePublishingMetadata:
