@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.api.dependencies import get_workspace_provider_settings
 from app.core.config import Settings, get_settings
 from app.core.provider_runtime import resolve_workspace_provider_runtime
 from app.execution.contracts import ExecutionContext, HandlerResult
@@ -13,7 +14,9 @@ from app.execution.credential_context import current_execution_provider_runtime
 from app.execution.registry import ExecutionHandlerRegistry
 from app.execution.worker import ExecutionWorker, WorkerRunStatus
 from app.main import app
+from app.models import Workspace
 from app.providers.live_configuration import (
+    audit_live_provider_configuration,
     effective_happyhorse_endpoint,
     effective_qwen_api_key,
     effective_qwen_endpoint,
@@ -21,12 +24,79 @@ from app.providers.live_configuration import (
     effective_wanx_endpoint,
     effective_wanx_image_endpoint,
 )
+from app.providers.qwen_provider import QwenProvider
+from app.providers.wanx_provider import WanxProvider
 from app.schemas.execution import ExecutionJobCreate
 from app.services.execution_queue_service import ExecutionQueueService
 from app.services.provider_credential_service import ProviderCredentialService
+from app.services.user_auth_service import AuthenticatedPrincipal
 
 PASSWORD = "strong-user-password"
 USER_API_KEY = "sk-workspace-owned-key-123456"
+
+
+@pytest.mark.parametrize(
+    ("provider_workspace_id", "expected_host"),
+    [
+        (
+            "workspace-902",
+            "workspace-902.cn-beijing.maas.aliyuncs.com",
+        ),
+        (None, "dashscope.aliyuncs.com"),
+    ],
+)
+def test_http_workspace_settings_carry_verified_provider_profile(
+    provider_workspace_id: str | None,
+    expected_host: str,
+    db_session: Session,
+) -> None:
+    settings = Settings(
+        _env_file=None,
+        enable_user_auth=True,
+        user_credential_encryption_key=Fernet.generate_key().decode("ascii"),
+        require_live_provider_coherence=True,
+        qwen_model="qwen-plus",
+        wanx_model="wan2.7-t2v",
+    )
+    workspace = Workspace(name=f"Provider profile {expected_host}")
+    db_session.add(workspace)
+    db_session.flush()
+    credentials = ProviderCredentialService(db_session, settings)
+    credentials.set_dashscope_key(
+        workspace.id,
+        USER_API_KEY,
+        region="cn-beijing",
+        provider_workspace_id=provider_workspace_id,
+    )
+    credentials.set_dashscope_verified(workspace.id, verified=True)
+    db_session.commit()
+
+    resolved = get_workspace_provider_settings(
+        settings,
+        db_session,
+        AuthenticatedPrincipal(
+            user_id=1,
+            workspace_id=workspace.id,
+            email="provider-profile@example.com",
+            role="OWNER",
+            email_verified=True,
+        ),
+    )
+
+    audit = audit_live_provider_configuration(resolved)
+    assert audit.qwen.ready is True
+    assert audit.wanx.ready is True
+    assert resolved.qwen_workspace_id == provider_workspace_id
+    assert resolved.wanx_workspace_id == provider_workspace_id
+    assert expected_host in resolved.qwen_endpoint
+    assert expected_host in resolved.wanx_endpoint
+    qwen = QwenProvider(resolved)
+    wanx = WanxProvider(resolved)
+    try:
+        assert expected_host in str(qwen.client.base_url)
+        assert expected_host in wanx.endpoint
+    finally:
+        qwen.client.close()
 
 
 class CredentialProbeInput(BaseModel):

@@ -49,6 +49,8 @@ TOKEN_PLAN_QWEN_ENDPOINT = (
 TOKEN_PLAN_MULTIMODAL_ENDPOINT = (
     "https://token-plan.cn-beijing.maas.aliyuncs.com/api/v1"
 )
+DASHSCOPE_QWEN_ENDPOINT = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+DASHSCOPE_MULTIMODAL_ENDPOINT = "https://dashscope.aliyuncs.com/api/v1"
 
 ProviderName = Literal["qwen", "wanx"]
 CONNECTION_FAILURE_CODES = frozenset(
@@ -126,12 +128,14 @@ def audit_live_provider_configuration(
             workspace_id=settings.qwen_workspace_id,
             region=settings.qwen_region,
             templates=QWEN_REGION_ENDPOINT_TEMPLATES,
+            global_endpoint=DASHSCOPE_QWEN_ENDPOINT,
         )
         wanx_endpoint, wanx_endpoint_valid = _resolve_endpoint(
             explicit=settings.wanx_endpoint,
             workspace_id=settings.wanx_workspace_id,
             region=settings.wanx_region,
             templates=WANX_REGION_ENDPOINT_TEMPLATES,
+            global_endpoint=DASHSCOPE_MULTIMODAL_ENDPOINT,
         )
     qwen_token_plan = qwen_endpoint == TOKEN_PLAN_QWEN_ENDPOINT
     wanx_token_plan = wanx_endpoint == TOKEN_PLAN_MULTIMODAL_ENDPOINT
@@ -144,6 +148,7 @@ def audit_live_provider_configuration(
             runtime is not None
             or bool(_text(settings.qwen_workspace_id))
             or qwen_token_plan
+            or qwen_endpoint == DASHSCOPE_QWEN_ENDPOINT
         ),
         region_supported=(
             runtime.region in SUPPORTED_REGIONS
@@ -160,6 +165,7 @@ def audit_live_provider_configuration(
             runtime is not None
             or bool(_text(settings.wanx_workspace_id))
             or wanx_token_plan
+            or wanx_endpoint == DASHSCOPE_MULTIMODAL_ENDPOINT
         ),
         region_supported=(
             runtime.region in SUPPORTED_REGIONS
@@ -520,6 +526,7 @@ def _resolve_endpoint(
     workspace_id: str | None,
     region: str,
     templates: dict[str, str],
+    global_endpoint: str,
 ) -> tuple[str, bool]:
     normalized_workspace = _text(workspace_id)
     normalized_region = _text(region)
@@ -530,7 +537,11 @@ def _resolve_endpoint(
         else ""
     )
     candidate = _normalize_endpoint(explicit) if explicit else expected
-    return candidate, bool(expected and candidate == expected)
+    if expected:
+        return candidate, candidate == expected
+    return candidate, bool(
+        template and not normalized_workspace and candidate == global_endpoint
+    )
 
 
 def _normalize_endpoint(value: str | None) -> str:
@@ -551,7 +562,7 @@ def _normalize_endpoint(value: str | None) -> str:
     ):
         return ""
     host = (parsed.hostname or "").lower()
-    if not host.endswith(".maas.aliyuncs.com"):
+    if host != "dashscope.aliyuncs.com" and not host.endswith(".maas.aliyuncs.com"):
         return ""
     path = "/" + "/".join(part for part in parsed.path.split("/") if part)
     return urlunsplit(("https", host, path, "", ""))
