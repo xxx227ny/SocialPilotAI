@@ -1605,153 +1605,184 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
 
   return (
     <section className="video-composition-panel">
-      <h4>真实商品素材15秒视频</h4>
-      <p>千问脚本 · 万象商品视觉与动态视频 · 千问云配音</p>
-      <p>旁白若超过15秒会安全停止；请缩短文案后重新生成，不会裁断语音。</p>
-      <label>
-        已激活脚本（首次一键生成前可为空）
-        <select
-          value={sourceId}
-          onChange={(event) => {
-            const value = Number(event.target.value);
-            setSourceId(value);
-            window.localStorage.setItem(
-              `socialpilot.videoSource.${product.id}`,
-              String(value),
-            );
-          }}
-        >
-          <option value={0}>选择精确视频变体</option>
-          {sources.map((item) => (
-            <option key={item.variant_id} value={item.variant_id}>
-              变体 #{item.variant_id} · 脚本 #{item.script_version_id} · {item.platform}
-            </option>
-          ))}
-        </select>
-      </label>
-      {sources.length === 0 && (
-        <p className="preflight-summary" role="status">
-          当前商品还没有已激活脚本。批量任务中的“等待生成脚本”只是创建了变体槽位；
-          上传商品主图后，在下方选择单个平台或三个平台并完成费用确认，系统会自动生成并激活所需脚本。
+      <header className="video-composition-panel__header">
+        <div>
+          <span>15 秒商品成片</span>
+          <h4>真实商品视频生成</h4>
+          <p>千问脚本 · 万象商品视觉与动态视频 · 千问云配音</p>
+        </div>
+        <p className="video-composition-panel__safety-note">
+          <strong>安全时长保护</strong>
+          旁白若超过15秒会安全停止；请缩短文案后重新生成，不会裁断语音。
         </p>
-      )}
-      <label>
-        商品主参考图（所有分镜冻结复用）
-        <select
-          value={referenceAssetId}
-          onChange={(event) => {
-            const value = Number(event.target.value);
-            setReferenceAssetId(value);
-            window.localStorage.setItem(
-              `socialpilot.videoReference.${product.id}`,
-              String(value),
-            );
-          }}
-        >
-          <option value={0}>选择商品主参考图</option>
-          {referenceAssets.map((asset) => (
-            <option key={asset.id} value={asset.id}>
-              素材 #{asset.id} · {asset.file_name}
-            </option>
-          ))}
-        </select>
-      </label>
-      {referenceAssets.length === 0 && (
-        <p className="preflight-summary" role="alert">
-          当前商品尚未上传图片素材。请先前往“商品中心”，选中该商品并在“上传真实商品素材”中上传至少一张清晰主图。
-        </p>
-      )}
-      <fieldset>
-        <legend>视频生成：单个平台或三个平台</legend>
-        <p>
-          选择单个平台时只会生成该平台的一条完整视频；选择三平台一键生成时，
-          会同时处理 TikTok、YouTube Shorts 和 Instagram Reels。
-          首次执行不需要预先选择已激活脚本，系统会自动生成并激活精确版本。
-        </p>
-        <button
-          type="button"
-          disabled={workflowContextLoading || productionActive}
-          onClick={() => void refreshWorkflowContext()}
-        >
-          {workflowContextLoading ? "正在自动匹配……" : "自动匹配最新可用资料"}
-        </button>
-        <p>系统优先自动选择当前账号、当前商品下的最新安全匹配记录；高级用户仍可手动调整精确编号。</p>
-        <label>
-          精确批次编号
-          <input
-            type="number"
-            min="1"
-            value={scriptBatchId}
-            onChange={(event) => {
-              setScriptBatchId(event.target.value);
-              window.localStorage.setItem(
-                `socialpilot.scriptBatch.${product.id}`,
-                event.target.value,
-              );
-              setOneClickPreflight(null);
-              setOneClickCostConfirmed(false);
-              setOneClickFeedback("");
-              setSinglePreflight(null);
-              setSingleCostConfirmed(false);
-              setSingleFeedback("");
-            }}
-          />
-        </label>
-        <label>
-          精确营销策略编号
-          <input
-            type="number"
-            min="1"
-            value={strategyId || ""}
-            onChange={(event) => {
-              const value = Number(event.target.value) || 0;
-              setStrategyId(value);
-              window.localStorage.setItem(
-                `socialpilot.videoStrategy.${product.id}`,
-                String(value),
-              );
-              setOneClickPreflight(null);
-              setOneClickCostConfirmed(false);
-              setOneClickFeedback("");
-              setSinglePreflight(null);
-              setSingleCostConfirmed(false);
-              setSingleFeedback("");
-            }}
-          />
-        </label>
-        <label>
-          可选文案矩阵编号
-          <input
-            type="number"
-            min="1"
-            value={copyMatrixId ?? ""}
-            onChange={(event) => {
-              const value = Number(event.target.value) || null;
-              setCopyMatrixId(value);
-              if (value) {
+      </header>
+
+      <div className="video-source-grid">
+        <div className="video-source-field">
+          <label>
+            <span>已激活脚本</span>
+            <small>首次一键生成前可为空</small>
+            <select
+              aria-label="已激活脚本（首次一键生成前可为空）"
+              value={sourceId}
+              onChange={(event) => {
+                const value = Number(event.target.value);
+                setSourceId(value);
                 window.localStorage.setItem(
-                  `socialpilot.videoCopyMatrix.${product.id}`,
+                  `socialpilot.videoSource.${product.id}`,
                   String(value),
                 );
-              } else {
-                window.localStorage.removeItem(
-                  `socialpilot.videoCopyMatrix.${product.id}`,
+              }}
+            >
+              <option value={0}>选择精确视频变体</option>
+              {sources.map((item) => (
+                <option key={item.variant_id} value={item.variant_id}>
+                  变体 #{item.variant_id} · 脚本 #{item.script_version_id} · {item.platform}
+                </option>
+              ))}
+            </select>
+          </label>
+          {sources.length === 0 && (
+            <p className="preflight-summary" role="status">
+              当前商品还没有已激活脚本；完成下方费用确认后，系统会自动生成并激活所需版本。
+            </p>
+          )}
+        </div>
+
+        <div className="video-source-field">
+          <label>
+            <span>商品主参考图</span>
+            <small>所有分镜冻结复用</small>
+            <select
+              aria-label="商品主参考图（所有分镜冻结复用）"
+              value={referenceAssetId}
+              onChange={(event) => {
+                const value = Number(event.target.value);
+                setReferenceAssetId(value);
+                window.localStorage.setItem(
+                  `socialpilot.videoReference.${product.id}`,
+                  String(value),
                 );
-              }
-              setOneClickPreflight(null);
-              setOneClickCostConfirmed(false);
-              setOneClickFeedback("");
-              setSinglePreflight(null);
-              setSingleCostConfirmed(false);
-              setSingleFeedback("");
-            }}
-          />
-        </label>
-        <p>
-          文案矩阵为可选项；若缺少所选平台文案，系统会自动使用商品资料与营销策略生成脚本。
-        </p>
-        <fieldset>
+              }}
+            >
+              <option value={0}>选择商品主参考图</option>
+              {referenceAssets.map((asset) => (
+                <option key={asset.id} value={asset.id}>
+                  素材 #{asset.id} · {asset.file_name}
+                </option>
+              ))}
+            </select>
+          </label>
+          {referenceAssets.length === 0 && (
+            <p className="preflight-summary" role="alert">
+              当前商品尚未上传图片素材，请先到商品中心为该商品上传至少一张清晰主图。
+            </p>
+          )}
+        </div>
+      </div>
+
+      <fieldset className="video-generation-workflow">
+        <legend>选择生成方式</legend>
+        <div className="video-workflow-setup">
+          <div>
+            <strong>资料已按当前商品自动匹配</strong>
+            <p>
+              单平台只生成所选平台；三平台会同时处理 TikTok、YouTube Shorts 和 Instagram Reels。
+              首次执行不需要预先选择已激活脚本。
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={workflowContextLoading || productionActive}
+            onClick={() => void refreshWorkflowContext()}
+          >
+            {workflowContextLoading ? "正在自动匹配……" : "自动匹配最新可用资料"}
+          </button>
+        </div>
+
+        <details className="video-workflow-advanced">
+          <summary>高级参数：查看或调整精确编号</summary>
+          <p>系统默认选择当前账号、当前商品下的最新安全匹配记录，无需手填内部编号。</p>
+          <div className="video-workflow-advanced__grid">
+            <label>
+              精确批次编号
+              <input
+                type="number"
+                min="1"
+                value={scriptBatchId}
+                onChange={(event) => {
+                  setScriptBatchId(event.target.value);
+                  window.localStorage.setItem(
+                    `socialpilot.scriptBatch.${product.id}`,
+                    event.target.value,
+                  );
+                  setOneClickPreflight(null);
+                  setOneClickCostConfirmed(false);
+                  setOneClickFeedback("");
+                  setSinglePreflight(null);
+                  setSingleCostConfirmed(false);
+                  setSingleFeedback("");
+                }}
+              />
+            </label>
+            <label>
+              精确营销策略编号
+              <input
+                type="number"
+                min="1"
+                value={strategyId || ""}
+                onChange={(event) => {
+                  const value = Number(event.target.value) || 0;
+                  setStrategyId(value);
+                  window.localStorage.setItem(
+                    `socialpilot.videoStrategy.${product.id}`,
+                    String(value),
+                  );
+                  setOneClickPreflight(null);
+                  setOneClickCostConfirmed(false);
+                  setOneClickFeedback("");
+                  setSinglePreflight(null);
+                  setSingleCostConfirmed(false);
+                  setSingleFeedback("");
+                }}
+              />
+            </label>
+            <label>
+              可选文案矩阵编号
+              <input
+                type="number"
+                min="1"
+                value={copyMatrixId ?? ""}
+                onChange={(event) => {
+                  const value = Number(event.target.value) || null;
+                  setCopyMatrixId(value);
+                  if (value) {
+                    window.localStorage.setItem(
+                      `socialpilot.videoCopyMatrix.${product.id}`,
+                      String(value),
+                    );
+                  } else {
+                    window.localStorage.removeItem(
+                      `socialpilot.videoCopyMatrix.${product.id}`,
+                    );
+                  }
+                  setOneClickPreflight(null);
+                  setOneClickCostConfirmed(false);
+                  setOneClickFeedback("");
+                  setSinglePreflight(null);
+                  setSingleCostConfirmed(false);
+                  setSingleFeedback("");
+                }}
+              />
+            </label>
+          </div>
+          <p>文案矩阵为可选项；缺少平台文案时，系统会使用商品资料与营销策略生成脚本。</p>
+        </details>
+
+        <div className="video-generation-mode-grid">
+          <fieldset className="video-generation-mode-card">
           <legend>生成单个平台视频</legend>
+          <p>适合单独测试平台效果，只产生所选平台的模型调用与费用。</p>
           <label>
             目标平台
             <select
@@ -1841,87 +1872,96 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
               </button>
             </div>
           )}
-        </fieldset>
-        <h5>一键生成三个平台视频</h5>
-        <p>一次生成三个平台各一条完整视频；任一平台失败不会阻塞其他平台。</p>
-        <button
-          type="button"
-          disabled={
-            !["IDLE", "FAILED", "SUCCEEDED"].includes(phase)
-          }
-          aria-describedby="one-click-preflight-feedback"
-          onClick={() => void checkOneClickPreflight()}
-        >
-          检查脚本到成片的完整调用与费用
-        </button>
-        <p
-          id="one-click-preflight-feedback"
-          className="preflight-summary"
-          role="status"
-          aria-live="polite"
-        >
-          {oneClickFeedback ||
-            oneClickPreflightInputIssue(
-              Number(scriptBatchId),
-              strategyId,
-              Boolean(referenceAsset),
-            ) ||
-            "资料已填写，可以开始检查；检查不会生成内容或产生模型费用。"}
-        </p>
-        {oneClickPreflight && (
-          <div className="preflight-summary">
-            <p>
-              千问脚本 {oneClickPreflight.estimated_provider_calls} 次 · 万象图片
-              {oneClickPreflight.wanx_image_generation_calls} 次 · 动态视频（
-              {oneClickPreflight.dynamic_video_model}）
-              {oneClickPreflight.dynamic_video_generation_calls} 次 · 千问TTS
-              {oneClickPreflight.qwen_tts_generation_calls} 次
-            </p>
-            <p>
-              已知费用区间：{oneClickPreflight.total_known_cost_min}–
-              {oneClickPreflight.total_known_cost_max} {oneClickPreflight.currency}。
-              千问TTS尚未计价，最终总费用可能更高。
-            </p>
-            <p>
-              视频变体：{oneClickPreflight.variant_ids.join(" / ")}；成功脚本将保持“未审核”状态，
-              {oneClickPreflight.will_auto_activate_exact_results
-                ? "为完成一键链路会自动激活精确版本。"
-                : "需要人工激活后才能继续。"}
-            </p>
-            <div className="model-cost-confirmation-block">
-              <label className="model-cost-confirmation">
-                <input
-                  type="checkbox"
-                  checked={oneClickCostConfirmed}
-                  disabled={!oneClickPreflight.ready_for_execution}
-                  onChange={(event) =>
-                    setOneClickCostConfirmed(event.target.checked)
-                  }
-                />
-                <span>我已确认全部模型调用、已知费用区间及未计价的千问TTS</span>
-              </label>
-              {!oneClickPreflight.ready_for_execution && (
-                <p className="model-cost-confirmation__blocked" role="alert">
-                  当前检查尚未通过，因此费用确认暂时不可勾选。{oneClickBlockedMessage(oneClickPreflight)}
-                </p>
-              )}
+          </fieldset>
+
+          <section className="video-generation-mode-card" aria-labelledby="three-platform-video-title">
+          <header>
+            <span>推荐</span>
+            <div>
+              <h5 id="three-platform-video-title">一键生成三个平台视频</h5>
+              <p>一次生成三个平台各一条完整视频；任一平台失败不会阻塞其他平台。</p>
             </div>
-            <button
-              type="button"
-              disabled={
-                !oneClickCostConfirmed ||
-                !oneClickPreflight.ready_for_execution ||
-                productionActive ||
-                !["IDLE", "FAILED", "SUCCEEDED"].includes(phase)
-              }
-              onClick={() => void generateOneClickBatch()}
-            >
-              确认并一键生成三平台完整成片
-            </button>
-          </div>
-        )}
+          </header>
+          <button
+            type="button"
+            disabled={
+              !["IDLE", "FAILED", "SUCCEEDED"].includes(phase)
+            }
+            aria-describedby="one-click-preflight-feedback"
+            onClick={() => void checkOneClickPreflight()}
+          >
+            检查脚本到成片的完整调用与费用
+          </button>
+          <p
+            id="one-click-preflight-feedback"
+            className="preflight-summary"
+            role="status"
+            aria-live="polite"
+          >
+            {oneClickFeedback ||
+              oneClickPreflightInputIssue(
+                Number(scriptBatchId),
+                strategyId,
+                Boolean(referenceAsset),
+              ) ||
+              "资料已填写，可以开始检查；检查不会生成内容或产生模型费用。"}
+          </p>
+          {oneClickPreflight && (
+            <div className="preflight-summary">
+              <p>
+                千问脚本 {oneClickPreflight.estimated_provider_calls} 次 · 万象图片
+                {oneClickPreflight.wanx_image_generation_calls} 次 · 动态视频（
+                {oneClickPreflight.dynamic_video_model}）
+                {oneClickPreflight.dynamic_video_generation_calls} 次 · 千问TTS
+                {oneClickPreflight.qwen_tts_generation_calls} 次
+              </p>
+              <p>
+                已知费用区间：{oneClickPreflight.total_known_cost_min}–
+                {oneClickPreflight.total_known_cost_max} {oneClickPreflight.currency}。
+                千问TTS尚未计价，最终总费用可能更高。
+              </p>
+              <p>
+                视频变体：{oneClickPreflight.variant_ids.join(" / ")}；成功脚本将保持“未审核”状态，
+                {oneClickPreflight.will_auto_activate_exact_results
+                  ? "为完成一键链路会自动激活精确版本。"
+                  : "需要人工激活后才能继续。"}
+              </p>
+              <div className="model-cost-confirmation-block">
+                <label className="model-cost-confirmation">
+                  <input
+                    type="checkbox"
+                    checked={oneClickCostConfirmed}
+                    disabled={!oneClickPreflight.ready_for_execution}
+                    onChange={(event) =>
+                      setOneClickCostConfirmed(event.target.checked)
+                    }
+                  />
+                  <span>我已确认全部模型调用、已知费用区间及未计价的千问TTS</span>
+                </label>
+                {!oneClickPreflight.ready_for_execution && (
+                  <p className="model-cost-confirmation__blocked" role="alert">
+                    当前检查尚未通过，因此费用确认暂时不可勾选。{oneClickBlockedMessage(oneClickPreflight)}
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                disabled={
+                  !oneClickCostConfirmed ||
+                  !oneClickPreflight.ready_for_execution ||
+                  productionActive ||
+                  !["IDLE", "FAILED", "SUCCEEDED"].includes(phase)
+                }
+                onClick={() => void generateOneClickBatch()}
+              >
+                确认并一键生成三平台完整成片
+              </button>
+            </div>
+          )}
+          </section>
+        </div>
       </fieldset>
-      <details>
+      <details className="video-legacy-tools">
         <summary>已激活脚本高级入口（通常无需使用）</summary>
       <p>万象将根据商品主参考图生成真实动态商品演示；阶段：{phaseLabel(phase)}</p>
       <button

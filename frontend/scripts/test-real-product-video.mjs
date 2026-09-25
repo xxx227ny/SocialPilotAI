@@ -546,6 +546,23 @@ try {
   assert.ok(styles.includes("width: min(100%, 420px)"));
   assert.ok(styles.includes("max-height: min(520px, 58vh)"));
   assert.ok(styles.includes("object-fit: contain"));
+  for (const layoutClass of [
+    "video-composition-panel__header",
+    "video-source-grid",
+    "video-generation-workflow",
+    "video-workflow-advanced",
+    "video-generation-mode-grid",
+    "video-generation-mode-card",
+  ]) {
+    assert.ok(panel.includes(layoutClass), `${layoutClass} must structure the compact workspace`);
+    assert.ok(styles.includes(`.${layoutClass}`), `${layoutClass} must have a scoped style`);
+    safety += 2;
+  }
+  assert.ok(styles.includes(".video-workspace-page .competition-hero"));
+  assert.ok(styles.includes("grid-template-columns: repeat(2, minmax(0, 1fr))"));
+  assert.ok(styles.includes(".video-workflow-advanced__grid"));
+  assert.ok(styles.includes(".video-source-grid,"));
+  safety += 4;
   assert.ok(!enhancementApi.includes("`/api/v1/video-composition"));
   assert.ok(!productVideoApi.includes("`/api/v1/video-render-artifacts"));
   safety += 9;
