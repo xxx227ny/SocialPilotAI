@@ -3,6 +3,10 @@ import { readFileSync } from "node:fs";
 import { productSocialOverrides, socialFeatures } from "./product-social-features.mjs";
 
 const profile = readFileSync(new URL("./build-product.mjs", import.meta.url), "utf8");
+const stagingProfile = readFileSync(
+  new URL("./build-staging.mjs", import.meta.url),
+  "utf8",
+);
 
 assert.match(profile, /startsWith\("VITE_"\)/);
 assert.doesNotMatch(profile, /VITE_API_BASE_URL\s*:/);
@@ -44,4 +48,9 @@ for (const name of socialFeatures) {
 }
 assert.throws(() => productSocialOverrides("INVALID"));
 assert.match(profile, /productSocialOverrides\(process.env.SOCIALPILOT_SOCIAL_FEATURES\)/);
+assert.match(stagingProfile, /"SOCIAL_ACCOUNT_BINDING"/);
+assert.match(stagingProfile, /"YOUTUBE_PUBLISHING"/);
+assert.doesNotMatch(stagingProfile, /"INSTAGRAM_PUBLISHING"/);
+assert.doesNotMatch(stagingProfile, /"TIKTOK_PUBLISHING"/);
+assert.match(stagingProfile, /await import\("\.\/build-product\.mjs"\)/);
 console.log("Product build profile passed: social release flags explicit and validated.");

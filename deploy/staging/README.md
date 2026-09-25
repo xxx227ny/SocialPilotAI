@@ -42,7 +42,13 @@ Before changing the staging `current` symlink, record its target and create a
 SQLite online backup. Rollback consists of restoring the previous symlink,
 restarting only the two staging services, and verifying `/api/v1/health`.
 
-Build the release with `build_release_bundle.py` after the product frontend
+Build the frontend with `npm run build:staging` from `frontend/`. This checked-in
+staging profile enables the completed Social Account Binding and YouTube
+Publishing flows while leaving unfinished social providers disabled. Do not use
+the default `npm run build:product` for staging because its secure defaults keep
+all social release flags off.
+
+Build the release with `build_release_bundle.py` after the staging frontend
 build completes. The bundle is assembled from the exact Git commit, adds the
 three root runtime entrypoints required by the installed services, includes
 `frontend-dist`, and writes a non-secret manifest with the commit and hashes.

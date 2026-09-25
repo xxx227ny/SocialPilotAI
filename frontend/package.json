@@ -17,6 +17,7 @@
     "dev:token-plan": "vite --mode token-plan",
     "build": "tsc -b && vite build",
     "build:product": "node scripts/build-product.mjs",
+    "build:staging": "node scripts/build-staging.mjs",
     "build:token-plan": "tsc -b && vite build --mode token-plan",
     "test:social": "node scripts/test-social-publishing-state.mjs",
     "test:live-wanx": "node scripts/test-live-wanx.mjs",
