@@ -41,7 +41,7 @@ class ControlledGrowthProvider(TextGenerationProvider):
         output: dict[str, object] | str | None = None,
         error: Exception | None = None,
     ) -> None:
-        self.output = output if output is not None else valid_recommendation()
+        self.output = output if output is not None else valid_recommendation_draft()
         self.error = error
         self.calls = 0
         self.prompts: list[str] = []
@@ -95,6 +95,48 @@ def valid_recommendation() -> dict[str, object]:
             "must_avoid": ["Guaranteed outcomes"],
         },
         "budget_guidance": "Keep budget unchanged during the test.",
+    }
+
+
+def valid_recommendation_draft() -> dict[str, object]:
+    return {
+        "observations": [
+            {
+                "scope": "overall",
+                "platform": None,
+                "metric": "ctr",
+                "observed_value": 0.05,
+                "direction": "test",
+            },
+            {
+                "scope": "platform",
+                "platform": "TikTok",
+                "metric": "conversion_rate",
+                "observed_value": 0.2,
+                "direction": "investigate",
+            },
+        ],
+        "copy_constraints": [
+            {
+                "platform": platform,
+                "hook_direction": "首屏展示真实使用场景",
+                "message_angle": "仅使用已验证商品卖点进行表达",
+                "cta_direction": "引导查看商品详情",
+                "product_fact_ids": ["fact_2"],
+                "risk_controls": ["避免未经验证的功效承诺"],
+            }
+            for platform in ("TikTok", "Instagram", "Facebook")
+        ],
+        "video_constraint": {
+            "platform": "TikTok",
+            "opening_hook_direction": "开场立即展示真实产品",
+            "visual_focus": "画面只展示真实产品外观与已验证使用场景",
+            "pacing_direction": "保持简洁节奏，避免无依据的对比镜头",
+            "cta_direction": "引导查看商品详情",
+            "product_fact_ids": ["fact_2"],
+            "risk_controls": ["避免未经验证的功效承诺"],
+        },
+        "budget_strategy": "保持预算并进行受控测试",
     }
 
 
@@ -188,9 +230,9 @@ def create_ready_context(
         )
     )
     session.commit()
-    digest = client.get(
-        f"/api/v1/products/{product_id}/feedback-context"
-    ).json()["context_digest"]
+    digest = client.get(f"/api/v1/products/{product_id}/feedback-context").json()[
+        "context_digest"
+    ]
     return {
         "product_id": product_id,
         "strategy_id": strategy.id,
@@ -218,9 +260,7 @@ def test_growth_preflight_empty_context_is_blocked_and_provider_free(
     db_session: Session,
     product_payload: dict[str, object],
 ) -> None:
-    product_id = client.post(
-        "/api/v1/products", json=product_payload
-    ).json()["id"]
+    product_id = client.post("/api/v1/products", json=product_payload).json()["id"]
     provider_resolutions = 0
     before = model_counts(db_session)
 
@@ -257,10 +297,7 @@ def test_growth_preflight_ready_and_blocked_gate_states(
     product_payload: dict[str, object],
 ) -> None:
     identity = create_ready_context(client, db_session, product_payload)
-    path = (
-        f"/api/v1/products/{identity['product_id']}"
-        "/growth-analysis/preflight"
-    )
+    path = f"/api/v1/products/{identity['product_id']}/growth-analysis/preflight"
     app.dependency_overrides[get_settings] = lambda: Settings(
         _env_file=None,
         dashscope_api_key="fake-test-key",
@@ -360,8 +397,7 @@ def test_growth_preflight_resolves_unlinked_video_to_latest_same_strategy_copy(
     app.dependency_overrides[get_settings] = enabled_settings
     try:
         preflight = client.get(
-            f"/api/v1/products/{identity['product_id']}"
-            "/growth-analysis/preflight"
+            f"/api/v1/products/{identity['product_id']}/growth-analysis/preflight"
         )
     finally:
         app.dependency_overrides.pop(get_settings, None)
@@ -380,9 +416,7 @@ def test_growth_route_default_gate_blocks_before_provider_resolution(
     client: TestClient,
     product_payload: dict[str, object],
 ) -> None:
-    product_id = client.post(
-        "/api/v1/products", json=product_payload
-    ).json()["id"]
+    product_id = client.post("/api/v1/products", json=product_payload).json()["id"]
     provider_resolutions = 0
 
     def forbidden_provider() -> TextGenerationProvider:
@@ -420,9 +454,7 @@ def test_growth_digest_mismatch_and_change_call_provider_zero_times(
             json={"expected_context_digest": "0" * 64},
         )
         campaign = db_session.scalar(
-            select(AdCampaign).where(
-                AdCampaign.product_id == identity["product_id"]
-            )
+            select(AdCampaign).where(AdCampaign.product_id == identity["product_id"])
         )
         assert campaign is not None
         campaign.clicks += 1
@@ -445,9 +477,7 @@ def test_growth_request_rejects_invalid_digest_format_before_generation(
     client: TestClient,
     product_payload: dict[str, object],
 ) -> None:
-    product_id = client.post(
-        "/api/v1/products", json=product_payload
-    ).json()["id"]
+    product_id = client.post("/api/v1/products", json=product_payload).json()["id"]
     provider = ControlledGrowthProvider()
     app.dependency_overrides[get_settings] = enabled_settings
     app.dependency_overrides[get_text_generation_provider] = lambda: provider
@@ -551,17 +581,18 @@ def test_growth_success_calls_fake_once_and_writes_nothing(
     assert body["copy_generation_triggered"] is False
     assert body["video_generation_triggered"] is False
     assert body["recommendation"]["copy_constraints"][0]["platform"] == "TikTok"
-    assert (
-        body["recommendation"]["copy_constraints"][0]["must_preserve"]
-        == ["USB rechargeable"]
-    )
+    assert body["recommendation"]["copy_constraints"][0]["must_preserve"] == [
+        "USB rechargeable"
+    ]
     prompt = provider.prompts[0]
     assert "campaign_name" not in prompt
     assert "private-name" not in prompt
     assert "expected_context_digest" not in prompt
     assert str(identity["digest"]) not in prompt
     assert '"ctr":0.05' in prompt
-    assert "do not prove" in prompt
+    assert "不能证明当前文案" in prompt
+    assert '"verified_product_facts"' in prompt
+    assert '"id":"fact_2","text":"USB rechargeable"' in prompt
 
 
 def test_mixed_supported_and_unrelated_campaign_platforms_execute_consistently(
@@ -589,13 +620,14 @@ def test_mixed_supported_and_unrelated_campaign_platforms_execute_consistently(
         f"/api/v1/products/{identity['product_id']}/feedback-context"
     ).json()
     before = model_counts(db_session)
-    provider = ControlledGrowthProvider()
+    payload = valid_recommendation_draft()
+    payload["observations"][0]["observed_value"] = 0.046667  # type: ignore[index]
+    provider = ControlledGrowthProvider(payload)
     app.dependency_overrides[get_settings] = enabled_settings
     app.dependency_overrides[get_text_generation_provider] = lambda: provider
     try:
         preflight = client.get(
-            f"/api/v1/products/{identity['product_id']}"
-            "/growth-analysis/preflight"
+            f"/api/v1/products/{identity['product_id']}/growth-analysis/preflight"
         )
         response = client.post(
             f"/api/v1/products/{identity['product_id']}/growth-analysis",
@@ -620,8 +652,7 @@ def test_mixed_supported_and_unrelated_campaign_platforms_execute_consistently(
     prompt = provider.prompts[0]
     assert '"allowed_observation_platforms":["TikTok"]' in prompt
     assert (
-        '"allowed_copy_constraint_platforms":'
-        '["Facebook","Instagram","TikTok"]'
+        '"allowed_copy_constraint_platforms":["Facebook","Instagram","TikTok"]'
     ) in prompt
     assert '"required_video_constraint_platform":"TikTok"' in prompt
     assert '"impressions":1500' in prompt
@@ -636,9 +667,7 @@ def test_unrelated_only_campaign_allows_overall_only_recommendation(
 ) -> None:
     identity = create_ready_context(client, db_session, product_payload)
     campaign = db_session.scalar(
-        select(AdCampaign).where(
-            AdCampaign.product_id == identity["product_id"]
-        )
+        select(AdCampaign).where(AdCampaign.product_id == identity["product_id"])
     )
     assert campaign is not None
     campaign.platform = "Google Ads"
@@ -646,18 +675,18 @@ def test_unrelated_only_campaign_allows_overall_only_recommendation(
     context = client.get(
         f"/api/v1/products/{identity['product_id']}/feedback-context"
     ).json()
-    payload = valid_recommendation()
+    payload = valid_recommendation_draft()
     observations = payload["observations"]
     assert isinstance(observations, list)
     payload["observations"] = [observations[0]]
+    payload["observations"][0]["observed_value"] = 0.05  # type: ignore[index]
     provider = ControlledGrowthProvider(output=payload)
     before = model_counts(db_session)
     app.dependency_overrides[get_settings] = enabled_settings
     app.dependency_overrides[get_text_generation_provider] = lambda: provider
     try:
         preflight = client.get(
-            f"/api/v1/products/{identity['product_id']}"
-            "/growth-analysis/preflight"
+            f"/api/v1/products/{identity['product_id']}/growth-analysis/preflight"
         )
         response = client.post(
             f"/api/v1/products/{identity['product_id']}/growth-analysis",
@@ -685,9 +714,7 @@ def test_unrelated_campaign_platform_observation_is_rejected_safely(
 ) -> None:
     identity = create_ready_context(client, db_session, product_payload)
     campaign = db_session.scalar(
-        select(AdCampaign).where(
-            AdCampaign.product_id == identity["product_id"]
-        )
+        select(AdCampaign).where(AdCampaign.product_id == identity["product_id"])
     )
     assert campaign is not None
     campaign.platform = "Google Ads"
@@ -695,14 +722,14 @@ def test_unrelated_campaign_platform_observation_is_rejected_safely(
     context = client.get(
         f"/api/v1/products/{identity['product_id']}/feedback-context"
     ).json()
-    payload = valid_recommendation()
+    payload = valid_recommendation_draft()
     payload["observations"] = [
         {
             "scope": "platform",
             "platform": "Google Ads",
             "metric": "ctr",
+            "observed_value": 0.04,
             "direction": "test",
-            "hypothesis": "This unsupported scope must be rejected.",
         }
     ]
     provider = ControlledGrowthProvider(output=payload)
@@ -742,22 +769,14 @@ def test_unrelated_campaign_platform_observation_is_rejected_safely(
         lambda value: value.update({"summary": "   "}),
         lambda value: value.update({"summary": "x" * 401}),
         lambda value: value.update({"observations": []}),
-        lambda value: value.update(
-            {"observations": value["observations"] * 5}
-        ),
+        lambda value: value.update({"observations": value["observations"] * 5}),
         lambda value: value["copy_constraints"].append(
             deepcopy(value["copy_constraints"][0])
         ),
-        lambda value: value["copy_constraints"][0].update(
-            {"platform": "YouTube"}
-        ),
-        lambda value: value["video_constraint"].update(
-            {"product_id": 999}
-        ),
+        lambda value: value["copy_constraints"][0].update({"platform": "YouTube"}),
+        lambda value: value["video_constraint"].update({"product_id": 999}),
         lambda value: value.update({"automatic_action_allowed": True}),
-        lambda value: value["copy_constraints"][0].update(
-            {"must_preserve": []}
-        ),
+        lambda value: value["copy_constraints"][0].update({"must_preserve": []}),
     ],
 )
 def test_strict_growth_schema_rejects_invalid_provider_output(
@@ -783,7 +802,7 @@ def test_dynamic_platform_mismatch_is_safe_and_writes_nothing(
     product_payload: dict[str, object],
 ) -> None:
     identity = create_ready_context(client, db_session, product_payload)
-    payload = valid_recommendation()
+    payload = valid_recommendation_draft()
     if mutation[0] == "video_platform":
         payload["video_constraint"]["platform"] = mutation[1]  # type: ignore[index]
     else:
@@ -812,6 +831,52 @@ def test_dynamic_platform_mismatch_is_safe_and_writes_nothing(
     assert "message" not in error
     assert provider.calls == 1
     assert model_counts(db_session) == before
+
+
+@pytest.mark.parametrize(
+    "mutator",
+    [
+        lambda value: value["observations"][0].update({"observed_value": 0.999999}),
+        lambda value: value["copy_constraints"][0].update(
+            {"product_fact_ids": ["fact_999"]}
+        ),
+        lambda value: value["copy_constraints"][0].update(
+            {"hook_direction": "Lead with an invented product claim"}
+        ),
+    ],
+)
+def test_metric_fact_and_chinese_contract_fail_closed_without_retry(
+    mutator,
+    client: TestClient,
+    db_session: Session,
+    product_payload: dict[str, object],
+) -> None:
+    identity = create_ready_context(client, db_session, product_payload)
+    payload = valid_recommendation_draft()
+    mutator(payload)
+    provider = ControlledGrowthProvider(payload)
+    before = model_counts(db_session)
+    app.dependency_overrides[get_settings] = enabled_settings
+    app.dependency_overrides[get_text_generation_provider] = lambda: provider
+    try:
+        response = client.post(
+            f"/api/v1/products/{identity['product_id']}/growth-analysis",
+            json={"expected_context_digest": identity["digest"]},
+        )
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
+        app.dependency_overrides.pop(get_text_generation_provider, None)
+
+    assert response.status_code == 502
+    error = response.json()["error"]
+    assert error["phase"] == "schema"
+    assert error["safe_error_code"] == "invalid_provider_output"
+    assert "recommendation" not in response.json()
+    assert provider.calls == 1
+    assert model_counts(db_session) == before
+    assert "0.999999" not in response.text
+    assert "fact_999" not in response.text
+    assert "invented product claim" not in response.text
 
 
 @pytest.mark.parametrize(
@@ -906,9 +971,9 @@ def test_growth_service_gate_and_provider_configuration_cannot_be_bypassed(
 ) -> None:
     provider = ControlledGrowthProvider()
     with pytest.raises(AppError) as disabled:
-        GrowthAnalysisService(
-            db_session, provider, Settings(_env_file=None)
-        ).analyze(999, "0" * 64)
+        GrowthAnalysisService(db_session, provider, Settings(_env_file=None)).analyze(
+            999, "0" * 64
+        )
     assert disabled.value.status_code == 503
     assert provider.calls == 0
 

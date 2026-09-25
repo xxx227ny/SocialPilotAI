@@ -30,36 +30,36 @@ class FakeGrowthProvider(TextGenerationProvider):
         assert "campaign_name" not in prompt
         return json.dumps(
             {
-                "summary": "Test stronger opening clarity without claiming causality.",
                 "observations": [
                     {
                         "scope": "overall",
                         "platform": None,
                         "metric": "ctr",
+                        "observed_value": 0.05,
                         "direction": "test",
-                        "hypothesis": "A clearer opening may improve attention.",
                     }
                 ],
                 "copy_constraints": [
                     {
-                        "platform": "TikTok",
-                        "hook_direction": "Lead with portable use.",
-                        "message_angle": "Convenience during a busy day.",
-                        "cta_direction": "Invite a controlled product test.",
-                        "must_preserve": ["USB rechargeable"],
-                        "must_avoid": ["Causal performance claims"],
+                        "platform": platform,
+                        "hook_direction": "首屏展示真实使用场景",
+                        "message_angle": "仅使用已验证商品卖点进行表达",
+                        "cta_direction": "引导查看商品详情",
+                        "product_fact_ids": ["fact_2"],
+                        "risk_controls": ["避免未经验证的功效承诺"],
                     }
+                    for platform in ("TikTok", "Instagram", "Facebook")
                 ],
                 "video_constraint": {
                     "platform": "TikTok",
-                    "opening_hook_direction": "Show the use case immediately.",
-                    "visual_focus": "Portable blender in a real routine.",
-                    "pacing_direction": "Keep the opening concise.",
-                    "cta_direction": "Invite viewers to learn more.",
-                    "must_preserve": ["Product visibility"],
-                    "must_avoid": ["Guaranteed outcomes"],
+                    "opening_hook_direction": "开场立即展示真实产品",
+                    "visual_focus": "画面只展示真实产品外观与已验证使用场景",
+                    "pacing_direction": "保持简洁节奏，避免无依据的对比镜头",
+                    "cta_direction": "引导查看商品详情",
+                    "product_fact_ids": ["fact_2"],
+                    "risk_controls": ["避免未经验证的功效承诺"],
                 },
-                "budget_guidance": "Keep budget unchanged while testing.",
+                "budget_strategy": "保持预算并进行受控测试",
             }
         )
 
@@ -155,9 +155,9 @@ def test_growth_api_returns_aggregate_metrics_and_mock_analysis(
         dashscope_api_key="fake-test-key",
     )
     try:
-        digest = client.get(
-            f"/api/v1/products/{product_id}/feedback-context"
-        ).json()["context_digest"]
+        digest = client.get(f"/api/v1/products/{product_id}/feedback-context").json()[
+            "context_digest"
+        ]
         response = client.post(
             f"/api/v1/products/{product_id}/growth-analysis",
             json={"expected_context_digest": digest},
@@ -197,9 +197,7 @@ def test_growth_api_default_gate_blocks_before_provider_resolution_and_write(
     app.dependency_overrides[get_settings] = lambda: Settings(_env_file=None)
     app.dependency_overrides[get_text_generation_provider] = forbidden_provider
     try:
-        response = client.post(
-            f"/api/v1/products/{product_id}/growth-analysis"
-        )
+        response = client.post(f"/api/v1/products/{product_id}/growth-analysis")
     finally:
         app.dependency_overrides.pop(get_settings, None)
         app.dependency_overrides.pop(get_text_generation_provider, None)
@@ -210,10 +208,7 @@ def test_growth_api_default_gate_blocks_before_provider_resolution_and_write(
     )
     assert provider_resolutions == 0
     assert db_session.query(AdCampaign).count() == original_campaign_count
-    assert (
-        db_session.query(MarketingStrategy).count()
-        == original_strategy_count
-    )
+    assert db_session.query(MarketingStrategy).count() == original_strategy_count
 
 
 def test_growth_service_default_gate_cannot_be_bypassed(

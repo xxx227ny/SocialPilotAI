@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 
 const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8");
 const panel = readFileSync(new URL("../src/components/growth/GrowthOptimizationPanel.tsx", import.meta.url), "utf8");
+const copilot = readFileSync(new URL("../src/components/GrowthCopilotPanel.tsx", import.meta.url), "utf8");
+const apiClient = readFileSync(new URL("../src/api/client.ts", import.meta.url), "utf8");
 assert.match(css, /\.growth-panel__controls input\[type="file"\]/);
 assert.doesNotMatch(css, /\.growth-panel__controls input\s*\{/);
 assert.match(panel, /className="growth-optimization__controls"/);
@@ -10,6 +12,12 @@ assert.doesNotMatch(panel, /className="growth-panel__controls"/);
 assert.match(panel, /className="growth-number-field"/);
 assert.match(css, /\.growth-workspace-page \.growth-panel\s*\{[^}]*color: #24324b/);
 assert.match(css, /\.growth-workspace-page \.growth-panel button:disabled\s*\{[^}]*opacity: 1/);
+assert.match(copilot, /ctr: "点击率"/);
+assert.match(copilot, /conversion_rate: "转化率"/);
+assert.match(copilot, /GROWTH_METRIC_LABELS\[item\.metric\]/);
+assert.match(copilot, /GROWTH_DIRECTION_LABELS\[item\.direction\]/);
+assert.match(copilot, /setRecommendationResult\(null\);[\s\S]*executeGrowthRecommendation/);
+assert.match(apiClient, /错误结果未展示，且不会自动重试/);
 
 function luminance(hex) {
   const channels = hex.match(/[a-f\d]{2}/gi).map(value => parseInt(value, 16) / 255)

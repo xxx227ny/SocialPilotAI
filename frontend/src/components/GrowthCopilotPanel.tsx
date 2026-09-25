@@ -94,6 +94,20 @@ const CAMPAIGN_CSV_TEMPLATE = [
   "TikTok,请替换为广告活动名称,2026-08-01,1000,50,5,100.00,250.00",
 ].join("\r\n");
 
+const GROWTH_METRIC_LABELS = {
+  ctr: "点击率",
+  conversion_rate: "转化率",
+  cpa: "单次转化成本",
+  roas: "广告支出回报率",
+} as const;
+
+const GROWTH_DIRECTION_LABELS = {
+  improve: "优化",
+  test: "受控测试",
+  protect: "保护当前表现",
+  investigate: "优先排查",
+} as const;
+
 function downloadCampaignCsvTemplate() {
   const blob = new Blob(["\uFEFF", CAMPAIGN_CSV_TEMPLATE], {
     type: "text/csv;charset=utf-8",
@@ -1698,9 +1712,9 @@ function RecommendationResult({ result }: { result: GrowthAnalysis }) {
             key={`${item.scope}-${item.platform ?? "overall"}-${item.metric}-${index}`}
           >
             <strong>
-              {item.platform ?? "总体"} · {item.metric}
+              {item.platform ?? "总体"} · {GROWTH_METRIC_LABELS[item.metric]}
             </strong>
-            <small>{item.direction}</small>
+            <small>{GROWTH_DIRECTION_LABELS[item.direction]}</small>
             <p>{item.hypothesis}</p>
           </article>
         ))}

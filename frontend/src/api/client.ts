@@ -81,7 +81,7 @@ const SAFE_PROVIDER_MESSAGES: Record<string, string> = {
   "Qwen generation failed":
     "Qwen返回了确定性失败；本次请求未保存结果。",
   "Qwen returned invalid recommendation data":
-    "Qwen Recommendation响应未通过严格Schema校验；本次结果未保存。",
+    "千问投流建议未通过后端的平台、指标数值、中文策略或真实卖点校验；错误结果未展示，且不会自动重试。",
   "Qwen returned invalid V2 Copy data":
     "Qwen V2 Copy响应未通过严格Schema校验；本次结果未保存。",
   "Qwen returned invalid V2 VideoProject data":
@@ -137,7 +137,8 @@ const PROVIDER_FAILURE_MESSAGES: Record<ProviderSafeErrorCode, string> = {
   response_uncertain: "Provider请求结果不确定；不会自动重试。",
   rate_or_quota_limited: "Provider配额或速率限制阻止了请求。",
   provider_service_error: "Provider服务暂时不可用；不会自动重试。",
-  invalid_provider_output: "Provider输出未通过严格契约校验。",
+  invalid_provider_output:
+    "模型输出未通过后端严格校验；错误结果未展示，且不会自动重试。",
   delivery_uncertain: "浏览器未收到Backend结果；请求结果不确定。",
   provider_error: "Provider请求失败；不会自动重试。",
 };

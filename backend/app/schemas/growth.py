@@ -25,9 +25,148 @@ GROWTH_RECOMMENDATION_CONTRACT_VERSION = "growth-recommendation-v1"
 BoundedText = Annotated[str, Field(min_length=1, max_length=400)]
 ShortText = Annotated[str, Field(min_length=1, max_length=160)]
 
+GrowthHookDirection = Literal[
+    "首屏展示真实使用场景",
+    "首屏突出产品外观与操作动作",
+    "首屏采用问题—解决方案结构",
+    "首屏展示便携使用流程",
+]
+GrowthMessageAngle = Literal[
+    "强调真实使用场景，不添加未经验证的功能描述",
+    "强调操作流程，不承诺使用效果",
+    "强调目标人群的使用需求，不推断产品功效",
+    "仅使用已验证商品卖点进行表达",
+]
+GrowthCtaDirection = Literal[
+    "引导查看商品详情",
+    "引导了解真实使用方式",
+    "引导比较已验证商品信息",
+    "引导进入商品页面",
+]
+GrowthRiskControl = Literal[
+    "避免未经验证的功效承诺",
+    "避免未经验证的认证或合规声明",
+    "避免未经验证的价格、优惠或物流承诺",
+    "避免绝对化或保证性表述",
+    "避免暗示广告指标由当前素材直接造成",
+]
+GrowthVideoOpeningDirection = Literal[
+    "开场立即展示真实产品",
+    "开场展示真实操作动作",
+    "开场呈现明确使用场景",
+]
+GrowthVideoVisualDirection = Literal[
+    "画面只展示真实产品外观与已验证使用场景",
+    "画面突出操作步骤与产品可见性",
+    "画面使用商品资料能够支持的细节",
+]
+GrowthVideoPacingDirection = Literal[
+    "前段快速建立场景，中段展示操作，结尾呈现行动引导",
+    "保持简洁节奏，避免无依据的对比镜头",
+    "用连续操作镜头替代未经验证的效果演示",
+]
+GrowthBudgetStrategy = Literal[
+    "保护高回报平台并排查低回报平台",
+    "保持预算并进行受控测试",
+    "数据不足时转为人工复核",
+]
+
 
 class StrictGrowthModel(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+
+class GrowthRecommendationDraftObservation(StrictGrowthModel):
+    """Provider selection echoed against one exact backend metric value."""
+
+    scope: Literal["overall", "platform"]
+    platform: str | None = Field(default=None, max_length=50)
+    metric: Literal["ctr", "conversion_rate", "cpa", "roas"]
+    observed_value: float | None = Field(allow_inf_nan=False)
+    direction: Literal["improve", "test", "protect", "investigate"]
+
+    @field_validator("platform")
+    @classmethod
+    def validate_platform(cls, value: str | None) -> str | None:
+        return None if value is None else normalize_growth_platform(value)
+
+    @model_validator(mode="after")
+    def validate_scope_platform(self) -> "GrowthRecommendationDraftObservation":
+        if self.scope == "overall" and self.platform is not None:
+            raise ValueError("overall observations cannot specify a platform")
+        if self.scope == "platform" and self.platform is None:
+            raise ValueError("platform observations require a platform")
+        return self
+
+
+class GrowthRecommendationDraftCopyConstraint(StrictGrowthModel):
+    platform: str
+    hook_direction: GrowthHookDirection
+    message_angle: GrowthMessageAngle
+    cta_direction: GrowthCtaDirection
+    product_fact_ids: list[str] = Field(min_length=1, max_length=3)
+    risk_controls: list[GrowthRiskControl] = Field(min_length=1, max_length=5)
+
+    @field_validator("platform")
+    @classmethod
+    def validate_platform(cls, value: str) -> str:
+        return normalize_growth_platform(value)
+
+    @field_validator("product_fact_ids")
+    @classmethod
+    def validate_fact_ids(cls, value: list[str]) -> list[str]:
+        if any(
+            not item.startswith("fact_") or not item[5:].isdigit() for item in value
+        ):
+            raise ValueError("product fact IDs must use the fact_N format")
+        if len(set(value)) != len(value):
+            raise ValueError("product fact IDs must be unique")
+        return value
+
+
+class GrowthRecommendationDraftVideoConstraint(StrictGrowthModel):
+    platform: str
+    opening_hook_direction: GrowthVideoOpeningDirection
+    visual_focus: GrowthVideoVisualDirection
+    pacing_direction: GrowthVideoPacingDirection
+    cta_direction: GrowthCtaDirection
+    product_fact_ids: list[str] = Field(min_length=1, max_length=3)
+    risk_controls: list[GrowthRiskControl] = Field(min_length=1, max_length=5)
+
+    @field_validator("platform")
+    @classmethod
+    def validate_platform(cls, value: str) -> str:
+        return normalize_growth_platform(value)
+
+    @field_validator("product_fact_ids")
+    @classmethod
+    def validate_fact_ids(cls, value: list[str]) -> list[str]:
+        return GrowthRecommendationDraftCopyConstraint.validate_fact_ids(value)
+
+
+class GrowthRecommendationDraft(StrictGrowthModel):
+    """Closed provider contract; all displayed prose is built by the backend."""
+
+    observations: list[GrowthRecommendationDraftObservation] = Field(
+        min_length=1, max_length=8
+    )
+    copy_constraints: list[GrowthRecommendationDraftCopyConstraint] = Field(
+        min_length=1, max_length=4
+    )
+    video_constraint: GrowthRecommendationDraftVideoConstraint
+    budget_strategy: GrowthBudgetStrategy
+
+    @model_validator(mode="after")
+    def validate_unique_scopes(self) -> "GrowthRecommendationDraft":
+        copy_platforms = [item.platform for item in self.copy_constraints]
+        if len(set(copy_platforms)) != len(copy_platforms):
+            raise ValueError("copy constraint platforms must be unique")
+        observation_keys = [
+            (item.scope, item.platform, item.metric) for item in self.observations
+        ]
+        if len(set(observation_keys)) != len(observation_keys):
+            raise ValueError("observation metric scopes must be unique")
+        return self
 
 
 class GrowthRecommendation(BaseModel):

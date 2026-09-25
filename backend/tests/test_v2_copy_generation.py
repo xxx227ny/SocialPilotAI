@@ -107,6 +107,41 @@ def valid_recommendation() -> dict[str, object]:
     }
 
 
+def valid_recommendation_draft() -> dict[str, object]:
+    return {
+        "observations": [
+            {
+                "scope": "overall",
+                "platform": None,
+                "metric": "ctr",
+                "observed_value": 0.05,
+                "direction": "test",
+            }
+        ],
+        "copy_constraints": [
+            {
+                "platform": platform,
+                "hook_direction": "首屏展示真实使用场景",
+                "message_angle": "仅使用已验证商品卖点进行表达",
+                "cta_direction": "引导查看商品详情",
+                "product_fact_ids": ["fact_2"],
+                "risk_controls": ["避免未经验证的功效承诺"],
+            }
+            for platform in ("TikTok", "Instagram", "Facebook")
+        ],
+        "video_constraint": {
+            "platform": "TikTok",
+            "opening_hook_direction": "开场立即展示真实产品",
+            "visual_focus": "画面只展示真实产品外观与已验证使用场景",
+            "pacing_direction": "保持简洁节奏，避免无依据的对比镜头",
+            "cta_direction": "引导查看商品详情",
+            "product_fact_ids": ["fact_2"],
+            "risk_controls": ["避免未经验证的功效承诺"],
+        },
+        "budget_strategy": "保持预算并进行受控测试",
+    }
+
+
 def valid_provider_output() -> dict[str, object]:
     return {
         "copies": [
@@ -213,9 +248,7 @@ def create_source(
         )
     )
     session.commit()
-    context = client.get(
-        f"/api/v1/products/{product['id']}/feedback-context"
-    ).json()
+    context = client.get(f"/api/v1/products/{product['id']}/feedback-context").json()
     recommendation = GrowthRecommendationConstraints.model_validate(
         valid_recommendation()
     )
@@ -249,9 +282,9 @@ def preflight(
     session: Session, source: dict[str, object]
 ) -> tuple[V2CopySourceRequest, str]:
     data = V2CopySourceRequest.model_validate(source["request"])
-    result = V2CopyPreflightService(
-        session, enabled_settings()
-    ).run(int(source["product_id"]), data)
+    result = V2CopyPreflightService(session, enabled_settings()).run(
+        int(source["product_id"]), data
+    )
     assert result.ready_for_execution is True
     return data, result.preflight_digest
 
@@ -275,9 +308,7 @@ def request_for_platforms(
     request["recommendation_digest"] = compute_recommendation_digest(
         product_id=int(source["product_id"]),
         source_context_digest=str(request["source_context_digest"]),
-        source_marketing_strategy_id=int(
-            request["source_marketing_strategy_id"]
-        ),
+        source_marketing_strategy_id=int(request["source_marketing_strategy_id"]),
         source_copy_matrix_id=int(request["source_copy_matrix_id"]),
         source_video_project_id=int(request["source_video_project_id"]),
         recommendation=recommendation,
@@ -325,14 +356,17 @@ def test_recommendation_digest_is_stable_and_tracks_every_source_field() -> None
         assert compute_recommendation_digest(**changed) != first
     changed_payload = deepcopy(valid_recommendation())
     changed_payload["summary"] = "Changed summary."
-    assert compute_recommendation_digest(
-        **{
-            **values,
-            "recommendation": GrowthRecommendationConstraints.model_validate(
-                changed_payload
-            ),
-        }
-    ) != first
+    assert (
+        compute_recommendation_digest(
+            **{
+                **values,
+                "recommendation": GrowthRecommendationConstraints.model_validate(
+                    changed_payload
+                ),
+            }
+        )
+        != first
+    )
 
 
 def test_growth_response_digest_is_backend_owned(
@@ -341,7 +375,7 @@ def test_growth_response_digest_is_backend_owned(
     product_payload: dict[str, object],
 ) -> None:
     source = create_source(client, db_session, product_payload)
-    provider = ControlledV2CopyProvider(valid_recommendation())
+    provider = ControlledV2CopyProvider(valid_recommendation_draft())
     app.dependency_overrides[get_text_generation_provider] = lambda: provider
     app.dependency_overrides[get_settings] = lambda: Settings(
         _env_file=None,
@@ -351,9 +385,7 @@ def test_growth_response_digest_is_backend_owned(
     try:
         response = client.post(
             f"/api/v1/products/{source['product_id']}/growth-analysis",
-            json={
-                "expected_context_digest": source["context"]["context_digest"]
-            },
+            json={"expected_context_digest": source["context"]["context_digest"]},
         )
     finally:
         app.dependency_overrides.clear()
@@ -410,9 +442,7 @@ def test_preflight_is_provider_free_read_only_and_stable(
         "Instagram",
         "Facebook",
     ]
-    assert first.json()["recommendation_target_copy_platforms"] == [
-        "TikTok"
-    ]
+    assert first.json()["recommendation_target_copy_platforms"] == ["TikTok"]
     assert first.json()["v2_copy_target_platforms"] == ["TikTok"]
     assert provider_resolutions == 0
     assert model_counts(db_session) == before
@@ -456,9 +486,7 @@ def test_preflight_blocks_stale_or_mismatched_identity(
     source = create_source(client, db_session, product_payload)
     request = deepcopy(source["request"])
     mutation(request)  # type: ignore[operator]
-    result = V2CopyPreflightService(
-        db_session, enabled_settings()
-    ).run(
+    result = V2CopyPreflightService(db_session, enabled_settings()).run(
         int(source["product_id"]),
         V2CopySourceRequest.model_validate(request),
     )
@@ -498,9 +526,7 @@ def test_preflight_reports_both_default_off_gates(
     assert result.copy_execution_enabled is False
     assert result.v2_copy_execution_enabled is False
     assert result.ready_for_execution is False
-    assert {"copy_execution", "v2_copy_execution"}.issubset(
-        result.missing_requirements
-    )
+    assert {"copy_execution", "v2_copy_execution"}.issubset(result.missing_requirements)
 
 
 def test_preflight_incomplete_context_is_blocked_and_provider_free(
@@ -518,9 +544,9 @@ def test_preflight_incomplete_context_is_blocked_and_provider_free(
         "recommendation_digest": "b" * 64,
         "recommendation": valid_recommendation(),
     }
-    result = V2CopyPreflightService(
-        db_session, enabled_settings()
-    ).run(product_id, V2CopySourceRequest.model_validate(request))
+    result = V2CopyPreflightService(db_session, enabled_settings()).run(
+        product_id, V2CopySourceRequest.model_validate(request)
+    )
     assert result.input_ready is False
     assert result.ready_for_execution is False
     assert "campaign_data" in result.missing_requirements
@@ -583,9 +609,7 @@ def test_preflight_invalid_persisted_product_is_safe_blocked(
 ) -> None:
     source = create_source(client, db_session, product_payload)
     db_session.execute(
-        update(Product)
-        .where(Product.id == int(source["product_id"]))
-        .values(**changes)
+        update(Product).where(Product.id == int(source["product_id"])).values(**changes)
     )
     db_session.commit()
     before = model_counts(db_session)
@@ -655,12 +679,8 @@ def test_cross_product_source_ids_fail_closed(
     db_session: Session,
     product_payload: dict[str, object],
 ) -> None:
-    first = create_source(
-        client, db_session, product_payload, name="Source Product A"
-    )
-    second = create_source(
-        client, db_session, product_payload, name="Source Product B"
-    )
+    first = create_source(client, db_session, product_payload, name="Source Product A")
+    second = create_source(client, db_session, product_payload, name="Source Product B")
     request = deepcopy(first["request"])
     request.update(
         source_marketing_strategy_id=second["strategy"].id,
@@ -673,16 +693,12 @@ def test_cross_product_source_ids_fail_closed(
     request["recommendation_digest"] = compute_recommendation_digest(
         product_id=int(first["product_id"]),
         source_context_digest=str(request["source_context_digest"]),
-        source_marketing_strategy_id=int(
-            request["source_marketing_strategy_id"]
-        ),
+        source_marketing_strategy_id=int(request["source_marketing_strategy_id"]),
         source_copy_matrix_id=int(request["source_copy_matrix_id"]),
         source_video_project_id=int(request["source_video_project_id"]),
         recommendation=recommendation,
     )
-    result = V2CopyPreflightService(
-        db_session, enabled_settings()
-    ).run(
+    result = V2CopyPreflightService(db_session, enabled_settings()).run(
         int(first["product_id"]),
         V2CopySourceRequest.model_validate(request),
     )
@@ -697,9 +713,9 @@ def test_preflight_digest_changes_with_valid_recommendation_change(
 ) -> None:
     source = create_source(client, db_session, product_payload)
     original = V2CopySourceRequest.model_validate(source["request"])
-    first = V2CopyPreflightService(
-        db_session, enabled_settings()
-    ).run(int(source["product_id"]), original)
+    first = V2CopyPreflightService(db_session, enabled_settings()).run(
+        int(source["product_id"]), original
+    )
     request = deepcopy(source["request"])
     request["recommendation"]["summary"] = "A different valid test hypothesis."
     recommendation = GrowthRecommendationConstraints.model_validate(
@@ -708,16 +724,12 @@ def test_preflight_digest_changes_with_valid_recommendation_change(
     request["recommendation_digest"] = compute_recommendation_digest(
         product_id=int(source["product_id"]),
         source_context_digest=str(request["source_context_digest"]),
-        source_marketing_strategy_id=int(
-            request["source_marketing_strategy_id"]
-        ),
+        source_marketing_strategy_id=int(request["source_marketing_strategy_id"]),
         source_copy_matrix_id=int(request["source_copy_matrix_id"]),
         source_video_project_id=int(request["source_video_project_id"]),
         recommendation=recommendation,
     )
-    second = V2CopyPreflightService(
-        db_session, enabled_settings()
-    ).run(
+    second = V2CopyPreflightService(db_session, enabled_settings()).run(
         int(source["product_id"]),
         V2CopySourceRequest.model_validate(request),
     )
@@ -846,9 +858,7 @@ def test_success_api_returns_backend_owned_candidate_contract(
     assert body["recommendation_target_copy_platforms"] == ["TikTok"]
     assert body["v2_copy_target_platforms"] == ["TikTok"]
     assert body["persisted_copy_platforms"] == ["TikTok"]
-    assert body["preflight_digest"] == preflight_response.json()[
-        "preflight_digest"
-    ]
+    assert body["preflight_digest"] == preflight_response.json()["preflight_digest"]
     assert body["copy_matrix_id"] == body["generated_copy_matrix"]["id"]
     assert model_counts(db_session)["CopyMatrix"] == before["CopyMatrix"] + 1
 
@@ -863,9 +873,7 @@ def test_success_calls_provider_once_and_only_adds_one_copy_matrix(
     before = model_counts(db_session)
     source_copies = deepcopy(source["source_copy"].copies)
     provider = ControlledV2CopyProvider()
-    result = V2CopyGenerationService(
-        db_session, provider, enabled_settings()
-    ).generate(
+    result = V2CopyGenerationService(db_session, provider, enabled_settings()).generate(
         int(source["product_id"]),
         V2CopyExecutionRequest.model_validate(
             {
@@ -881,10 +889,7 @@ def test_success_calls_provider_once_and_only_adds_one_copy_matrix(
         if name != "CopyMatrix":
             assert after[name] == before[name]
     assert result.generated_copy_matrix.product_id == source["product_id"]
-    assert (
-        result.generated_copy_matrix.marketing_strategy_id
-        == source["strategy"].id
-    )
+    assert result.generated_copy_matrix.marketing_strategy_id == source["strategy"].id
     assert result.source_copy_matrix_id == source["source_copy"].id
     assert source["source_copy"].copies == source_copies
     assert result.copy_generation_triggered is True
@@ -900,9 +905,7 @@ def test_prompt_contains_only_safe_business_inputs(
     source = create_source(client, db_session, product_payload)
     data, digest = preflight(db_session, source)
     provider = ControlledV2CopyProvider()
-    V2CopyGenerationService(
-        db_session, provider, enabled_settings()
-    ).generate(
+    V2CopyGenerationService(db_session, provider, enabled_settings()).generate(
         int(source["product_id"]),
         V2CopyExecutionRequest.model_validate(
             {
@@ -931,18 +934,14 @@ def test_context_change_after_preflight_stops_before_provider(
     source = create_source(client, db_session, product_payload)
     data, digest = preflight(db_session, source)
     campaign = db_session.scalar(
-        select(AdCampaign).where(
-            AdCampaign.product_id == int(source["product_id"])
-        )
+        select(AdCampaign).where(AdCampaign.product_id == int(source["product_id"]))
     )
     assert campaign is not None
     campaign.clicks += 1
     db_session.commit()
     provider = ControlledV2CopyProvider()
     with pytest.raises(AppError, match="not ready"):
-        V2CopyGenerationService(
-            db_session, provider, enabled_settings()
-        ).generate(
+        V2CopyGenerationService(db_session, provider, enabled_settings()).generate(
             int(source["product_id"]),
             V2CopyExecutionRequest.model_validate(
                 {
@@ -973,17 +972,15 @@ def test_provider_platform_order_must_match_recommendation_order(
     request["recommendation_digest"] = compute_recommendation_digest(
         product_id=int(source["product_id"]),
         source_context_digest=str(request["source_context_digest"]),
-        source_marketing_strategy_id=int(
-            request["source_marketing_strategy_id"]
-        ),
+        source_marketing_strategy_id=int(request["source_marketing_strategy_id"]),
         source_copy_matrix_id=int(request["source_copy_matrix_id"]),
         source_video_project_id=int(request["source_video_project_id"]),
         recommendation=recommendation,
     )
     data = V2CopySourceRequest.model_validate(request)
-    preflight_result = V2CopyPreflightService(
-        db_session, enabled_settings()
-    ).run(int(source["product_id"]), data)
+    preflight_result = V2CopyPreflightService(db_session, enabled_settings()).run(
+        int(source["product_id"]), data
+    )
     assert preflight_result.target_platforms == ["TikTok", "Instagram"]
     output = valid_provider_output()["copies"][0]
     provider = ControlledV2CopyProvider(
@@ -996,16 +993,12 @@ def test_provider_platform_order_must_match_recommendation_order(
     )
     before = model_counts(db_session)
     with pytest.raises(AppError, match="invalid V2 Copy data"):
-        V2CopyGenerationService(
-            db_session, provider, enabled_settings()
-        ).generate(
+        V2CopyGenerationService(db_session, provider, enabled_settings()).generate(
             int(source["product_id"]),
             V2CopyExecutionRequest.model_validate(
                 {
                     **data.model_dump(mode="json"),
-                    "expected_preflight_digest": (
-                        preflight_result.preflight_digest
-                    ),
+                    "expected_preflight_digest": (preflight_result.preflight_digest),
                 }
             ),
         )
@@ -1020,9 +1013,9 @@ def test_platform_evidence_scenario_a_single_target_succeeds(
 ) -> None:
     source = create_source(client, db_session, product_payload)
     data = request_for_platforms(source, ["TikTok"])
-    preflight_result = V2CopyPreflightService(
-        db_session, enabled_settings()
-    ).run(int(source["product_id"]), data)
+    preflight_result = V2CopyPreflightService(db_session, enabled_settings()).run(
+        int(source["product_id"]), data
+    )
     before = model_counts(db_session)
     provider = ControlledV2CopyProvider(provider_output_for(["TikTok"]))
     app.dependency_overrides[get_text_generation_provider] = lambda: provider
@@ -1062,12 +1055,10 @@ def test_platform_evidence_scenario_b_three_targets_rejects_one_output(
     product_payload: dict[str, object],
 ) -> None:
     source = create_source(client, db_session, product_payload)
-    data = request_for_platforms(
-        source, ["TikTok", "Instagram", "Facebook"]
+    data = request_for_platforms(source, ["TikTok", "Instagram", "Facebook"])
+    preflight_result = V2CopyPreflightService(db_session, enabled_settings()).run(
+        int(source["product_id"]), data
     )
-    preflight_result = V2CopyPreflightService(
-        db_session, enabled_settings()
-    ).run(int(source["product_id"]), data)
     before = model_counts(db_session)
     provider = ControlledV2CopyProvider(provider_output_for(["TikTok"]))
     app.dependency_overrides[get_text_generation_provider] = lambda: provider
@@ -1099,13 +1090,11 @@ def test_platform_evidence_scenario_c_rejects_reversed_order(
 ) -> None:
     source = create_source(client, db_session, product_payload)
     data = request_for_platforms(source, ["TikTok", "Instagram"])
-    preflight_result = V2CopyPreflightService(
-        db_session, enabled_settings()
-    ).run(int(source["product_id"]), data)
-    before = model_counts(db_session)
-    provider = ControlledV2CopyProvider(
-        provider_output_for(["Instagram", "TikTok"])
+    preflight_result = V2CopyPreflightService(db_session, enabled_settings()).run(
+        int(source["product_id"]), data
     )
+    before = model_counts(db_session)
+    provider = ControlledV2CopyProvider(provider_output_for(["Instagram", "TikTok"]))
     app.dependency_overrides[get_text_generation_provider] = lambda: provider
     app.dependency_overrides[get_settings] = enabled_settings
     try:
@@ -1213,9 +1202,7 @@ def test_invalid_provider_output_never_writes(
     before = model_counts(db_session)
     provider = ControlledV2CopyProvider(output=output)  # type: ignore[arg-type]
     with pytest.raises(AppError, match="invalid V2 Copy data") as exc_info:
-        V2CopyGenerationService(
-            db_session, provider, enabled_settings()
-        ).generate(
+        V2CopyGenerationService(db_session, provider, enabled_settings()).generate(
             int(source["product_id"]),
             V2CopyExecutionRequest.model_validate(
                 {
@@ -1276,9 +1263,7 @@ def test_stale_expected_preflight_digest_stops_before_provider(
     data, _ = preflight(db_session, source)
     provider = ControlledV2CopyProvider()
     with pytest.raises(AppError, match="Preflight changed") as exc_info:
-        V2CopyGenerationService(
-            db_session, provider, enabled_settings()
-        ).generate(
+        V2CopyGenerationService(db_session, provider, enabled_settings()).generate(
             int(source["product_id"]),
             V2CopyExecutionRequest.model_validate(
                 {
@@ -1299,9 +1284,9 @@ def test_persisted_platform_mismatch_rolls_back_without_false_success(
 ) -> None:
     source = create_source(client, db_session, product_payload)
     data = request_for_platforms(source, ["TikTok", "Instagram"])
-    preflight_result = V2CopyPreflightService(
-        db_session, enabled_settings()
-    ).run(int(source["product_id"]), data)
+    preflight_result = V2CopyPreflightService(db_session, enabled_settings()).run(
+        int(source["product_id"]), data
+    )
     before = model_counts(db_session)
     original = CopyMatrixRepository.create_for_exact_strategy
 
@@ -1328,20 +1313,14 @@ def test_persisted_platform_mismatch_rolls_back_without_false_success(
         "create_for_exact_strategy",
         return_inconsistent_platforms,
     )
-    provider = ControlledV2CopyProvider(
-        provider_output_for(["TikTok", "Instagram"])
-    )
+    provider = ControlledV2CopyProvider(provider_output_for(["TikTok", "Instagram"]))
     with pytest.raises(AppError, match="could not be saved") as exc_info:
-        V2CopyGenerationService(
-            db_session, provider, enabled_settings()
-        ).generate(
+        V2CopyGenerationService(db_session, provider, enabled_settings()).generate(
             int(source["product_id"]),
             V2CopyExecutionRequest.model_validate(
                 {
                     **data.model_dump(mode="json"),
-                    "expected_preflight_digest": (
-                        preflight_result.preflight_digest
-                    ),
+                    "expected_preflight_digest": (preflight_result.preflight_digest),
                 }
             ),
         )
