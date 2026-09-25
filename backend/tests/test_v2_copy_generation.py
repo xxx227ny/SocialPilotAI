@@ -109,33 +109,17 @@ def valid_recommendation() -> dict[str, object]:
 
 def valid_recommendation_draft() -> dict[str, object]:
     return {
-        "observations": [
-            {
-                "scope": "overall",
-                "platform": None,
-                "metric": "ctr",
-                "observed_value": 0.05,
-                "direction": "test",
-            }
-        ],
-        "copy_constraints": [
-            {
-                "platform": platform,
-                "hook_direction": "首屏展示真实使用场景",
-                "message_angle": "仅使用已验证商品卖点进行表达",
-                "cta_direction": "引导查看商品详情",
-                "product_fact_ids": ["fact_2"],
-                "risk_controls": ["避免未经验证的功效承诺"],
-            }
-            for platform in ("TikTok", "Instagram", "Facebook")
-        ],
-        "video_constraint": {
-            "platform": "TikTok",
+        "copy_strategy": {
+            "hook_direction": "首屏展示真实使用场景",
+            "message_angle": "仅使用已验证商品卖点进行表达",
+            "cta_direction": "引导查看商品详情",
+            "risk_controls": ["避免未经验证的功效承诺"],
+        },
+        "video_strategy": {
             "opening_hook_direction": "开场立即展示真实产品",
             "visual_focus": "画面只展示真实产品外观与已验证使用场景",
             "pacing_direction": "保持简洁节奏，避免无依据的对比镜头",
             "cta_direction": "引导查看商品详情",
-            "product_fact_ids": ["fact_2"],
             "risk_controls": ["避免未经验证的功效承诺"],
         },
         "budget_strategy": "保持预算并进行受控测试",

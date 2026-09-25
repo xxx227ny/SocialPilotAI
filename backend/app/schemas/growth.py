@@ -76,97 +76,31 @@ class StrictGrowthModel(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
 
-class GrowthRecommendationDraftObservation(StrictGrowthModel):
-    """Provider selection echoed against one exact backend metric value."""
+class GrowthRecommendationDraftCopyStrategy(StrictGrowthModel):
+    """Provider-selected copy strategy without platform or metric authority."""
 
-    scope: Literal["overall", "platform"]
-    platform: str | None = Field(default=None, max_length=50)
-    metric: Literal["ctr", "conversion_rate", "cpa", "roas"]
-    observed_value: float | None = Field(allow_inf_nan=False)
-    direction: Literal["improve", "test", "protect", "investigate"]
-
-    @field_validator("platform")
-    @classmethod
-    def validate_platform(cls, value: str | None) -> str | None:
-        return None if value is None else normalize_growth_platform(value)
-
-    @model_validator(mode="after")
-    def validate_scope_platform(self) -> "GrowthRecommendationDraftObservation":
-        if self.scope == "overall" and self.platform is not None:
-            raise ValueError("overall observations cannot specify a platform")
-        if self.scope == "platform" and self.platform is None:
-            raise ValueError("platform observations require a platform")
-        return self
-
-
-class GrowthRecommendationDraftCopyConstraint(StrictGrowthModel):
-    platform: str
     hook_direction: GrowthHookDirection
     message_angle: GrowthMessageAngle
     cta_direction: GrowthCtaDirection
-    product_fact_ids: list[str] = Field(min_length=1, max_length=3)
     risk_controls: list[GrowthRiskControl] = Field(min_length=1, max_length=5)
 
-    @field_validator("platform")
-    @classmethod
-    def validate_platform(cls, value: str) -> str:
-        return normalize_growth_platform(value)
 
-    @field_validator("product_fact_ids")
-    @classmethod
-    def validate_fact_ids(cls, value: list[str]) -> list[str]:
-        if any(
-            not item.startswith("fact_") or not item[5:].isdigit() for item in value
-        ):
-            raise ValueError("product fact IDs must use the fact_N format")
-        if len(set(value)) != len(value):
-            raise ValueError("product fact IDs must be unique")
-        return value
+class GrowthRecommendationDraftVideoStrategy(StrictGrowthModel):
+    """Provider-selected video strategy without platform or metric authority."""
 
-
-class GrowthRecommendationDraftVideoConstraint(StrictGrowthModel):
-    platform: str
     opening_hook_direction: GrowthVideoOpeningDirection
     visual_focus: GrowthVideoVisualDirection
     pacing_direction: GrowthVideoPacingDirection
     cta_direction: GrowthCtaDirection
-    product_fact_ids: list[str] = Field(min_length=1, max_length=3)
     risk_controls: list[GrowthRiskControl] = Field(min_length=1, max_length=5)
-
-    @field_validator("platform")
-    @classmethod
-    def validate_platform(cls, value: str) -> str:
-        return normalize_growth_platform(value)
-
-    @field_validator("product_fact_ids")
-    @classmethod
-    def validate_fact_ids(cls, value: list[str]) -> list[str]:
-        return GrowthRecommendationDraftCopyConstraint.validate_fact_ids(value)
 
 
 class GrowthRecommendationDraft(StrictGrowthModel):
-    """Closed provider contract; all displayed prose is built by the backend."""
+    """Closed strategy-only contract; backend owns platforms, metrics and prose."""
 
-    observations: list[GrowthRecommendationDraftObservation] = Field(
-        min_length=1, max_length=8
-    )
-    copy_constraints: list[GrowthRecommendationDraftCopyConstraint] = Field(
-        min_length=1, max_length=4
-    )
-    video_constraint: GrowthRecommendationDraftVideoConstraint
+    copy_strategy: GrowthRecommendationDraftCopyStrategy
+    video_strategy: GrowthRecommendationDraftVideoStrategy
     budget_strategy: GrowthBudgetStrategy
-
-    @model_validator(mode="after")
-    def validate_unique_scopes(self) -> "GrowthRecommendationDraft":
-        copy_platforms = [item.platform for item in self.copy_constraints]
-        if len(set(copy_platforms)) != len(copy_platforms):
-            raise ValueError("copy constraint platforms must be unique")
-        observation_keys = [
-            (item.scope, item.platform, item.metric) for item in self.observations
-        ]
-        if len(set(observation_keys)) != len(observation_keys):
-            raise ValueError("observation metric scopes must be unique")
-        return self
 
 
 class GrowthRecommendation(BaseModel):

@@ -100,40 +100,17 @@ def valid_recommendation() -> dict[str, object]:
 
 def valid_recommendation_draft() -> dict[str, object]:
     return {
-        "observations": [
-            {
-                "scope": "overall",
-                "platform": None,
-                "metric": "ctr",
-                "observed_value": 0.05,
-                "direction": "test",
-            },
-            {
-                "scope": "platform",
-                "platform": "TikTok",
-                "metric": "conversion_rate",
-                "observed_value": 0.2,
-                "direction": "investigate",
-            },
-        ],
-        "copy_constraints": [
-            {
-                "platform": platform,
-                "hook_direction": "首屏展示真实使用场景",
-                "message_angle": "仅使用已验证商品卖点进行表达",
-                "cta_direction": "引导查看商品详情",
-                "product_fact_ids": ["fact_2"],
-                "risk_controls": ["避免未经验证的功效承诺"],
-            }
-            for platform in ("TikTok", "Instagram", "Facebook")
-        ],
-        "video_constraint": {
-            "platform": "TikTok",
+        "copy_strategy": {
+            "hook_direction": "首屏展示真实使用场景",
+            "message_angle": "仅使用已验证商品卖点进行表达",
+            "cta_direction": "引导查看商品详情",
+            "risk_controls": ["避免未经验证的功效承诺"],
+        },
+        "video_strategy": {
             "opening_hook_direction": "开场立即展示真实产品",
             "visual_focus": "画面只展示真实产品外观与已验证使用场景",
             "pacing_direction": "保持简洁节奏，避免无依据的对比镜头",
             "cta_direction": "引导查看商品详情",
-            "product_fact_ids": ["fact_2"],
             "risk_controls": ["避免未经验证的功效承诺"],
         },
         "budget_strategy": "保持预算并进行受控测试",
@@ -580,10 +557,17 @@ def test_growth_success_calls_fake_once_and_writes_nothing(
     assert body["budget_change_allowed"] is False
     assert body["copy_generation_triggered"] is False
     assert body["video_generation_triggered"] is False
-    assert body["recommendation"]["copy_constraints"][0]["platform"] == "TikTok"
-    assert body["recommendation"]["copy_constraints"][0]["must_preserve"] == [
-        "USB rechargeable"
+    copy_constraints = body["recommendation"]["copy_constraints"]
+    assert [item["platform"] for item in copy_constraints] == [
+        "Facebook",
+        "Instagram",
+        "TikTok",
     ]
+    assert all(
+        item["must_preserve"]
+        == ["Portable design", "USB rechargeable", "Easy cleaning"]
+        for item in copy_constraints
+    )
     prompt = provider.prompts[0]
     assert "campaign_name" not in prompt
     assert "private-name" not in prompt
@@ -593,6 +577,8 @@ def test_growth_success_calls_fake_once_and_writes_nothing(
     assert "不能证明当前文案" in prompt
     assert '"verified_product_facts"' in prompt
     assert '"id":"fact_2","text":"USB rechargeable"' in prompt
+    assert '"observed_value"' not in prompt
+    assert '"product_fact_ids"' not in prompt
 
 
 def test_mixed_supported_and_unrelated_campaign_platforms_execute_consistently(
@@ -620,9 +606,7 @@ def test_mixed_supported_and_unrelated_campaign_platforms_execute_consistently(
         f"/api/v1/products/{identity['product_id']}/feedback-context"
     ).json()
     before = model_counts(db_session)
-    payload = valid_recommendation_draft()
-    payload["observations"][0]["observed_value"] = 0.046667  # type: ignore[index]
-    provider = ControlledGrowthProvider(payload)
+    provider = ControlledGrowthProvider()
     app.dependency_overrides[get_settings] = enabled_settings
     app.dependency_overrides[get_text_generation_provider] = lambda: provider
     try:
@@ -650,11 +634,11 @@ def test_mixed_supported_and_unrelated_campaign_platforms_execute_consistently(
     assert provider.calls == 1
     assert model_counts(db_session) == before
     prompt = provider.prompts[0]
-    assert '"allowed_observation_platforms":["TikTok"]' in prompt
+    assert '"backend_owned_observation_platforms":["TikTok"]' in prompt
     assert (
-        '"allowed_copy_constraint_platforms":["Facebook","Instagram","TikTok"]'
+        '"backend_owned_copy_platforms":["Facebook","Instagram","TikTok"]'
     ) in prompt
-    assert '"required_video_constraint_platform":"TikTok"' in prompt
+    assert '"backend_owned_video_platform":"TikTok"' in prompt
     assert '"impressions":1500' in prompt
     assert '"platform":"Google Ads"' not in prompt
     assert '"platform":"TikTok"' in prompt
@@ -675,12 +659,7 @@ def test_unrelated_only_campaign_allows_overall_only_recommendation(
     context = client.get(
         f"/api/v1/products/{identity['product_id']}/feedback-context"
     ).json()
-    payload = valid_recommendation_draft()
-    observations = payload["observations"]
-    assert isinstance(observations, list)
-    payload["observations"] = [observations[0]]
-    payload["observations"][0]["observed_value"] = 0.05  # type: ignore[index]
-    provider = ControlledGrowthProvider(output=payload)
+    provider = ControlledGrowthProvider()
     before = model_counts(db_session)
     app.dependency_overrides[get_settings] = enabled_settings
     app.dependency_overrides[get_text_generation_provider] = lambda: provider
@@ -701,13 +680,89 @@ def test_unrelated_only_campaign_allows_overall_only_recommendation(
     assert provider.calls == 1
     assert model_counts(db_session) == before
     prompt = provider.prompts[0]
-    assert '"allowed_observation_platforms":[]' in prompt
+    assert '"backend_owned_observation_platforms":[]' in prompt
     assert '"platform_metrics":[]' in prompt
-    assert '"required_video_constraint_platform":"TikTok"' in prompt
+    assert '"backend_owned_video_platform":"TikTok"' in prompt
     assert '"platform":"Google Ads"' not in prompt
 
 
-def test_unrelated_campaign_platform_observation_is_rejected_safely(
+def test_backend_deterministically_selects_real_metric_priorities(
+    client: TestClient,
+    db_session: Session,
+    product_payload: dict[str, object],
+) -> None:
+    identity = create_ready_context(client, db_session, product_payload)
+    db_session.add_all(
+        [
+            AdCampaign(
+                product_id=identity["product_id"],
+                platform="Facebook",
+                campaign_name="facebook-strong",
+                date=date(2026, 7, 30),
+                impressions=1000,
+                clicks=100,
+                conversions=20,
+                spend=Decimal("100"),
+                revenue=Decimal("700"),
+            ),
+            AdCampaign(
+                product_id=identity["product_id"],
+                platform="Instagram",
+                campaign_name="instagram-middle",
+                date=date(2026, 7, 30),
+                impressions=1000,
+                clicks=60,
+                conversions=5,
+                spend=Decimal("100"),
+                revenue=Decimal("200"),
+            ),
+            AdCampaign(
+                product_id=identity["product_id"],
+                platform="Pinterest",
+                campaign_name="pinterest-weak",
+                date=date(2026, 7, 30),
+                impressions=1000,
+                clicks=20,
+                conversions=1,
+                spend=Decimal("100"),
+                revenue=Decimal("40"),
+            ),
+        ]
+    )
+    db_session.commit()
+    context = client.get(
+        f"/api/v1/products/{identity['product_id']}/feedback-context"
+    ).json()
+    provider = ControlledGrowthProvider()
+    before = model_counts(db_session)
+    app.dependency_overrides[get_settings] = enabled_settings
+    app.dependency_overrides[get_text_generation_provider] = lambda: provider
+    try:
+        response = client.post(
+            f"/api/v1/products/{identity['product_id']}/growth-analysis",
+            json={"expected_context_digest": context["context_digest"]},
+        )
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
+        app.dependency_overrides.pop(get_text_generation_provider, None)
+
+    assert response.status_code == 200
+    assert provider.calls == 1
+    assert model_counts(db_session) == before
+    observations = response.json()["recommendation"]["observations"]
+    assert [
+        (item["platform"], item["metric"], item["direction"]) for item in observations
+    ] == [
+        ("Pinterest", "roas", "improve"),
+        ("Facebook", "roas", "protect"),
+        ("Pinterest", "cpa", "investigate"),
+    ]
+    assert "0.40 倍" in observations[0]["hypothesis"]
+    assert "7.00 倍" in observations[1]["hypothesis"]
+    assert "100.00 美元" in observations[2]["hypothesis"]
+
+
+def test_provider_cannot_supply_an_untrusted_platform(
     client: TestClient,
     db_session: Session,
     product_payload: dict[str, object],
@@ -723,15 +778,7 @@ def test_unrelated_campaign_platform_observation_is_rejected_safely(
         f"/api/v1/products/{identity['product_id']}/feedback-context"
     ).json()
     payload = valid_recommendation_draft()
-    payload["observations"] = [
-        {
-            "scope": "platform",
-            "platform": "Google Ads",
-            "metric": "ctr",
-            "observed_value": 0.04,
-            "direction": "test",
-        }
-    ]
+    payload["copy_strategy"]["platform"] = "Google Ads"  # type: ignore[index]
     provider = ControlledGrowthProvider(output=payload)
     before = model_counts(db_session)
     app.dependency_overrides[get_settings] = enabled_settings
@@ -791,8 +838,8 @@ def test_strict_growth_schema_rejects_invalid_provider_output(
 @pytest.mark.parametrize(
     "mutation",
     [
-        ("video_platform", "Instagram"),
-        ("observation_platform", "Facebook"),
+        ("video_strategy", "Instagram"),
+        ("copy_strategy", "Facebook"),
     ],
 )
 def test_dynamic_platform_mismatch_is_safe_and_writes_nothing(
@@ -803,10 +850,7 @@ def test_dynamic_platform_mismatch_is_safe_and_writes_nothing(
 ) -> None:
     identity = create_ready_context(client, db_session, product_payload)
     payload = valid_recommendation_draft()
-    if mutation[0] == "video_platform":
-        payload["video_constraint"]["platform"] = mutation[1]  # type: ignore[index]
-    else:
-        payload["observations"][1]["platform"] = mutation[1]  # type: ignore[index]
+    payload[mutation[0]]["platform"] = mutation[1]  # type: ignore[index]
     provider = ControlledGrowthProvider(payload)
     before = model_counts(db_session)
     app.dependency_overrides[get_settings] = enabled_settings
@@ -836,11 +880,9 @@ def test_dynamic_platform_mismatch_is_safe_and_writes_nothing(
 @pytest.mark.parametrize(
     "mutator",
     [
-        lambda value: value["observations"][0].update({"observed_value": 0.999999}),
-        lambda value: value["copy_constraints"][0].update(
-            {"product_fact_ids": ["fact_999"]}
-        ),
-        lambda value: value["copy_constraints"][0].update(
+        lambda value: value.update({"observed_value": 0.999999}),
+        lambda value: value["copy_strategy"].update({"product_fact_ids": ["fact_999"]}),
+        lambda value: value["copy_strategy"].update(
             {"hook_direction": "Lead with an invented product claim"}
         ),
     ],

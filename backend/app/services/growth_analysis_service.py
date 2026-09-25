@@ -1,5 +1,4 @@
 import json
-import math
 
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
@@ -32,7 +31,6 @@ from app.schemas.growth import (
     GrowthObservation,
     GrowthRecommendationConstraints,
     GrowthRecommendationDraft,
-    GrowthRecommendationDraftObservation,
     GrowthVideoConstraint,
     compute_recommendation_digest,
 )
@@ -136,18 +134,12 @@ class GrowthAnalysisService:
 
         try:
             draft = GrowthRecommendationDraft.model_validate_json(raw_result)
-            self._validate_draft_contract(
-                draft,
-                context=context,
-                observation_supported=observation_supported,
-                copy_supported=copy_supported,
-                expected_video_platform=expected_video_platform,
-                product_facts=product_facts,
-            )
             recommendation = self._materialize_recommendation(
                 draft,
                 context=context,
                 product_facts=product_facts,
+                copy_platforms=sorted(copy_supported),
+                video_platform=expected_video_platform,
             )
         except (ValidationError, ValueError) as exc:
             metadata = provider_failure_metadata(
@@ -193,169 +185,41 @@ class GrowthAnalysisService:
             raise AppError("Qwen provider is not configured", status_code=503)
 
     @classmethod
-    def _validate_draft_contract(
-        cls,
-        draft: GrowthRecommendationDraft,
-        *,
-        context: FeedbackContextRead,
-        observation_supported: set[str],
-        copy_supported: set[str],
-        expected_video_platform: str,
-        product_facts: dict[str, str],
-    ) -> None:
-        output_copy_platforms = {item.platform for item in draft.copy_constraints}
-        if output_copy_platforms != copy_supported:
-            raise ValueError(
-                "copy constraints must cover the exact CopyMatrix platforms"
-            )
-        for item in draft.copy_constraints:
-            cls._validate_fact_ids(item.product_fact_ids, product_facts)
-        if draft.video_constraint.platform != expected_video_platform:
-            raise ValueError("video constraint must match exact VideoProject platform")
-        cls._validate_fact_ids(
-            draft.video_constraint.product_fact_ids,
-            product_facts,
-        )
-
-        for observation in draft.observations:
-            if (
-                observation.scope == "platform"
-                and observation.platform not in observation_supported
-            ):
-                raise ValueError(
-                    "platform observation has no matching Campaign metrics"
-                )
-            expected = cls._metric_value(
-                context,
-                scope=observation.scope,
-                platform=observation.platform,
-                metric=observation.metric,
-            )
-            if not cls._same_metric_value(observation.observed_value, expected):
-                raise ValueError(
-                    "observation value does not match backend-calculated metrics"
-                )
-        cls._validate_priority_coverage(draft, context)
-
-    @staticmethod
-    def _validate_fact_ids(
-        fact_ids: list[str],
-        product_facts: dict[str, str],
-    ) -> None:
-        if any(fact_id not in product_facts for fact_id in fact_ids):
-            raise ValueError("recommendation references an unknown product fact")
-
-    @classmethod
-    def _validate_priority_coverage(
-        cls,
-        draft: GrowthRecommendationDraft,
-        context: FeedbackContextRead,
-    ) -> None:
-        metrics = cls._platform_metric_map(context)
-        roas = [
-            (platform, item.roas)
-            for platform, item in metrics.items()
-            if item.roas is not None
-        ]
-        if roas:
-            lowest = min(value for _, value in roas)
-            highest = max(value for _, value in roas)
-            if not math.isclose(lowest, highest, rel_tol=1e-9, abs_tol=1e-9):
-                worst_platforms = {
-                    platform
-                    for platform, value in roas
-                    if math.isclose(value, lowest, rel_tol=1e-9, abs_tol=1e-9)
-                }
-                best_platforms = {
-                    platform
-                    for platform, value in roas
-                    if math.isclose(value, highest, rel_tol=1e-9, abs_tol=1e-9)
-                }
-                if not any(
-                    item.scope == "platform"
-                    and item.platform in worst_platforms
-                    and item.metric == "roas"
-                    and item.direction in {"improve", "investigate"}
-                    for item in draft.observations
-                ):
-                    raise ValueError("lowest ROAS platform must be prioritized")
-                if not any(
-                    item.scope == "platform"
-                    and item.platform in best_platforms
-                    and item.metric == "roas"
-                    and item.direction == "protect"
-                    for item in draft.observations
-                ):
-                    raise ValueError("highest ROAS platform must be protected")
-
-        cpa = [
-            (platform, item.cpa)
-            for platform, item in metrics.items()
-            if item.cpa is not None
-        ]
-        if cpa:
-            lowest = min(value for _, value in cpa)
-            highest = max(value for _, value in cpa)
-            if not math.isclose(lowest, highest, rel_tol=1e-9, abs_tol=1e-9):
-                worst_platforms = {
-                    platform
-                    for platform, value in cpa
-                    if math.isclose(value, highest, rel_tol=1e-9, abs_tol=1e-9)
-                }
-                if not any(
-                    item.scope == "platform"
-                    and item.platform in worst_platforms
-                    and item.metric == "cpa"
-                    and item.direction == "investigate"
-                    for item in draft.observations
-                ):
-                    raise ValueError("highest CPA platform must be investigated")
-
-    @classmethod
     def _materialize_recommendation(
         cls,
         draft: GrowthRecommendationDraft,
         *,
         context: FeedbackContextRead,
         product_facts: dict[str, str],
+        copy_platforms: list[str],
+        video_platform: str,
     ) -> GrowthRecommendationConstraints:
-        observations = [
-            GrowthObservation(
-                scope=item.scope,
-                platform=item.platform,
-                metric=item.metric,
-                direction=item.direction,
-                hypothesis=cls._observation_text(item, context),
-            )
-            for item in draft.observations
-        ]
+        observations = cls._deterministic_observations(context)
+        trusted_facts = list(product_facts.values())[:3]
+        copy = draft.copy_strategy
         copy_constraints = [
             GrowthCopyConstraint(
-                platform=item.platform,
-                hook_direction=item.hook_direction,
-                message_angle=item.message_angle,
-                cta_direction=item.cta_direction,
-                must_preserve=[
-                    product_facts[fact_id] for fact_id in item.product_fact_ids
-                ],
-                must_avoid=list(item.risk_controls),
+                platform=platform,
+                hook_direction=copy.hook_direction,
+                message_angle=copy.message_angle,
+                cta_direction=copy.cta_direction,
+                must_preserve=trusted_facts,
+                must_avoid=list(copy.risk_controls),
             )
-            for item in draft.copy_constraints
+            for platform in copy_platforms
         ]
-        video = draft.video_constraint
+        video = draft.video_strategy
         return GrowthRecommendationConstraints(
             summary=cls._summary_text(context),
             observations=observations,
             copy_constraints=copy_constraints,
             video_constraint=GrowthVideoConstraint(
-                platform=video.platform,
+                platform=video_platform,
                 opening_hook_direction=video.opening_hook_direction,
                 visual_focus=video.visual_focus,
                 pacing_direction=video.pacing_direction,
                 cta_direction=video.cta_direction,
-                must_preserve=[
-                    product_facts[fact_id] for fact_id in video.product_fact_ids
-                ],
+                must_preserve=trusted_facts,
                 must_avoid=list(video.risk_controls),
             ),
             budget_guidance=cls._budget_guidance_text(
@@ -365,15 +229,105 @@ class GrowthAnalysisService:
         )
 
     @classmethod
+    def _deterministic_observations(
+        cls,
+        context: FeedbackContextRead,
+    ) -> list[GrowthObservation]:
+        metrics = cls._platform_metric_map(context)
+        observations: list[GrowthObservation] = []
+        roas = sorted(
+            (
+                (platform, item.roas)
+                for platform, item in metrics.items()
+                if item.roas is not None
+            ),
+            key=lambda item: (item[1], item[0]),
+        )
+        if len(roas) >= 2 and roas[0][1] != roas[-1][1]:
+            observations.append(
+                cls._make_observation(
+                    context,
+                    scope="platform",
+                    platform=roas[0][0],
+                    metric="roas",
+                    direction="improve",
+                )
+            )
+            observations.append(
+                cls._make_observation(
+                    context,
+                    scope="platform",
+                    platform=roas[-1][0],
+                    metric="roas",
+                    direction="protect",
+                )
+            )
+
+        cpa = sorted(
+            (
+                (platform, item.cpa)
+                for platform, item in metrics.items()
+                if item.cpa is not None
+            ),
+            key=lambda item: (item[1], item[0]),
+        )
+        if len(cpa) >= 2 and cpa[0][1] != cpa[-1][1]:
+            observations.append(
+                cls._make_observation(
+                    context,
+                    scope="platform",
+                    platform=cpa[-1][0],
+                    metric="cpa",
+                    direction="investigate",
+                )
+            )
+
+        if not observations:
+            observations.append(
+                cls._make_observation(
+                    context,
+                    scope="overall",
+                    platform=None,
+                    metric="ctr",
+                    direction="test",
+                )
+            )
+        return observations
+
+    @classmethod
+    def _make_observation(
+        cls,
+        context: FeedbackContextRead,
+        *,
+        scope: str,
+        platform: str | None,
+        metric: str,
+        direction: str,
+    ) -> GrowthObservation:
+        return GrowthObservation(
+            scope=scope,
+            platform=platform,
+            metric=metric,
+            direction=direction,
+            hypothesis=cls._observation_text(
+                context,
+                scope=scope,
+                platform=platform,
+                metric=metric,
+                direction=direction,
+            ),
+        )
+
+    @classmethod
     def _observation_text(
         cls,
-        observation: GrowthRecommendationDraftObservation,
         context: FeedbackContextRead,
+        *,
+        scope: str,
+        platform: str | None,
+        metric: str,
+        direction: str,
     ) -> str:
-        scope = observation.scope
-        platform = observation.platform
-        metric = observation.metric
-        direction = observation.direction
         value = cls._metric_value(
             context,
             scope=scope,
@@ -471,15 +425,6 @@ class GrowthAnalysisService:
         return None if value is None else float(value)
 
     @staticmethod
-    def _same_metric_value(
-        actual: float | None,
-        expected: float | None,
-    ) -> bool:
-        if actual is None or expected is None:
-            return actual is expected
-        return math.isclose(actual, expected, rel_tol=1e-9, abs_tol=1e-9)
-
-    @staticmethod
     def _format_metric(metric: str, value: float | None) -> str:
         if value is None:
             return "暂无可计算值"
@@ -563,11 +508,11 @@ class GrowthAnalysisService:
             },
         }
         payload = {
-            "allowed_observation_platforms": sorted(allowed_observation_platforms),
-            "allowed_copy_constraint_platforms": sorted(
-                allowed_copy_constraint_platforms
+            "backend_owned_observation_platforms": sorted(
+                allowed_observation_platforms
             ),
-            "required_video_constraint_platform": (required_video_constraint_platform),
+            "backend_owned_copy_platforms": sorted(allowed_copy_constraint_platforms),
+            "backend_owned_video_platform": required_video_constraint_platform,
             "verified_product_facts": [
                 {"id": fact_id, "text": text} for fact_id, text in product_facts.items()
             ],
@@ -577,16 +522,16 @@ class GrowthAnalysisService:
         }
         return (
             "只返回一个严格符合 required_output_schema 的 JSON 对象。所有策略"
-            "字段只能选择 Schema 中给出的中文枚举值，不得输出自由文本。每条"
-            "观察必须原样复制 Backend 计算的对应 observed_value，禁止重算、"
-            "四舍五入或把总体指标归到某个平台。copy_constraints 必须完整覆盖"
-            " allowed_copy_constraint_platforms；video_constraint 必须使用"
-            " required_video_constraint_platform。商品卖点只能通过"
-            " verified_product_facts 中的 fact_N 编号引用，禁止改写、翻译或新增"
-            "卖点。必须优先覆盖最低 ROAS、最高 CPA，并保护最高 ROAS；若数值"
-            "并列则无需虚构差异。广告指标仅代表商品级表现，不能证明当前文案、"
-            "视频或素材造成结果。不得生成文案或视频、修改预算、发布广告、执行"
-            "自动操作，也不得返回商品编号、摘要、内容链编号、权限、Provider"
-            " 数据或额外字段。上下文：\n"
+            "字段只能选择 Schema 中给出的中文枚举值，不得输出自由文本。平台、"
+            "指标数值、观察结论及摘要全部由 Backend 生成，禁止在输出中返回任何"
+            "平台名、指标名或数值。copy_strategy 会由 Backend 应用到精确文案"
+            "平台，video_strategy 会由 Backend 应用到精确视频平台。商品卖点"
+            "由 Backend 从 verified_product_facts 中直接注入，模型不得返回、"
+            "改写、翻译或新增卖点。Backend 会确定性识别最低 ROAS、最高 CPA"
+            "和最高 ROAS，模型"
+            "不得自行声明归因。广告指标仅代表商品级表现，不能证明当前文案、视频"
+            "或素材造成结果。不得生成文案或视频、修改预算、发布广告、执行自动"
+            "操作，也不得返回商品编号、摘要、内容链编号、权限、Provider 数据"
+            "或额外字段。上下文：\n"
             f"{json.dumps(payload, ensure_ascii=False, separators=(',', ':'))}"
         )
