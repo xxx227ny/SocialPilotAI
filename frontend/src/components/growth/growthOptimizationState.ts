@@ -112,13 +112,25 @@ export function canEvaluateAutomation(
   context: FeedbackContext,
   busy: boolean,
 ): boolean {
-  return Boolean(
-    !busy &&
-      control?.mode === "AUTO_SANDBOX" &&
-      !control.kill_switch_engaged &&
-      run?.status === "ACTIVE" &&
-      run.source_context_digest === context.context_digest,
-  );
+  return automationEvaluationBlockReason(control, run, context, busy) === null;
+}
+
+export function automationEvaluationBlockReason(
+  control: GrowthAutomationControl | null,
+  run: GrowthOptimizationRun | null,
+  context: FeedbackContext,
+  busy: boolean,
+): string | null {
+  if (busy) return "正在处理上一项操作，请稍候。";
+  if (!control) return "自动化控制尚未读取完成。";
+  if (control.mode !== "AUTO_SANDBOX") return "请先切换到自动沙箱并保存。";
+  if (control.kill_switch_engaged) return "紧急停止开关已开启，自动评估不会执行。";
+  if (!run || run.status !== "ACTIVE") return "当前没有已激活的内部方案。";
+  if (run.product_id !== context.product_id) return "当前方案不属于所选商品。";
+  if (run.source_context_digest !== context.context_digest) {
+    return "投放数据或内容链已变化，请先生成新的内部方案。";
+  }
+  return null;
 }
 
 export function automationEvaluationIdempotencyKey(

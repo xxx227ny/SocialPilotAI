@@ -39,6 +39,12 @@ try {
   assert.deepEqual(state.mergeOptimizationExecution([execution(1, "SUCCEEDED")], execution(1, "ROLLED_BACK")), [execution(1, "ROLLED_BACK")]);
   const automation = { mode: "AUTO_SANDBOX", kill_switch_engaged: false };
   assert.equal(state.canEvaluateAutomation(automation, active, context, false), true);
+  assert.equal(state.automationEvaluationBlockReason(automation, active, context, false), null);
+  assert.equal(state.automationEvaluationBlockReason(null, active, context, false), "自动化控制尚未读取完成。");
+  assert.equal(state.automationEvaluationBlockReason({ ...automation, mode: "MANUAL" }, active, context, false), "请先切换到自动沙箱并保存。");
+  assert.equal(state.automationEvaluationBlockReason({ ...automation, kill_switch_engaged: true }, active, context, false), "紧急停止开关已开启，自动评估不会执行。");
+  assert.equal(state.automationEvaluationBlockReason(automation, null, context, false), "当前没有已激活的内部方案。");
+  assert.equal(state.automationEvaluationBlockReason(automation, { ...active, source_context_digest: "c".repeat(64) }, context, false), "投放数据或内容链已变化，请先生成新的内部方案。");
   assert.equal(state.canEvaluateAutomation({ ...automation, kill_switch_engaged: true }, active, context, false), false);
   assert.equal(state.canEvaluateAutomation({ ...automation, mode: "MANUAL" }, active, context, false), false);
   assert.equal(state.canEvaluateAutomation(automation, active, context, true), false);
@@ -119,6 +125,8 @@ try {
   assert.match(panel, /resolution_status === "UNRESOLVED"/);
   assert.match(parent, /replanResolved/);
   assert.match(panel, /我确认自动模式仅运行SocialPilot AI沙箱/);
+  assert.match(panel, /automationMessage/);
+  assert.match(panel, /自动评估当前不可用/);
   assert.match(panel, /仅内部方案 · 外部广告平台未连接/);
   assert.match(panel, /本地安全沙箱/);
   assert.match(panel, /CYCLE_STATUS_LABELS/);

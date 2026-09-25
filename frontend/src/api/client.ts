@@ -86,6 +86,18 @@ const SAFE_PROVIDER_MESSAGES: Record<string, string> = {
     "Qwen V2 Copy响应未通过严格Schema校验；本次结果未保存。",
   "Qwen returned invalid V2 VideoProject data":
     "Qwen V2 VideoProject响应未通过严格Schema校验；本次结果未保存。",
+  "Growth automation is not in AUTO_SANDBOX mode":
+    "当前不是自动沙箱模式；请先保存自动化控制。",
+  "Growth automation Kill Switch is engaged":
+    "紧急停止开关已开启，自动评估不会执行。",
+  "An active growth optimization plan is required":
+    "当前没有已激活的内部预算方案。",
+  "Automatic plan exceeds the total budget safety limit":
+    "自动方案超过总预算安全上限，已阻止执行。",
+  "Automatic plan exceeds the budget change safety limit":
+    "自动方案超过单平台预算变动安全上限，已阻止执行。",
+  "Automatic plan exceeds the bid safety limit":
+    "自动方案超过竞价调整安全上限，已阻止执行。",
 };
 
 const PROVIDER_FAILURE_PHASES = new Set<ProviderFailurePhase>([

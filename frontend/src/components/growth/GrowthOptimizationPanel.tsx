@@ -29,6 +29,7 @@ import type {
 } from "../../types/growth";
 import {
   activeOptimizationRun,
+  automationEvaluationBlockReason,
   automationEvaluationIdempotencyKey,
   canEvaluateAutomation,
   canRequestQwenReplan,
@@ -156,6 +157,7 @@ export function GrowthOptimizationPanel({
   const [executionKey, setExecutionKey] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [automationMessage, setAutomationMessage] = useState("");
   const [autoRefresh, setAutoRefresh] = useState(false);
   const operation = useRef(0);
 
@@ -183,6 +185,7 @@ export function GrowthOptimizationPanel({
     setExecutionConfirmed(false);
     setExecutionKey("");
     setMessage("");
+    setAutomationMessage("");
     void Promise.all([
       listGrowthOptimizationRuns(productId, controller.signal),
       listGrowthOptimizationExecutions(productId, controller.signal),
@@ -404,6 +407,7 @@ export function GrowthOptimizationPanel({
     const controller = new AbortController();
     setBusy(true);
     setMessage("");
+    setAutomationMessage("");
     try {
       const saved = await updateGrowthAutomationControl(
         productId,
@@ -422,14 +426,17 @@ export function GrowthOptimizationPanel({
         confirm_auto_sandbox: false,
       }));
       setAutomationConfirmed(false);
-      setMessage(
+      const status =
         saved.mode === "AUTO_SANDBOX" && !saved.kill_switch_engaged
           ? "自动沙箱已启用；所有动作仍只进入本地沙箱。"
-          : "自动化控制已保存，当前不会自动执行。",
-      );
+          : "自动化控制已保存，当前不会自动执行。";
+      setMessage(status);
+      setAutomationMessage(status);
     } catch (error) {
       if (request === operation.current) {
-        setMessage(getApiErrorMessage(error, "自动化控制保存失败。"));
+        const status = getApiErrorMessage(error, "自动化控制保存失败。");
+        setMessage(status);
+        setAutomationMessage(status);
       }
     } finally {
       if (request === operation.current) setBusy(false);
@@ -441,6 +448,7 @@ export function GrowthOptimizationPanel({
     const request = ++operation.current;
     setBusy(true);
     setMessage("");
+    setAutomationMessage("");
     try {
       const stopped = await engageGrowthAutomationKillSwitch(productId);
       if (request !== operation.current) return;
@@ -452,10 +460,15 @@ export function GrowthOptimizationPanel({
         confirm_auto_sandbox: false,
       }));
       setAutomationConfirmed(false);
-      setMessage("紧急停止开关已开启；后续自动评估全部阻断。现有历史不会删除。");
+      const status =
+        "紧急停止开关已开启；后续自动评估全部阻断。现有历史不会删除。";
+      setMessage(status);
+      setAutomationMessage(status);
     } catch (error) {
       if (request === operation.current) {
-        setMessage(getApiErrorMessage(error, "Kill Switch操作失败。"));
+        const status = getApiErrorMessage(error, "紧急停止开关操作失败。");
+        setMessage(status);
+        setAutomationMessage(status);
       }
     } finally {
       if (request === operation.current) setBusy(false);
@@ -463,12 +476,20 @@ export function GrowthOptimizationPanel({
   }
 
   async function evaluateAutomation() {
-    if (!canEvaluateAutomation(automation, active, context, busy) || !active) {
+    const blocked = automationEvaluationBlockReason(
+      automation,
+      active,
+      context,
+      busy,
+    );
+    if (blocked || !active) {
+      setAutomationMessage(blocked ?? "当前没有可评估的内部方案。");
       return;
     }
     const request = ++operation.current;
     setBusy(true);
     setMessage("");
+    setAutomationMessage("");
     try {
       const result = await evaluateGrowthAutomation(
         productId,
@@ -483,14 +504,20 @@ export function GrowthOptimizationPanel({
       setExecutions((items) => mergeOptimizationExecution(items, result.execution));
       setAutomation(await getGrowthAutomationControl(productId));
       if (request !== operation.current) return;
-      setMessage(
+      const status =
         result.reused
           ? `已恢复自动沙箱执行 #${result.execution.id}。`
-          : `自动策略已通过全部上限并完成执行 #${result.execution.id}；真实平台未修改。`,
-      );
+          : `自动策略已通过全部上限并完成执行 #${result.execution.id}；真实平台未修改。`;
+      setMessage(status);
+      setAutomationMessage(status);
     } catch (error) {
       if (request === operation.current) {
-        setMessage(getApiErrorMessage(error, "自动沙箱评估被安全门禁阻断。"));
+        const status = getApiErrorMessage(
+          error,
+          "自动沙箱评估被安全门禁阻断。",
+        );
+        setMessage(status);
+        setAutomationMessage(status);
       }
     } finally {
       if (request === operation.current) setBusy(false);
@@ -502,6 +529,7 @@ export function GrowthOptimizationPanel({
     const request = ++operation.current;
     setBusy(true);
     setMessage("");
+    setAutomationMessage("");
     try {
       const result = await runGrowthAutomationCycle(productId, true);
       if (request !== operation.current) return;
@@ -518,14 +546,17 @@ export function GrowthOptimizationPanel({
       if (request !== operation.current) return;
       setAutomation(saved);
       setExecutions(executionItems);
-      setMessage(
+      const status =
         result.cycle
           ? `监控周期 #${result.cycle.id}：${result.cycle.status}；模型调用0，真实广告修改0。`
-          : "当前周期尚未到期，没有写入审计记录。",
-      );
+          : "当前周期尚未到期，没有写入审计记录。";
+      setMessage(status);
+      setAutomationMessage(status);
     } catch (error) {
       if (request === operation.current) {
-        setMessage(getApiErrorMessage(error, "监控周期被安全门禁阻断。"));
+        const status = getApiErrorMessage(error, "监控周期被安全门禁阻断。");
+        setMessage(status);
+        setAutomationMessage(status);
       }
     } finally {
       if (request === operation.current) setBusy(false);
@@ -743,6 +774,28 @@ export function GrowthOptimizationPanel({
               立即运行一次监控周期
             </button>
           </div>
+          {automationMessage && (
+            <p className="growth-panel__status" role="status">
+              {automationMessage}
+            </p>
+          )}
+          {!automationMessage &&
+            automationEvaluationBlockReason(
+              automation,
+              active,
+              context,
+              busy,
+            ) && (
+              <p className="growth-panel__boundary">
+                自动评估当前不可用：
+                {automationEvaluationBlockReason(
+                  automation,
+                  active,
+                  context,
+                  busy,
+                )}
+              </p>
+            )}
           <p className="growth-panel__boundary">
             监控周期需由外部调度器按次启动；数据变化时只记录“需要重新规划”，不会偷偷调用千问。自动沙箱仍不连接广告平台。
           </p>
