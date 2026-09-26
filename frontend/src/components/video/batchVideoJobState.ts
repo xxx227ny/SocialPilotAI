@@ -66,6 +66,14 @@ export function clampBatchConcurrency(requested: number, totalVariants: number) 
   return Math.min(upperBound, Math.max(1, normalized));
 }
 
+export function newBatchIdempotencyKey() {
+  const randomId = globalThis.crypto?.randomUUID?.();
+  if (randomId) return `content-studio-${randomId}`;
+  const randomValues = new Uint32Array(4);
+  globalThis.crypto.getRandomValues(randomValues);
+  return `content-studio-${Date.now().toString(36)}-${Array.from(randomValues, (value) => value.toString(36)).join("-")}`;
+}
+
 export function beginBatchOperation(slot: BatchOperationSlot, operation: BatchOperation) {
   if (slot.current !== null) return false;
   slot.current = operation;

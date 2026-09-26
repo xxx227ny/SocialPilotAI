@@ -72,9 +72,10 @@ class BatchVideoJobService:
             if existing.request_digest != data.request_digest:
                 raise AppError("Idempotency key was used for different input", 409)
             return self._create_read(existing.id, reused=True)
-        digest_match = self.repository.get_by_digest(data.request_digest)
-        if digest_match is not None:
-            return self._create_read(digest_match.id, reused=True)
+        if data.reuse_identical:
+            digest_match = self.repository.get_by_digest(data.request_digest)
+            if digest_match is not None:
+                return self._create_read(digest_match.id, reused=True)
         expiry = data.preflight_expires_at.astimezone(UTC)
         if expiry <= datetime.now(UTC):
             raise AppError("Batch video Preflight has expired", 409)
@@ -129,9 +130,7 @@ class BatchVideoJobService:
                     brand_kit_version_id=plan.brand_kit_version_id,
                     brand_kit_version_digest=plan.brand_kit_version_digest,
                     source_digest=plan.source_digest,
-                    idempotency_key=(
-                        f"batch-variant:{batch.request_digest}:{plan.source_digest}"
-                    ),
+                    idempotency_key=f"batch-variant:{batch.id}:{plan.source_digest}",
                     status="WAITING",
                 )
                 self.session.add(variant)
@@ -144,9 +143,7 @@ class BatchVideoJobService:
                     source_type="batch_video_variant",
                     source_id=variant.id,
                     input_digest=variant.source_digest,
-                    idempotency_key=(
-                        f"batch-prepare:{batch.request_digest}:{variant.source_digest}"
-                    ),
+                    idempotency_key=f"batch-prepare:{batch.id}:{variant.source_digest}",
                     input_payload=payload.model_dump(mode="json"),
                     priority=batch.priority,
                     concurrency_key=(
@@ -166,7 +163,7 @@ class BatchVideoJobService:
         except (IntegrityError, OperationalError):
             self.session.rollback()
             concurrent = self.repository.get_by_idempotency(data.idempotency_key)
-            if concurrent is None:
+            if concurrent is None and data.reuse_identical:
                 concurrent = self.repository.get_by_digest(data.request_digest)
             if concurrent is None:
                 raise

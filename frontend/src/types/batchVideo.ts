@@ -21,6 +21,7 @@ export interface BatchVideoRequest {
   max_concurrency: number;
   creative_angle: string | null;
   idempotency_key: string;
+  reuse_identical: boolean;
 }
 
 export interface BatchVideoPreflight {

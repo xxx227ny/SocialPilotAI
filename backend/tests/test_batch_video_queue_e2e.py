@@ -47,6 +47,7 @@ def _submit(
     key: str = "batch-queue-e2e",
     *,
     max_concurrency: int = 3,
+    reuse_identical: bool = True,
 ):
     request = BatchVideoRequest(
         product_ids=ids,
@@ -55,6 +56,7 @@ def _submit(
         language="zh-CN",
         max_concurrency=max_concurrency,
         idempotency_key=key,
+        reuse_identical=reuse_identical,
     )
     checked = BatchVideoPreflightService(session).run(request)
     return BatchVideoJobService(session).create(
@@ -135,6 +137,56 @@ def test_exact_expansion_idempotency_worker_and_provider_free(tmp_path: Path) ->
             sum(item.provider_call_count for item in session.query(ExecutionAttempt))
             == 0
         )
+    engine.dispose()
+
+
+def test_explicit_new_run_keeps_idempotency_but_creates_distinct_batch(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "batch-repeatable.db"
+    engine = create_engine(
+        f"sqlite:///{database.as_posix()}",
+        connect_args={"check_same_thread": False, "timeout": 10},
+    )
+    Base.metadata.create_all(engine)
+    sessions = sessionmaker(bind=engine, expire_on_commit=False)
+    with sessions() as session:
+        ids = [item.id for item in _products(session)]
+        first = _submit(
+            session,
+            ids,
+            "batch-repeatable-first",
+            reuse_identical=False,
+        )
+        repeated_first = _submit(
+            session,
+            ids,
+            "batch-repeatable-first",
+            reuse_identical=False,
+        )
+        second = _submit(
+            session,
+            ids,
+            "batch-repeatable-second",
+            reuse_identical=False,
+        )
+
+        assert first.reused is False
+        assert repeated_first.reused is True
+        assert repeated_first.batch.id == first.batch.id
+        assert second.reused is False
+        assert second.batch.id != first.batch.id
+        assert second.batch.request_digest == first.batch.request_digest
+        assert {item.id for item in first.variants}.isdisjoint(
+            item.id for item in second.variants
+        )
+        assert session.query(BatchVideoJob).count() == 2
+        assert session.query(BatchVideoVariant).count() == 36
+        assert session.query(ExecutionJob).count() == 36
+        assert len(
+            {item.idempotency_key for item in session.query(BatchVideoVariant)}
+        ) == 36
+        assert len({item.idempotency_key for item in session.query(ExecutionJob)}) == 36
     engine.dispose()
 
 

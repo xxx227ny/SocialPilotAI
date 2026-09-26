@@ -23,6 +23,7 @@ class BatchVideoRequest(BaseModel):
     idempotency_key: str = Field(
         min_length=8, max_length=200, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]+$"
     )
+    reuse_identical: bool = True
 
     @field_validator("creative_angle")
     @classmethod

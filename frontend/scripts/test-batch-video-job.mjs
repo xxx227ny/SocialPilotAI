@@ -43,6 +43,7 @@ try {
   assert.equal(state.clampBatchConcurrency(3, 3), 3);
   assert.equal(state.clampBatchConcurrency(0, 3), 1);
   assert.equal(state.clampBatchConcurrency(Number.NaN, 3), 1);
+  assert.match(state.newBatchIdempotencyKey(), /^content-studio-[A-Za-z0-9-]+$/);
   behaviorScenarios += 1;
 
   const first = { id: 1, batchId: null, controller: new AbortController() };
@@ -222,6 +223,8 @@ try {
     "orchestration_only",
     "downstreamCostLabel",
     "按精确Batch ID恢复",
+    "预检并创建全新批次",
+    "reuse_identical: false",
     "createBatchWorkflow",
     "recoverExactBatchWorkflow",
     "controlBatchWorkflow",

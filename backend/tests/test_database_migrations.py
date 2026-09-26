@@ -1027,7 +1027,7 @@ def test_stage3f_head_contains_product_media_bridge_columns(tmp_path: Path) -> N
         }
     finally:
         connection.close()
-    assert HEAD_REVISION == "0034_publish_final_video_artifacts"
+    assert HEAD_REVISION == "0035_repeatable_batch_video_runs"
     assert {"provider_region", "provider_workspace_ref"} <= credential_columns
     assert {
         "scope_hash",
@@ -1149,6 +1149,31 @@ def test_0033_database_is_safely_upgraded_to_publish_final_video_head(
 
     assert before.revision == migration_service.WORKSPACE_PRODUCT_NUMBERS_REVISION
     assert before.upgrade_required is True
+    assert result.previous_revision == before.revision
+    assert result.current_revision == HEAD_REVISION
+    assert len(list(backups.glob("*.manifest.json"))) == 1
+    assert result.backup_manifest_path is not None
+    assert get_database_migration_status(database).state == "head"
+
+
+def test_0034_database_is_safely_upgraded_to_repeatable_batch_head(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "publish-final-video.db"
+    backups = tmp_path / "backups"
+    migration_service._run_alembic(  # noqa: SLF001
+        database,
+        "upgrade",
+        migration_service.PUBLISH_FINAL_VIDEO_ARTIFACTS_REVISION,
+    )
+
+    before = get_database_migration_status(database)
+    assert before.state == "publish_final_video_artifacts_runtime"
+    assert before.revision == migration_service.PUBLISH_FINAL_VIDEO_ARTIFACTS_REVISION
+    assert before.upgrade_required is True
+
+    result = upgrade_sqlite_database(database, backups)
+
     assert result.previous_revision == before.revision
     assert result.current_revision == HEAD_REVISION
     assert len(list(backups.glob("*.manifest.json"))) == 1

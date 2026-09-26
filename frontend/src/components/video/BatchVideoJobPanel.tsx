@@ -25,6 +25,7 @@ import {
   expandedVariantCount,
   finishBatchOperation,
   isCurrentBatchOperation,
+  newBatchIdempotencyKey,
   pollBatchSerial,
   recoverExactBatchWorkflow,
   type BatchOperation,
@@ -101,7 +102,8 @@ export function BatchVideoJobPanel() {
     priority: 50,
     max_concurrency: clampBatchConcurrency(maxConcurrency, total),
     creative_angle: null,
-    idempotency_key: `content-studio-${productIds.join("-")}-${platforms.join("-")}-${variantsPerPlatform}`,
+    idempotency_key: newBatchIdempotencyKey(),
+    reuse_identical: false,
   });
 
   const start = (batchId: number | null) => {
@@ -148,7 +150,7 @@ export function BatchVideoJobPanel() {
       if (!isCurrentBatchOperation(operation, slot.current.current)) return;
       setResult(created);
       setBatchIdInput(String(created.batch.id));
-      setMessage(created.reused ? "已恢复完全相同的Batch。" : "Batch与变体已原子创建。 ");
+      setMessage(created.reused ? "已恢复本次创建请求的Batch。" : `已创建全新Batch #${created.batch.id}。`);
       startPolling(created.batch.id);
     } catch {
       if (!operation.controller.signal.aborted) setMessage("Backend请求失败；结果未被假定为成功。请按精确Batch ID恢复。");
@@ -217,7 +219,7 @@ export function BatchVideoJobPanel() {
         <label>最大并发<input type="number" min="1" max={Math.max(1, Math.min(20, total))} value={maxConcurrency} onChange={(event) => setMaxConcurrency(clampBatchConcurrency(Number(event.target.value), total))} /></label>
       </div>
       <p><strong>{total}</strong> 个独立变体 · 15秒 · 9:16 · zh-CN</p>
-      <div className="batch-video-panel__actions"><button disabled={total === 0} onClick={() => void submit()}>Preflight并创建</button><input aria-label="精确Batch ID" value={batchIdInput} onChange={(event) => setBatchIdInput(event.target.value)} /><button onClick={() => void refresh()}>按ID恢复</button></div>
+      <div className="batch-video-panel__actions"><button disabled={total === 0} onClick={() => void submit()}>预检并创建全新批次</button><input aria-label="精确Batch ID" value={batchIdInput} onChange={(event) => setBatchIdInput(event.target.value)} /><button onClick={() => void refresh()}>按ID恢复旧批次</button></div>
       {message && <p role="status">{message}</p>}
       {result && <><div className="batch-video-panel__actions"><button onClick={() => void control("pause")}>暂停</button><button onClick={() => void control("resume")}>恢复</button><button onClick={() => void control("cancel")}>取消</button></div><p>普通用户无需逐个平台填写脚本；“等待生成脚本”表示变体已准备好，但脚本尚未创建。请前往“一键商品视频”，系统会自动生成并激活三平台脚本。</p><table><thead><tr><th>ID</th><th>商品</th><th>平台</th><th>变体</th><th>状态</th></tr></thead><tbody>{result.variants.map((variant) => { const product = products.find((item) => item.id === variant.product_id); return <tr key={variant.id}><td>{variant.id}</td><td>{product ? `#${productDisplayNumber(product)} · ${product.name}` : "商品记录不可用"}</td><td>{variant.platform}</td><td>{variant.variant_index}</td><td>{BATCH_STATUS_LABELS[variant.status] ?? variant.status}</td></tr>; })}</tbody></table></>}
     </section>

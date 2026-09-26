@@ -52,7 +52,8 @@ ACCOUNT_ACTION_TOKENS_REVISION = "0031_account_action_tokens"
 PRODUCT_CREATE_IDEMPOTENCY_REVISION = "0032_product_create_idempotency"
 WORKSPACE_PRODUCT_NUMBERS_REVISION = "0033_workspace_product_numbers"
 PUBLISH_FINAL_VIDEO_ARTIFACTS_REVISION = "0034_publish_final_video_artifacts"
-HEAD_REVISION = PUBLISH_FINAL_VIDEO_ARTIFACTS_REVISION
+REPEATABLE_BATCH_VIDEO_RUNS_REVISION = "0035_repeatable_batch_video_runs"
+HEAD_REVISION = REPEATABLE_BATCH_VIDEO_RUNS_REVISION
 UNVERSIONED = "unversioned"
 MANIFEST_VERSION = 1
 ALEMBIC_INI = Path(__file__).resolve().parents[2] / "alembic.ini"
@@ -306,6 +307,7 @@ def expected_schema_fingerprint(revision: str) -> str:
         ACCOUNT_ACTION_TOKENS_REVISION,
         PRODUCT_CREATE_IDEMPOTENCY_REVISION,
         WORKSPACE_PRODUCT_NUMBERS_REVISION,
+        PUBLISH_FINAL_VIDEO_ARTIFACTS_REVISION,
         HEAD_REVISION,
     }:
         raise ValueError(f"Unknown expected revision: {revision}")
@@ -703,6 +705,7 @@ def get_database_migration_status(database_path: Path) -> DatabaseMigrationStatu
             ACCOUNT_ACTION_TOKENS_REVISION,
             PRODUCT_CREATE_IDEMPOTENCY_REVISION,
             WORKSPACE_PRODUCT_NUMBERS_REVISION,
+            PUBLISH_FINAL_VIDEO_ARTIFACTS_REVISION,
             HEAD_REVISION,
         }:
             raise IncompatibleSchemaError("Unsupported Alembic revision")
@@ -756,6 +759,9 @@ def get_database_migration_status(database_path: Path) -> DatabaseMigrationStatu
                 "product_create_idempotency_runtime"
             ),
             WORKSPACE_PRODUCT_NUMBERS_REVISION: "workspace_product_numbers_runtime",
+            PUBLISH_FINAL_VIDEO_ARTIFACTS_REVISION: (
+                "publish_final_video_artifacts_runtime"
+            ),
         }
         return DatabaseMigrationStatus(
             state=state_by_revision[revision],
@@ -852,6 +858,7 @@ def _upgrade_sqlite_database_unlocked(
                     ACCOUNT_ACTION_TOKENS_REVISION,
                     PRODUCT_CREATE_IDEMPOTENCY_REVISION,
                     WORKSPACE_PRODUCT_NUMBERS_REVISION,
+                    PUBLISH_FINAL_VIDEO_ARTIFACTS_REVISION,
                     HEAD_REVISION,
                 }:
                     raise IncompatibleSchemaError(

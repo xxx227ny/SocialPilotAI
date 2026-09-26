@@ -9,6 +9,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
@@ -23,7 +24,7 @@ from app.models.product import utc_now
 class BatchVideoJob(Base):
     __tablename__ = "batch_video_jobs"
     __table_args__ = (
-        UniqueConstraint("request_digest", name="uq_batch_video_jobs_digest"),
+        Index("ix_batch_video_jobs_request_digest", "request_digest"),
         UniqueConstraint("idempotency_key", name="uq_batch_video_jobs_idempotency"),
         CheckConstraint("variant_count > 0", name="ck_batch_video_jobs_variant_count"),
         CheckConstraint(
