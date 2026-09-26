@@ -54,9 +54,13 @@ class QwenProvider(TextGenerationProvider):
                 raise ProviderConfigurationError("Qwen endpoint is invalid")
 
         self.model = app_settings.qwen_model
-        endpoint = effective_qwen_endpoint(app_settings) or QWEN_BASE_URL
-        self._fallback_endpoint = _shared_qwen_fallback_endpoint(endpoint)
-        self._using_fallback_endpoint = False
+        configured_endpoint = effective_qwen_endpoint(app_settings) or QWEN_BASE_URL
+        shared_endpoint = _shared_qwen_endpoint(configured_endpoint)
+        # Beijing workspace API keys are valid on the same-region shared
+        # compatible endpoint.  Prefer it before submitting any request so a
+        # dedicated workspace node cannot accept a request and then leave the
+        # result indeterminate while the client waits for the response.
+        endpoint = shared_endpoint or configured_endpoint
         timeout = httpx.Timeout(
             timeout=app_settings.qwen_timeout,
             connect=app_settings.qwen_connect_timeout,
@@ -73,37 +77,33 @@ class QwenProvider(TextGenerationProvider):
         )
 
     def generate(self, prompt: str) -> str:
-        while True:
-            try:
-                completion = self._create_completion(prompt)
-                break
-            except openai.APIStatusError as exc:
-                code, request_id = self._safe_response_identifiers(exc)
-                metadata = metadata_for_http_failure(
-                    provider="qwen",
-                    phase="generation",
-                    http_status=exc.status_code,
-                    provider_code=code,
-                    request_id=request_id,
-                    response_from_provider=not self._is_proxy_response(exc),
-                )
-                raise provider_error_from_metadata(metadata) from exc
-            except (openai.APITimeoutError, openai.APIConnectionError) as exc:
-                metadata = metadata_for_transport_failure(
-                    provider="qwen", phase="generation", error=exc
-                )
-                if self._activate_safe_connect_fallback(metadata, exc):
-                    continue
-                raise provider_error_from_metadata(metadata) from exc
-            except openai.OpenAIError as exc:
-                metadata = provider_failure_metadata(
-                    provider="qwen",
-                    phase="connect",
-                    provider_code="connection_failed_unknown",
-                    uncertain=False,
-                    potentially_billable=False,
-                )
-                raise provider_error_from_metadata(metadata) from exc
+        try:
+            completion = self._create_completion(prompt)
+        except openai.APIStatusError as exc:
+            code, request_id = self._safe_response_identifiers(exc)
+            metadata = metadata_for_http_failure(
+                provider="qwen",
+                phase="generation",
+                http_status=exc.status_code,
+                provider_code=code,
+                request_id=request_id,
+                response_from_provider=not self._is_proxy_response(exc),
+            )
+            raise provider_error_from_metadata(metadata) from exc
+        except (openai.APITimeoutError, openai.APIConnectionError) as exc:
+            metadata = metadata_for_transport_failure(
+                provider="qwen", phase="generation", error=exc
+            )
+            raise provider_error_from_metadata(metadata) from exc
+        except openai.OpenAIError as exc:
+            metadata = provider_failure_metadata(
+                provider="qwen",
+                phase="connect",
+                provider_code="connection_failed_unknown",
+                uncertain=False,
+                potentially_billable=False,
+            )
+            raise provider_error_from_metadata(metadata) from exc
 
         if not completion.choices:
             raise self._invalid_output_error()
@@ -129,25 +129,6 @@ class QwenProvider(TextGenerationProvider):
             response_format={"type": "json_object"},
             extra_body={"enable_thinking": False},
         )
-
-    def _activate_safe_connect_fallback(
-        self, metadata: object, error: BaseException
-    ) -> bool:
-        if self._using_fallback_endpoint or self._fallback_endpoint is None:
-            return False
-        if _contains_exception(error, (httpx.PoolTimeout, httpx.ProxyError)):
-            return False
-        if not _contains_exception(error, (httpx.ConnectError, httpx.ConnectTimeout)):
-            return False
-        if (
-            getattr(metadata, "phase", None) != "connect"
-            or bool(getattr(metadata, "uncertain", True))
-            or bool(getattr(metadata, "potentially_billable", True))
-        ):
-            return False
-        self.client.base_url = self._fallback_endpoint
-        self._using_fallback_endpoint = True
-        return True
 
     @staticmethod
     def _invalid_output_error() -> ProviderModelError:
@@ -186,8 +167,8 @@ class QwenProvider(TextGenerationProvider):
         return code, request_id
 
 
-def _shared_qwen_fallback_endpoint(endpoint: str) -> str | None:
-    """Return the same-region shared endpoint for a dedicated Beijing workspace."""
+def _shared_qwen_endpoint(endpoint: str) -> str | None:
+    """Return the shared endpoint for a dedicated Beijing workspace URL."""
     try:
         parsed = urlsplit(endpoint)
     except ValueError:
@@ -204,16 +185,3 @@ def _shared_qwen_fallback_endpoint(endpoint: str) -> str | None:
     ):
         return QWEN_BASE_URL
     return None
-
-
-def _contains_exception(
-    error: BaseException, expected: tuple[type[BaseException], ...]
-) -> bool:
-    current: BaseException | None = error
-    visited: set[int] = set()
-    while current is not None and id(current) not in visited:
-        if isinstance(current, expected):
-            return True
-        visited.add(id(current))
-        current = current.__cause__ or current.__context__
-    return False

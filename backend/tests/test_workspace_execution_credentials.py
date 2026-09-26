@@ -93,7 +93,7 @@ def test_http_workspace_settings_carry_verified_provider_profile(
     qwen = QwenProvider(resolved)
     wanx = WanxProvider(resolved)
     try:
-        assert expected_host in str(qwen.client.base_url)
+        assert "dashscope.aliyuncs.com" in str(qwen.client.base_url)
         assert expected_host in wanx.endpoint
     finally:
         qwen.client.close()

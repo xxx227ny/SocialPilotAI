@@ -89,7 +89,7 @@ def test_qwen_provider_rejects_empty_model_text() -> None:
         provider.generate("Return JSON")
 
 
-def test_qwen_provider_safely_falls_back_after_pre_submission_connect_timeout() -> None:
+def test_qwen_provider_prefers_shared_endpoint_for_beijing_workspace() -> None:
     endpoint = (
         "https://workspace-12.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
     )
@@ -101,33 +101,13 @@ def test_qwen_provider_safely_falls_back_after_pre_submission_connect_timeout() 
             qwen_model="qwen-plus",
         )
     )
-    provider.client = Mock()
-    request = httpx.Request("POST", f"{endpoint}/chat/completions")
-    connect_timeout = httpx.ConnectTimeout(
-        "dedicated endpoint timed out", request=request
-    )
-    try:
-        raise openai.APITimeoutError(request=request) from connect_timeout
-    except openai.APITimeoutError as timeout_error:
-        provider.client.chat.completions.create.side_effect = [
-            timeout_error,
-            SimpleNamespace(
-                choices=[
-                    SimpleNamespace(
-                        message=SimpleNamespace(content='{"ok": true}')
-                    )
-                ]
-            ),
-        ]
-
-    assert provider.generate("Return JSON") == '{"ok": true}'
-    assert provider.client.chat.completions.create.call_count == 2
     assert str(provider.client.base_url).rstrip("/") == (
         "https://dashscope.aliyuncs.com/compatible-mode/v1"
     )
+    provider.client.close()
 
 
-def test_qwen_provider_fallback_changes_the_real_openai_request_host() -> None:
+def test_qwen_provider_never_submits_to_dedicated_beijing_workspace_host() -> None:
     endpoint = (
         "https://workspace-12.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
     )
@@ -135,8 +115,6 @@ def test_qwen_provider_fallback_changes_the_real_openai_request_host() -> None:
 
     def handler(request: httpx.Request) -> httpx.Response:
         requests.append(request)
-        if request.url.host == "workspace-12.cn-beijing.maas.aliyuncs.com":
-            raise httpx.ConnectTimeout("dedicated endpoint timed out", request=request)
         return httpx.Response(
             200,
             request=request,
@@ -169,7 +147,7 @@ def test_qwen_provider_fallback_changes_the_real_openai_request_host() -> None:
     provider.client.close()
     provider.client = openai.OpenAI(
         api_key="unit-test-placeholder",
-        base_url=endpoint,
+        base_url=provider.client.base_url,
         http_client=httpx.Client(
             transport=httpx.MockTransport(handler),
             trust_env=True,
@@ -178,10 +156,7 @@ def test_qwen_provider_fallback_changes_the_real_openai_request_host() -> None:
     )
 
     assert provider.generate("Return JSON") == '{"ok": true}'
-    assert [request.url.host for request in requests] == [
-        "workspace-12.cn-beijing.maas.aliyuncs.com",
-        "dashscope.aliyuncs.com",
-    ]
+    assert [request.url.host for request in requests] == ["dashscope.aliyuncs.com"]
 
 
 def test_qwen_provider_never_falls_back_after_response_timeout() -> None:
@@ -197,7 +172,9 @@ def test_qwen_provider_never_falls_back_after_response_timeout() -> None:
         )
     )
     provider.client = Mock()
-    request = httpx.Request("POST", f"{endpoint}/chat/completions")
+    request = httpx.Request(
+        "POST", "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
+    )
     read_timeout = httpx.ReadTimeout("response timed out", request=request)
     try:
         raise openai.APITimeoutError(request=request) from read_timeout
