@@ -515,10 +515,14 @@ export function CopyPreflightPanel({
           {job.status === "FAILED" ? (
             <div className="strategy-operation-issue" role="alert">
               <strong>任务确定失败</strong>
-              <p>不会自动重试。确认原因已修复后，可由用户显式重试。</p>
+              <p>
+                {job.safe_error_code === "COPY_CONNECT_TIMEOUT"
+                  ? "连接千问超时，本次请求未提交且不会扣费。系统不会自动重试；你可以手动重试一次，重试成功连接后可能产生费用。"
+                  : "不会自动重试。确认原因已修复后，可由用户手动重试。"}
+              </p>
               {copyJobAllowsExplicitRetry(job) ? (
                 <button type="button" className="button button--secondary" onClick={() => void retryFailedJob()}>
-                  显式重试
+                  手动重试一次
                 </button>
               ) : null}
             </div>

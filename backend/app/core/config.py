@@ -67,7 +67,7 @@ class Settings(BaseSettings):
     qwen_model: str = "qwen-plus"
     qwen_endpoint: str | None = None
     qwen_timeout: float = Field(default=120, gt=0, le=120)
-    qwen_connect_timeout: float = Field(default=10, gt=0, le=30)
+    qwen_connect_timeout: float = Field(default=30, gt=0, le=30)
     qwen_read_timeout: float = Field(default=120, gt=0, le=120)
     qwen_write_timeout: float = Field(default=30, gt=0, le=60)
     qwen_pool_timeout: float = Field(default=10, gt=0, le=30)

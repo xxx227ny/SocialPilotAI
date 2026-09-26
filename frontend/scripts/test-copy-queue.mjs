@@ -64,6 +64,26 @@ try {
     false,
   );
   assert.equal(
+    state.copyJobAllowsExplicitRetry({
+      ...base,
+      status: "FAILED",
+      attempt_count: 1,
+      max_attempts: 1,
+      safe_error_code: "COPY_CONNECT_TIMEOUT",
+    }),
+    true,
+  );
+  assert.equal(
+    state.copyJobAllowsExplicitRetry({
+      ...base,
+      status: "FAILED",
+      attempt_count: 1,
+      max_attempts: 2,
+      safe_error_code: "COPY_CONNECT_TIMEOUT",
+    }),
+    true,
+  );
+  assert.equal(
     state.copyJobAllowsExplicitRetry({ ...base, status: "SUBMIT_UNKNOWN", uncertain: true }),
     false,
   );

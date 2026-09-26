@@ -26,6 +26,8 @@ from app.schemas.execution import (
 
 _SAFE_ERROR_CODE = re.compile(r"^[A-Z][A-Z0-9_]{0,99}$")
 _RUNNING_CONCURRENCY_INDEX = "uq_execution_jobs_running_concurrency_key"
+_QWEN_COPY_MATRIX_JOB_TYPE = "qwen.copy_matrix.generate.v1"
+_QWEN_COPY_CONNECT_TIMEOUT = "COPY_CONNECT_TIMEOUT"
 MAX_CLAIM_CONCURRENCY_RETRIES = 2
 
 
@@ -149,13 +151,35 @@ class ExecutionQueueService:
         if job.status != "FAILED" or job.uncertain:
             raise AppError("Only certain failed jobs can be retried", 409)
         if job.attempt_count >= job.max_attempts:
-            raise AppError("Execution job has exhausted its maximum attempts", 409)
+            if self._can_extend_legacy_copy_connect_retry(job):
+                # Copy jobs created before the guarded explicit-retry release used
+                # max_attempts=1. Extend only a proven pre-submission connect timeout;
+                # uncertain or potentially billable attempts remain non-retryable.
+                job.max_attempts = job.attempt_count + 1
+            else:
+                raise AppError("Execution job has exhausted its maximum attempts", 409)
         job.status = "QUEUED"
         job.safe_error_code = None
         job.safe_error_details = None
         job.completed_at = None
         self.session.commit()
         return self._read(job.id)
+
+    def _can_extend_legacy_copy_connect_retry(self, job: ExecutionJob) -> bool:
+        if (
+            job.job_type != _QWEN_COPY_MATRIX_JOB_TYPE
+            or job.safe_error_code != _QWEN_COPY_CONNECT_TIMEOUT
+            or job.max_attempts != 1
+            or job.attempt_count != 1
+        ):
+            return False
+        attempt = self.repository.latest_attempt(job.id)
+        return bool(
+            attempt is not None
+            and attempt.status == "FAILED"
+            and attempt.provider_submission_state == "NOT_SUBMITTED"
+            and attempt.safe_error_code == _QWEN_COPY_CONNECT_TIMEOUT
+        )
 
     def claim(self, data: ExecutionJobClaimRequest) -> ExecutionJobRead | None:
         workspace_id = self.session.info.get("workspace_id")

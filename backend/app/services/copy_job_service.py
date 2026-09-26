@@ -86,7 +86,9 @@ class CopyJobService:
                 estimated_cost=self.settings.qwen_copy_estimated_cost,
                 currency=self.settings.qwen_copy_cost_currency.upper(),
                 cost_confirmed=data.cost_confirmed,
-                max_attempts=1,
+                # One initial attempt plus one user-confirmed retry. The queue never
+                # retries provider work automatically.
+                max_attempts=2,
             )
         )
 

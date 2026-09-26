@@ -68,10 +68,15 @@ export function copyJobNeedsPolling(job: ExecutionJob | null): boolean {
 export function copyJobAllowsExplicitRetry(
   job: ExecutionJob | null,
 ): boolean {
+  const isLegacySafeConnectTimeout =
+    job?.job_type === QWEN_COPY_MATRIX_JOB_TYPE &&
+    job.safe_error_code === "COPY_CONNECT_TIMEOUT" &&
+    job.attempt_count === 1 &&
+    job.max_attempts === 1;
   return Boolean(
     job?.status === "FAILED" &&
       !job.uncertain &&
-      job.attempt_count < job.max_attempts,
+      (job.attempt_count < job.max_attempts || isLegacySafeConnectTimeout),
   );
 }
 

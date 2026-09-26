@@ -14,6 +14,10 @@ from app.execution.worker import ExecutionWorker, WorkerRunStatus
 from app.main import app
 from app.models import CopyMatrix, ExecutionAttempt, ExecutionJob, MarketingStrategy
 from app.providers import TextGenerationProvider
+from app.providers.live_configuration import (
+    provider_error_from_metadata,
+    provider_failure_metadata,
+)
 from app.schemas.copy import CopyJobEnqueueRequest
 from app.services.copy_job_service import CopyJobService
 from app.services.copy_preflight import CopyPreflightService
@@ -68,6 +72,18 @@ class FakeQwenFactory:
         assert settings.qwen_model == "qwen-plus"
         self.state["constructed"] += 1
         return FakeQwenProvider(self.state, self.error)
+
+
+def connect_timeout_error() -> Exception:
+    return provider_error_from_metadata(
+        provider_failure_metadata(
+            provider="qwen",
+            phase="connect",
+            provider_code="connect_timeout",
+            uncertain=False,
+            potentially_billable=False,
+        )
+    )
 
 
 def create_source(client: TestClient, db_session: Session) -> tuple[dict, dict, int]:
@@ -222,7 +238,7 @@ def test_http_enqueue_and_fake_worker_end_to_end(
     assert first.json()["reused"] is False
     assert second.json()["reused"] is True
     assert first.json()["job"]["id"] == second.json()["job"]["id"]
-    assert first.json()["job"]["max_attempts"] == 1
+    assert first.json()["job"]["max_attempts"] == 2
     assert first.json()["job"]["estimated_cost"] == "0.05"
     assert first.json()["job"]["currency"] == "CNY"
     assert factory.state == {"constructed": 0, "calls": 0}
@@ -367,3 +383,90 @@ def test_provider_exception_remains_submit_unknown(
     )
     assert retry.status_code == 409
     assert db_session.scalar(select(func.count(CopyMatrix.id))) == 0
+
+
+def test_connect_timeout_requires_explicit_retry_and_then_succeeds(
+    client: TestClient, db_session: Session
+) -> None:
+    app.dependency_overrides[get_settings] = queue_settings
+    product, task, strategy_id = create_source(client, db_session)
+    created = enqueue(
+        client,
+        task["id"],
+        product["id"],
+        strategy_id,
+        preflight(client, task["id"], strategy_id),
+    ).json()
+    factory = FakeQwenFactory(error=connect_timeout_error())
+
+    failed = worker(db_session, factory, "copy-connect-timeout-worker").run_once()
+    assert failed.status == WorkerRunStatus.FAILED
+    assert factory.state["calls"] == 1
+    job = client.get(f"/api/v1/execution-jobs/{created['job']['id']}").json()
+    assert job["status"] == "FAILED"
+    assert job["attempt_count"] == 1
+    assert job["max_attempts"] == 2
+    assert job["safe_error_code"] == "COPY_CONNECT_TIMEOUT"
+    assert job["attempts"][-1]["provider_submission_state"] == "NOT_SUBMITTED"
+
+    # A failed job stays failed until the user explicitly requests the retry.
+    idle = worker(db_session, factory, "copy-no-auto-retry-worker").run_once()
+    assert idle.status == WorkerRunStatus.NO_JOB
+    factory.error = None
+    retried = client.post(
+        f"/api/v1/execution-jobs/{created['job']['id']}/retry",
+        json={"retry_confirmed": True},
+    )
+    assert retried.status_code == 200, retried.text
+    assert retried.json()["status"] == "QUEUED"
+
+    completed = worker(db_session, factory, "copy-explicit-retry-worker").run_once()
+    assert completed.status == WorkerRunStatus.SUCCEEDED
+    final = client.get(f"/api/v1/execution-jobs/{created['job']['id']}").json()
+    assert final["status"] == "SUCCEEDED"
+    assert final["attempt_count"] == 2
+    assert db_session.scalar(select(func.count(CopyMatrix.id))) == 1
+
+
+def test_legacy_connect_timeout_gets_one_safe_explicit_retry(
+    client: TestClient, db_session: Session
+) -> None:
+    app.dependency_overrides[get_settings] = queue_settings
+    product, task, strategy_id = create_source(client, db_session)
+    created = enqueue(
+        client,
+        task["id"],
+        product["id"],
+        strategy_id,
+        preflight(client, task["id"], strategy_id),
+    ).json()
+    job_id = created["job"]["id"]
+    legacy_job = db_session.get(ExecutionJob, job_id)
+    assert legacy_job is not None
+    legacy_job.max_attempts = 1
+    db_session.commit()
+    db_session.expunge(legacy_job)
+    factory = FakeQwenFactory(error=connect_timeout_error())
+
+    failed = worker(db_session, factory, "copy-legacy-timeout-worker").run_once()
+    assert failed.status == WorkerRunStatus.FAILED
+    observed = client.get(f"/api/v1/execution-jobs/{job_id}")
+    assert observed.status_code == 200, observed.text
+    assert observed.json()["status"] == "FAILED", observed.text
+    assert observed.json()["uncertain"] is False, observed.text
+    retried = client.post(
+        f"/api/v1/execution-jobs/{job_id}/retry",
+        json={"retry_confirmed": True},
+    )
+    assert retried.status_code == 200, retried.text
+    assert retried.json()["status"] == "QUEUED"
+    assert retried.json()["max_attempts"] == 2
+
+    factory.error = None
+    completed = worker(db_session, factory, "copy-legacy-retry-worker").run_once()
+    assert completed.status == WorkerRunStatus.SUCCEEDED
+    second_retry = client.post(
+        f"/api/v1/execution-jobs/{job_id}/retry",
+        json={"retry_confirmed": True},
+    )
+    assert second_retry.status_code == 409
