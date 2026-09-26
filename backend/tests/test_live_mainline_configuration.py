@@ -430,6 +430,9 @@ def test_qwen_transport_failures_are_phase_aware(
     request = httpx.Request("POST", "https://safe.invalid")
     transport_error.request = request
     provider = QwenProvider(strict_settings())
+    # This test isolates failure classification. Dedicated-endpoint failover is
+    # covered separately in test_qwen_provider.py.
+    provider._fallback_endpoint = None
     provider.client = Mock()
     provider.client.chat.completions.create.side_effect = qwen_transport_error(
         transport_error
