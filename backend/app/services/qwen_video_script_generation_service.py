@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from pydantic import ValidationError
@@ -35,12 +36,20 @@ def validate_narration_language(
     output: QwenScriptProviderOutput, *, language: str
 ) -> None:
     """Reject a provider response that ignores the frozen narration language."""
+    validate_narration_language_values(
+        [scene.narration for scene in output.scenes], language=language
+    )
+
+
+def validate_narration_language_values(
+    narrations: Sequence[str], *, language: str
+) -> None:
+    """Validate stored or newly generated narration against the frozen language."""
     normalized_language = language.strip().lower()
     if not (normalized_language == "zh" or normalized_language.startswith("zh-")):
         return
-    scenes = sorted(output.scenes, key=lambda item: item.sequence)
-    cjk_counts = [len(_CJK_CHARACTER.findall(scene.narration)) for scene in scenes]
-    latin_count = sum(len(_LATIN_WORD.findall(scene.narration)) for scene in scenes)
+    cjk_counts = [len(_CJK_CHARACTER.findall(value)) for value in narrations]
+    latin_count = sum(len(_LATIN_WORD.findall(value)) for value in narrations)
     if any(count < 2 for count in cjk_counts) or sum(cjk_counts) < max(12, latin_count):
         raise AppError("Qwen narration did not use the requested Chinese language", 422)
 
@@ -87,11 +96,7 @@ def select_timed_narration(
     contradictory English word-budget rejection.
     """
     scenes = sorted(output.scenes, key=lambda item: item.sequence)
-    if (
-        not scenes
-        or min_words < 1
-        or (max_words is not None and max_words < min_words)
-    ):
+    if not scenes or min_words < 1 or (max_words is not None and max_words < min_words):
         raise AppError("Qwen script has no usable narration", 422)
     narration = " ".join(scene.narration.strip() for scene in scenes)
     word_count = len(narration.split())

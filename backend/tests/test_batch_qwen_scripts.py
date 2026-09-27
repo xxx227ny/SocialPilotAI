@@ -1,12 +1,72 @@
+import json
+from datetime import UTC, datetime
+
 from sqlalchemy.orm import sessionmaker
 
 from app.core.config import get_settings
 from app.execution.worker import WorkerRunStatus
 from app.main import app
 from app.models import BatchVideoVariant, ExecutionAttempt, ExecutionJob
+from app.schemas.video_script_version import (
+    QwenScriptPreflightRead,
+    QwenScriptProviderOutput,
+)
+from app.services.video_script_version_service import VideoScriptVersionService
 from tests.test_qwen_video_script_preflight import qwen_settings, strategy_for
 from tests.test_qwen_video_script_queue_e2e import FakeQwen, worker
 from tests.test_video_script_preflight import ready_variant
+
+CHINESE_RESPONSE = json.dumps(
+    {
+        "title": "桌面工作灯",
+        "concept": "展示照明和充电操作",
+        "hook": "桌面更整洁",
+        "cta": "查看商品详情",
+        "scenes": [
+            {
+                "sequence": 1,
+                "start_ms": 0,
+                "end_ms": 3000,
+                "shot_type": "wide",
+                "visual_description": "展示商品",
+                "action_description": "打开台灯",
+                "narration": "桌面照明充电一步到位。",
+                "subtitle_draft": "桌面照明充电一步到位。",
+            },
+            {
+                "sequence": 2,
+                "start_ms": 3000,
+                "end_ms": 8000,
+                "shot_type": "close",
+                "visual_description": "展示灯臂与亮度调节",
+                "action_description": "调节灯臂并放置手机",
+                "narration": "展开灯臂，调节亮度，同时为手机无线充电。",
+                "subtitle_draft": "展开灯臂，调节亮度，同时为手机无线充电。",
+            },
+            {
+                "sequence": 3,
+                "start_ms": 8000,
+                "end_ms": 12000,
+                "shot_type": "proof",
+                "visual_description": "展示底座与触控操作",
+                "action_description": "操作触控按键",
+                "narration": "稳固底座节省空间，触控操作简单清晰。",
+                "subtitle_draft": "稳固底座节省空间，触控操作简单清晰。",
+            },
+            {
+                "sequence": 4,
+                "start_ms": 12000,
+                "end_ms": 15000,
+                "shot_type": "hero",
+                "visual_description": "展示完整商品",
+                "action_description": "呈现商品和行动指引",
+                "narration": "选择GlowNest，让桌面更整洁。",
+                "subtitle_draft": "选择GlowNest，让桌面更整洁。",
+            },
+        ],
+    },
+    ensure_ascii=False,
+)
 
 
 def three_ready_variants(session):
@@ -115,7 +175,7 @@ def test_batch_qwen_preflight_enqueue_recover_and_activate_exact_versions(
     factory = sessionmaker(
         bind=db_session.get_bind(), autoflush=False, expire_on_commit=False
     )
-    fake = FakeQwen()
+    fake = FakeQwen(CHINESE_RESPONSE)
     execution_worker = worker(factory, fake, settings)
     assert [execution_worker.run_once().status for _ in range(3)] == [
         WorkerRunStatus.SUCCEEDED,
@@ -225,3 +285,75 @@ def test_single_platform_qwen_preflight_has_single_platform_costs(
     assert checked["total_known_cost_min"] == "2.67"
     assert checked["total_known_cost_max"] == "2.73"
     assert db_session.query(ExecutionJob).count() == before
+
+
+def test_batch_qwen_does_not_recover_legacy_english_result_for_chinese_variant(
+    client, db_session
+) -> None:
+    batch, variants = three_ready_variants(db_session)
+    batch.qwen_script_call_quota = 1
+    strategy = strategy_for(db_session, variants[0].product_id)
+    settings = qwen_settings()
+    app.dependency_overrides[get_settings] = lambda: settings
+    request = {
+        "product_id": variants[0].product_id,
+        "variant_ids": [variants[0].id],
+        "strategy_id": strategy.id,
+        "copy_matrix_id": None,
+    }
+
+    checked_response = client.post(
+        f"/api/v1/batch-video-jobs/{batch.id}/qwen-scripts/preflight",
+        json=request,
+    )
+    assert checked_response.status_code == 200
+    checked = checked_response.json()
+    created_response = client.post(
+        f"/api/v1/batch-video-jobs/{batch.id}/qwen-scripts",
+        json={
+            **request,
+            "preflight_digest": checked["preflight_digest"],
+            "preflight_expires_at": checked["expires_at"],
+            "cost_confirmed": True,
+        },
+    )
+    assert created_response.status_code == 201
+    job = db_session.get(ExecutionJob, created_response.json()["items"][0]["job"]["id"])
+    assert job is not None
+    version = VideoScriptVersionService(db_session).create_qwen_generated(
+        checked=QwenScriptPreflightRead.model_validate(checked["items"][0]),
+        output=QwenScriptProviderOutput.model_validate_json(FakeQwen().response),
+        execution_job_id=job.id,
+        prompt_snapshot={},
+        prompt_digest="a" * 64,
+        provider_response_digest="b" * 64,
+    )
+    job.status = "SUCCEEDED"
+    job.completed_at = datetime.now(UTC)
+    job.provider_name = "qwen"
+    job.result_entity_type = "video_script_version"
+    job.result_entity_id = version.id
+    db_session.commit()
+
+    recovery_response = client.post(
+        f"/api/v1/batch-video-jobs/{batch.id}/qwen-scripts/preflight",
+        json=request,
+    )
+    assert recovery_response.status_code == 200
+    recovery = recovery_response.json()
+    assert recovery["ready_for_execution"] is False
+    assert recovery["items"][0]["quota_remaining"] == 0
+    assert recovery["estimated_provider_calls"] == 1
+
+    rejected = client.post(
+        f"/api/v1/batch-video-jobs/{batch.id}/qwen-scripts",
+        json={
+            **request,
+            "preflight_digest": recovery["preflight_digest"],
+            "preflight_expires_at": recovery["expires_at"],
+            "cost_confirmed": True,
+        },
+    )
+    assert rejected.status_code == 409
+    db_session.refresh(variants[0])
+    assert variants[0].active_script_version_id is None

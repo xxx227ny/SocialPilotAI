@@ -30,6 +30,7 @@ from app.schemas.video_script_version import (
 )
 from app.services.qwen_video_script_generation_service import (
     TIMED_FOUR_ACT_SCENE_COUNT,
+    validate_narration_language_values,
 )
 from app.services.qwen_video_script_job_service import QwenVideoScriptJobService
 from app.services.qwen_video_script_preflight import QwenVideoScriptPreflightService
@@ -163,6 +164,8 @@ class BatchQwenScriptService:
         )
         if checked.preflight_digest != data.preflight_digest:
             raise AppError("Batch Qwen script Preflight changed", 409)
+        if not checked.ready_for_execution:
+            raise AppError("Batch Qwen script Preflight is not ready", 409)
         items: list[BatchQwenScriptItemRead] = []
         for item in checked.items:
             request = self._request_from_checked(batch_id, data, item)
@@ -245,10 +248,27 @@ class BatchQwenScriptService:
             request.idempotency_key,
             checked.frozen_input_digest,
         )
-        return bool(
-            existing
-            and existing.job.status in {"QUEUED", "PAUSED", "RUNNING", "SUCCEEDED"}
-        )
+        if existing is None or existing.job.status not in {
+            "QUEUED",
+            "PAUSED",
+            "RUNNING",
+            "SUCCEEDED",
+        }:
+            return False
+        if existing.job.status != "SUCCEEDED":
+            return True
+        try:
+            version_id = self._result_version(variant_id, existing.job)
+            version = self.session.get(VideoScriptVersion, version_id)
+            if version is None or version.language != checked.language:
+                return False
+            validate_narration_language_values(
+                [scene.narration for scene in version.scenes],
+                language=checked.language,
+            )
+        except AppError:
+            return False
+        return True
 
     @staticmethod
     def _request(

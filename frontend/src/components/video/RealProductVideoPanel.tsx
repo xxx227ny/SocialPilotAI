@@ -6,9 +6,11 @@ import {
   isUnconfirmedApiMutation,
 } from "../../api/client";
 import {
+  createBatchVideo,
   createOrRecoverBatchQwenScripts,
   getProductVideoWorkflowContext,
   listBatchVideoVariants,
+  preflightBatchVideo,
   preflightBatchQwenScripts,
 } from "../../api/batchVideoJobs";
 import {
@@ -58,6 +60,8 @@ import type {
   BatchPlatform,
   BatchQwenScriptPreflight,
   BatchQwenScriptRequest,
+  BatchVideoRequest,
+  BatchVideoVariant,
 } from "../../types/batchVideo";
 import type {
   ProductVideoProductionItem,
@@ -87,6 +91,7 @@ import {
   selectThreePlatformSources,
   shouldMonitorProductionBatch,
 } from "./realProductVideoState";
+import { newBatchIdempotencyKey } from "./batchVideoJobState";
 
 const MOTIONS = ["zoom_in", "pan_right", "zoom_out", "pan_left"] as const;
 
@@ -928,9 +933,8 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
   }
 
   async function checkOneClickPreflight() {
-    const batchId = Number(scriptBatchId);
+    let batchId = Number(scriptBatchId);
     const inputIssue = oneClickPreflightInputIssue(
-      batchId,
       strategyId,
       Boolean(referenceAsset),
     );
@@ -947,26 +951,71 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
     setMessage(checkingMessage);
     setOneClickFeedback(checkingMessage);
     try {
-      const variants = await listBatchVideoVariants(batchId, active.signal);
-      const request = buildBatchQwenScriptRequest(
+      let variants = Number.isInteger(batchId) && batchId > 0
+        ? await listBatchVideoVariants(batchId, active.signal)
+        : [];
+      let request = buildBatchQwenScriptRequest(
         variants,
         product.id,
         strategyId,
         copyMatrixId,
       );
+      let createdFreshBatch = false;
       if (!request) {
-        const feedback = oneClickBatchRequirementMessage(variants, product.id, batchId) ?? "当前批次不满足三平台生成条件。";
-        setMessage(feedback);
-        setOneClickFeedback(feedback);
-        return;
+        const fresh = await createFreshScriptBatch(
+          ["youtube", "tiktok", "instagram"],
+          active,
+        );
+        batchId = fresh.batchId;
+        variants = fresh.variants;
+        createdFreshBatch = true;
+        request = buildBatchQwenScriptRequest(
+          variants,
+          product.id,
+          strategyId,
+          copyMatrixId,
+        );
+        if (!request) {
+          throw new Error(
+            oneClickBatchRequirementMessage(variants, product.id, batchId) ??
+              "全新脚本批次不满足三平台生成条件。",
+          );
+        }
       }
-      const fallback = await preflightBatchScriptsWithCopyFallback(
+      let fallback = await preflightBatchScriptsWithCopyFallback(
         request,
         (current) =>
           preflightBatchQwenScripts(batchId, current, active.signal),
         (error) =>
           hasApiErrorMessage(error, "Target-platform copy is unavailable"),
       );
+      if (
+        !fallback.checked.ready_for_execution &&
+        fallback.checked.items.some((item) => item.quota_remaining <= 0)
+      ) {
+        const fresh = await createFreshScriptBatch(
+          ["youtube", "tiktok", "instagram"],
+          active,
+        );
+        batchId = fresh.batchId;
+        const freshRequest = buildBatchQwenScriptRequest(
+          fresh.variants,
+          product.id,
+          strategyId,
+          fallback.request.copy_matrix_id,
+        );
+        if (!freshRequest) {
+          throw new Error("全新脚本批次未能准备三平台变体。");
+        }
+        fallback = await preflightBatchScriptsWithCopyFallback(
+          freshRequest,
+          (current) =>
+            preflightBatchQwenScripts(batchId, current, active.signal),
+          (error) =>
+            hasApiErrorMessage(error, "Target-platform copy is unavailable"),
+        );
+        createdFreshBatch = true;
+      }
       const checked = fallback.checked;
       if (fallback.ignoredIncompatibleCopyMatrix) {
         setCopyMatrixId(null);
@@ -982,7 +1031,9 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
         String(batchId),
       );
       const feedback = checked.ready_for_execution
-        ? fallback.ignoredIncompatibleCopyMatrix
+        ? createdFreshBatch
+          ? "旧批次脚本额度已用完，系统已自动创建全新脚本批次；完整链路检查已通过，请确认调用次数和费用。"
+          : fallback.ignoredIncompatibleCopyMatrix
           ? "文案矩阵不含 YouTube 文案，系统已自动改用商品资料与营销策略生成三平台脚本。完整链路检查已通过，请确认调用次数和费用。"
           : "完整链路检查已通过，请确认模型调用次数和费用。"
         : oneClickBlockedMessage(checked);
@@ -997,9 +1048,8 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
   }
 
   async function checkSinglePlatformPreflight() {
-    const batchId = Number(scriptBatchId);
+    let batchId = Number(scriptBatchId);
     const inputIssue = oneClickPreflightInputIssue(
-      batchId,
       strategyId,
       Boolean(referenceAsset),
     );
@@ -1017,27 +1067,65 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
     setMessage(checkingMessage);
     setSingleFeedback(checkingMessage);
     try {
-      const variants = await listBatchVideoVariants(batchId, active.signal);
-      const request = buildSinglePlatformQwenScriptRequest(
+      let variants = Number.isInteger(batchId) && batchId > 0
+        ? await listBatchVideoVariants(batchId, active.signal)
+        : [];
+      let request = buildSinglePlatformQwenScriptRequest(
         variants,
         product.id,
         singlePlatform,
         strategyId,
         copyMatrixId,
       );
+      let createdFreshBatch = false;
       if (!request) {
-        const feedback = `当前批次没有可用于 ${label} 的“等待生成脚本”变体。请在“批量任务”中为该平台创建任务后重试。`;
-        setMessage(feedback);
-        setSingleFeedback(feedback);
-        return;
+        const fresh = await createFreshScriptBatch([singlePlatform], active);
+        batchId = fresh.batchId;
+        variants = fresh.variants;
+        createdFreshBatch = true;
+        request = buildSinglePlatformQwenScriptRequest(
+          variants,
+          product.id,
+          singlePlatform,
+          strategyId,
+          copyMatrixId,
+        );
+        if (!request) {
+          throw new Error(`全新脚本批次未能准备 ${label} 变体。`);
+        }
       }
-      const fallback = await preflightBatchScriptsWithCopyFallback(
+      let fallback = await preflightBatchScriptsWithCopyFallback(
         request,
         (current) =>
           preflightBatchQwenScripts(batchId, current, active.signal),
         (error) =>
           hasApiErrorMessage(error, "Target-platform copy is unavailable"),
       );
+      if (
+        !fallback.checked.ready_for_execution &&
+        fallback.checked.items.some((item) => item.quota_remaining <= 0)
+      ) {
+        const fresh = await createFreshScriptBatch([singlePlatform], active);
+        batchId = fresh.batchId;
+        const freshRequest = buildSinglePlatformQwenScriptRequest(
+          fresh.variants,
+          product.id,
+          singlePlatform,
+          strategyId,
+          fallback.request.copy_matrix_id,
+        );
+        if (!freshRequest) {
+          throw new Error(`全新脚本批次未能准备 ${label} 变体。`);
+        }
+        fallback = await preflightBatchScriptsWithCopyFallback(
+          freshRequest,
+          (current) =>
+            preflightBatchQwenScripts(batchId, current, active.signal),
+          (error) =>
+            hasApiErrorMessage(error, "Target-platform copy is unavailable"),
+        );
+        createdFreshBatch = true;
+      }
       if (!operation.current.current(active.id)) return;
       if (fallback.ignoredIncompatibleCopyMatrix) {
         setCopyMatrixId(null);
@@ -1052,7 +1140,9 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
         String(batchId),
       );
       const feedback = fallback.checked.ready_for_execution
-        ? fallback.ignoredIncompatibleCopyMatrix
+        ? createdFreshBatch
+          ? `旧批次脚本额度已用完，系统已自动创建 ${label} 全新脚本批次；检查已通过，请确认费用。`
+          : fallback.ignoredIncompatibleCopyMatrix
           ? `${label} 文案不在当前文案矩阵中，系统已安全改用商品资料与营销策略；检查已通过，请确认费用。`
           : `${label} 单平台完整链路检查已通过，请确认调用次数和费用。`
         : oneClickBlockedMessage(fallback.checked);
@@ -1064,6 +1154,57 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
       setMessage(feedback);
       setSingleFeedback(feedback);
     }
+  }
+
+  async function createFreshScriptBatch(
+    platforms: BatchPlatform[],
+    active: { id: number; signal: AbortSignal },
+  ): Promise<{ batchId: number; variants: BatchVideoVariant[] }> {
+    const request: BatchVideoRequest = {
+      product_ids: [product.id],
+      platforms,
+      variants_per_platform: 1,
+      duration_seconds: 15,
+      aspect_ratio: "9:16",
+      language: "zh-CN",
+      priority: 50,
+      max_concurrency: platforms.length,
+      creative_angle: null,
+      idempotency_key: newBatchIdempotencyKey(),
+      reuse_identical: false,
+    };
+    setMessage("正在自动创建全新脚本批次，不会复用旧脚本……");
+    const checked = await preflightBatchVideo(request, active.signal);
+    if (!checked.ready) throw new Error("全新脚本批次前置检查未通过。");
+    const created = await createBatchVideo(request, checked, active.signal);
+    const batchId = created.batch.id;
+    setScriptBatchId(String(batchId));
+    window.localStorage.setItem(
+      `socialpilot.scriptBatch.${product.id}`,
+      String(batchId),
+    );
+    let variants = created.variants;
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      if (!operation.current.current(active.id)) {
+        throw new DOMException("Aborted", "AbortError");
+      }
+      if (
+        variants.length === platforms.length &&
+        variants.every((item) => item.status === "READY_FOR_SCRIPT")
+      ) {
+        return { batchId, variants };
+      }
+      if (
+        variants.some((item) =>
+          ["FAILED", "CANCELLED"].includes(item.status),
+        )
+      ) {
+        throw new Error("全新脚本批次编排失败，未调用千问。");
+      }
+      await waitForUnconfirmedAdvance(active.signal);
+      variants = await listBatchVideoVariants(batchId, active.signal);
+    }
+    throw new Error("全新脚本批次准备超时，未调用千问；稍后可重新检查。");
   }
 
   async function driveBatchQwenScripts(
@@ -1598,6 +1739,13 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
 
   async function cancelProductionBatch() {
     if (!production) return;
+    if (
+      !window.confirm(
+        "确认取消当前生产批次？取消后不会继续推进；已产生的模型费用和已完成结果会保留。",
+      )
+    ) {
+      return;
+    }
     const active = operation.current.begin();
     try {
       const cancelled = await cancelProductVideoProductionBatch(
@@ -1836,7 +1984,6 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
           >
             {singleFeedback ||
               oneClickPreflightInputIssue(
-                Number(scriptBatchId),
                 strategyId,
                 Boolean(referenceAsset),
               ) ||
@@ -1916,7 +2063,6 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
           >
             {oneClickFeedback ||
               oneClickPreflightInputIssue(
-                Number(scriptBatchId),
                 strategyId,
                 Boolean(referenceAsset),
               ) ||
@@ -2327,13 +2473,9 @@ function platformLabel(platform: BatchPlatform) {
 }
 
 function oneClickPreflightInputIssue(
-  batchId: number,
   strategyId: number,
   hasReferenceAsset: boolean,
 ) {
-  if (!Number.isInteger(batchId) || batchId <= 0) {
-    return "暂时不能检查：当前商品缺少可用视频批次。请先到“批量任务”选择商品和至少一个目标平台创建批次，再返回这里点击“自动匹配最新可用资料”。";
-  }
   if (!Number.isInteger(strategyId) || strategyId <= 0) {
     return "暂时不能检查：当前商品缺少营销策略，请先在“文案矩阵”生成并保存营销策略。";
   }
