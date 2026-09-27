@@ -26,6 +26,7 @@ from app.schemas.product_marketing_video import JobSubmitRead, VoiceoverSubmitRe
 from app.services.tts_provider import TtsProvider
 
 VOICEOVER_GENERATE_V1 = "tts.voiceover.generate.v1"
+MAX_VOICEOVER_TEMPO_RATIO = 1.30
 
 
 class VoiceoverExceedsTimeline(AppError):
@@ -242,7 +243,7 @@ class VoiceoverGenerationService:
             # overrun must not make an otherwise valid production fail. Preserve every
             # spoken word and pitch with ffmpeg's tempo filter, but keep rejecting
             # scripts that would require an unnaturally large speed-up.
-            if natural_frames > round(target_frames * 1.15):
+            if natural_frames > round(target_frames * MAX_VOICEOVER_TEMPO_RATIO):
                 raise VoiceoverExceedsTimeline(natural_duration_ms, target_duration_ms)
             ratio = natural_frames / target_frames
             with tempfile.TemporaryDirectory(prefix="socialpilot-voiceover-") as root:

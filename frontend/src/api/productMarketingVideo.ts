@@ -98,17 +98,23 @@ export const resumeProductVideoProductionBatch = (
   batchId: number,
   confirmUncertainVoiceoverReplacement = false,
   retryFailedImages = false,
+  retryTimelineVoiceover = false,
   signal?: AbortSignal,
 ) =>
   apiClient
     .post<ProductVideoProductionResult>(
       `/products/${productId}/real-product-video/production-batches/${batchId}/resume`,
-      confirmUncertainVoiceoverReplacement || retryFailedImages
+      confirmUncertainVoiceoverReplacement ||
+        retryFailedImages ||
+        retryTimelineVoiceover
         ? {
             ...(confirmUncertainVoiceoverReplacement
               ? { confirm_uncertain_voiceover_replacement: true }
               : {}),
             ...(retryFailedImages ? { retry_failed_images: true } : {}),
+            ...(retryTimelineVoiceover
+              ? { retry_timeline_voiceover: true }
+              : {}),
           }
         : undefined,
       { signal },

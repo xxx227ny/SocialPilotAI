@@ -83,6 +83,7 @@ from app.services.video_render_job_service import VideoRenderJobService
 from app.services.video_render_preflight import VideoRenderPreflightService
 from app.services.video_script_project_bridge import VideoScriptProjectBridge
 from app.services.voiceover_generation_service import (
+    MAX_VOICEOVER_TEMPO_RATIO,
     VOICEOVER_GENERATE_V1,
     VoiceoverGenerationService,
 )
@@ -100,6 +101,7 @@ MAX_VOICEOVER_EXPLICIT_RETRIES = 1
 MAX_VOICEOVER_CONFIG_RETRIES = 1
 MAX_VOICEOVER_MANUAL_RATE_LIMIT_RETRIES = 3
 MAX_VOICEOVER_UNCERTAIN_REPLACEMENTS = 1
+MAX_VOICEOVER_TIMELINE_RETRIES = 1
 PRODUCTION_VOICEOVER_SPEAKING_RATE = 1.08
 
 
@@ -244,6 +246,7 @@ class ProductVideoProductionBatchService:
         *,
         confirm_uncertain_voiceover_replacement: bool = False,
         retry_failed_images: bool = False,
+        retry_timeline_voiceover: bool = False,
     ) -> ProductVideoProductionCreateRead:
         batch = self._required(product_id, batch_id)
         if batch.status == "PAUSED":
@@ -274,6 +277,20 @@ class ProductVideoProductionBatchService:
                     if isinstance(voiceover_job_id, int)
                     else None
                 )
+                if (
+                    retry_timeline_voiceover
+                    and item.status == "FAILED"
+                    and item.safe_error_code
+                    == "PRODUCTION_VOICEOVER_EXCEEDS_TIMELINE"
+                    and item.stage == "GENERATING_VOICEOVER"
+                    and voiceover_job is not None
+                    and self._prepare_voice_timeline_recovery(item, voiceover_job)
+                ):
+                    item.status = "RUNNING"
+                    item.safe_error_code = None
+                    item.completed_at = None
+                    recovered = True
+                    continue
                 if (
                     item.status == "FAILED"
                     and item.safe_error_code == "PRODUCTION_VOICEOVER_FAILED"
@@ -1314,6 +1331,9 @@ class ProductVideoProductionBatchService:
         manual_rate_limit_retry_count = item.stage_state_json.get(
             "voiceover_manual_rate_limit_retry_count", 0
         )
+        timeline_retry_count = item.stage_state_json.get(
+            "voiceover_timeline_retry_count", 0
+        )
         if not isinstance(retry_count, int) or retry_count < 0:
             self._fail_item(item, "PRODUCTION_VOICEOVER_RETRY_STATE_INVALID")
             return
@@ -1326,11 +1346,16 @@ class ProductVideoProductionBatchService:
         ):
             self._fail_item(item, "PRODUCTION_VOICEOVER_RETRY_STATE_INVALID")
             return
+        if not isinstance(timeline_retry_count, int) or timeline_retry_count < 0:
+            self._fail_item(item, "PRODUCTION_VOICEOVER_RETRY_STATE_INVALID")
+            return
         retry_suffix = f":retry:{retry_count}" if retry_count else ""
         if config_retry_count:
             retry_suffix += f":voice-config:{config_retry_count}"
         if manual_rate_limit_retry_count:
             retry_suffix += f":manual-rate-limit:{manual_rate_limit_retry_count}"
+        if timeline_retry_count:
+            retry_suffix += f":timeline-fit:{timeline_retry_count}"
         uncertain_replacement_count = item.stage_state_json.get(
             "voiceover_uncertain_replacement_count", 0
         )
@@ -1430,6 +1455,35 @@ class ProductVideoProductionBatchService:
             return
         item.voiceover_artifact_id = artifact.id
         item.stage = "ENHANCING"
+
+    def _prepare_voice_timeline_recovery(
+        self,
+        item: ProductVideoProductionItem,
+        job: ExecutionJob,
+    ) -> bool:
+        retry_count = item.stage_state_json.get("voiceover_timeline_retry_count", 0)
+        details = job.safe_error_details or {}
+        natural_duration_ms = details.get("natural_duration_ms")
+        target_duration_ms = details.get("target_duration_ms")
+        if not (
+            job.status == "FAILED"
+            and job.safe_error_code == "VOICEOVER_EXCEEDS_TIMELINE"
+            and isinstance(retry_count, int)
+            and 0 <= retry_count < MAX_VOICEOVER_TIMELINE_RETRIES
+            and isinstance(natural_duration_ms, int)
+            and isinstance(target_duration_ms, int)
+            and target_duration_ms > 0
+            and target_duration_ms < natural_duration_ms
+            <= round(target_duration_ms * MAX_VOICEOVER_TEMPO_RATIO)
+        ):
+            return False
+        state = dict(item.stage_state_json)
+        state.pop("voiceover_job_id", None)
+        state.pop("voiceover_timeline_error", None)
+        state["voiceover_timeline_retry_count"] = retry_count + 1
+        state["voiceover_timeline_replaced_job_id"] = job.id
+        item.stage_state_json = state
+        return True
 
     def _prepare_voice_config_recovery(
         self,

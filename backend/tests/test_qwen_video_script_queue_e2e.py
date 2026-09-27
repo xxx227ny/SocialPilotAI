@@ -32,6 +32,7 @@ from app.services.qwen_video_script_generation_service import (
     QwenVideoScriptGenerationService,
     normalize_timed_four_act_narration,
     select_timed_narration,
+    validate_narration_language,
     validate_timed_four_act_contract,
 )
 from app.services.qwen_video_script_job_service import QwenVideoScriptJobService
@@ -241,6 +242,16 @@ def test_chinese_narration_with_spaced_latin_terms_is_not_rejected_as_english() 
     ).generate({"language": "zh-CN"})
 
     assert generated.output.scenes[0].narration == narrations[0]
+
+
+def test_chinese_request_rejects_all_english_provider_narration() -> None:
+    output = QwenScriptProviderOutput.model_validate_json(VALID_RESPONSE)
+
+    with pytest.raises(AppError, match="requested Chinese language"):
+        validate_narration_language(output, language="zh-CN")
+
+    with pytest.raises(AppError, match="requested Chinese language"):
+        QwenVideoScriptGenerationService(FakeQwen()).generate({"language": "zh-CN"})
 
 
 def enqueue(session, variant, strategy, settings, key: str):

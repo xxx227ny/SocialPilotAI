@@ -58,7 +58,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   PRODUCTION_VOICEOVER_FAILED:
     "千问配音生成失败；若为明确限流，可稍后点击“重试失败平台”，只重试当前平台配音。",
   PRODUCTION_VOICEOVER_EXCEEDS_TIMELINE:
-    "旁白超过15秒时间线。系统已停止成片以避免截断语音；请缩短脚本后重新生成该平台。",
+    "旁白超过15秒时间线，但仍在安全变速范围内；可点击“重试失败平台”，只重新生成该平台配音并无损适配到15秒。",
   PRODUCTION_VOICEOVER_SUBMIT_UNKNOWN:
     "千问配音提交状态不确定，系统已停止自动重试以避免重复扣费。",
   PRODUCTION_ENHANCEMENT_FAILED: "最终字幕与音频合成失败。",
@@ -97,9 +97,12 @@ export function productionBatchRecoverable(
   return (
     ["PARTIAL_FAILED", "FAILED"].includes(batch.status) &&
     items.some(
-      (item) =>
-        item.status === "FAILED" &&
-        [
+      (item) => {
+        if (item.status !== "FAILED") return false;
+        if (item.safe_error_code === "PRODUCTION_VOICEOVER_EXCEEDS_TIMELINE") {
+          return Number(item.stage_state_json.voiceover_timeline_retry_count ?? 0) < 1;
+        }
+        return [
           "PRODUCTION_HAPPYHORSE_REFRESH_FAILED",
           "PRODUCTION_HAPPYHORSE_REFRESH_RETRYABLE",
           "PRODUCTION_WANX_IMAGE_FAILED",
@@ -108,7 +111,8 @@ export function productionBatchRecoverable(
           "PRODUCTION_WANX_VIDEO_RESULT_INVALID",
           "PRODUCTION_VOICEOVER_FAILED",
           "PRODUCTION_VOICEOVER_SUBMIT_UNKNOWN",
-        ].includes(item.safe_error_code ?? ""),
+        ].includes(item.safe_error_code ?? "");
+      },
     )
   );
 }

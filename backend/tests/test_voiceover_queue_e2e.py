@@ -318,6 +318,20 @@ def test_small_voiceover_overrun_is_tempo_fitted_without_truncating_words() -> N
     assert duration_ms == 15000
 
 
+def test_eighteen_second_voiceover_is_tempo_fitted_without_truncating_words() -> None:
+    natural = _wav(874656)
+    normalized, natural_ms, duration_ms = VoiceoverGenerationService._normalize_wav(
+        natural, 15000
+    )
+    with wave.open(io.BytesIO(normalized), "rb") as wav:
+        assert wav.getnframes() == 720000
+        assert wav.getframerate() == 48000
+        assert wav.getnchannels() == 2
+        assert wav.getsampwidth() == 2
+    assert natural_ms == 18222
+    assert duration_ms == 15000
+
+
 def test_long_voiceover_fails_once_without_artifact_or_truncation(
     db_session: Session, tmp_path: Path
 ) -> None:

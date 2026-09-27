@@ -215,6 +215,7 @@ class ProductVideoProductionCreateRequest(ThreePlatformVideoPreflightRequest):
 class ProductVideoProductionResumeRequest(BaseModel):
     confirm_uncertain_voiceover_replacement: Literal[True] | None = None
     retry_failed_images: Literal[True] | None = None
+    retry_timeline_voiceover: Literal[True] | None = None
 
 
 class ProductVideoProductionBatchRead(BaseModel):

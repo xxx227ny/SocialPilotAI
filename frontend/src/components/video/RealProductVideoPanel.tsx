@@ -1484,6 +1484,12 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
         item.status === "FAILED" &&
         item.safe_error_code === "PRODUCTION_VOICEOVER_SUBMIT_UNKNOWN",
     );
+    const hasTimelineVoiceover = production.items.some(
+      (item) =>
+        item.status === "FAILED" &&
+        item.safe_error_code === "PRODUCTION_VOICEOVER_EXCEEDS_TIMELINE" &&
+        Number(item.stage_state_json.voiceover_timeline_retry_count ?? 0) < 1,
+    );
     if (
       hasUncertainVoiceover &&
       !window.confirm(
@@ -1501,7 +1507,16 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
       return;
     }
     if (
+      hasTimelineVoiceover &&
+      !window.confirm(
+        "确认只重试超时平台的千问配音？系统会保留全部旁白，通过无损变速适配到15秒；已成功平台不会重做，本次可能产生一次千问TTS费用。",
+      )
+    ) {
+      return;
+    }
+    if (
       !hasUncertainVoiceover &&
+      !hasTimelineVoiceover &&
       production.batch.status === "PARTIAL_FAILED" &&
       production.items.some(
         (item) =>
@@ -1524,6 +1539,7 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
               production.batch.id,
               hasUncertainVoiceover,
               hasFailedImages,
+              hasTimelineVoiceover,
               active.signal,
             )
           : production;

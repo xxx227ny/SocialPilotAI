@@ -141,7 +141,7 @@ try {
   );
   assert.match(
     state.productionFailureMessage("PRODUCTION_VOICEOVER_EXCEEDS_TIMELINE"),
-    /旁白超过15秒时间线/,
+    /无损适配到15秒/,
   );
   assert.match(
     state.productionFailureMessage("VIDEO_RENDER_PREFLIGHT_NOT_READY"),
@@ -176,6 +176,20 @@ try {
         {
           status: "FAILED",
           safe_error_code: "PRODUCTION_HAPPYHORSE_REFRESH_FAILED",
+        },
+      ],
+    ),
+    true,
+  );
+  assert.equal(
+    state.productionBatchRecoverable(
+      { status: "PARTIAL_FAILED" },
+      [
+        { status: "SUCCEEDED", stage_state_json: {} },
+        {
+          status: "FAILED",
+          safe_error_code: "PRODUCTION_VOICEOVER_EXCEEDS_TIMELINE",
+          stage_state_json: {},
         },
       ],
     ),
@@ -402,6 +416,7 @@ try {
     "selectThreePlatformSources",
     "buildThreePlatformPreflightPayload",
     "确认只重试失败平台的千问配音",
+    "确认只重试超时平台的千问配音",
     "确认使用当前通道为失败平台创建一次替换配音",
     "preflightThreePlatformVideo",
     "检查三平台调用与费用",
@@ -542,6 +557,7 @@ try {
     productVideoApi.includes("confirm_uncertain_voiceover_replacement"),
   );
   assert.ok(productVideoApi.includes("retry_failed_images"));
+  assert.ok(productVideoApi.includes("retry_timeline_voiceover"));
   assert.ok(styles.includes(".production-platform-card .resilient-video-preview video"));
   assert.ok(styles.includes("width: min(100%, 420px)"));
   assert.ok(styles.includes("max-height: min(520px, 58vh)"));
