@@ -1973,13 +1973,44 @@ textarea { font: inherit; }
 
 .video-blueprint-page { max-width: 1540px; }
 .batch-video-panel { margin-top: 22px; padding: 28px; border: 1px solid #7568e555; border-radius: 18px; background: #101a31; }
-.batch-video-panel header span { color: #9187ed; font-size: 11px; font-weight: 850; letter-spacing: 1.4px; }
+.batch-video-panel > header span { color: #9187ed; font-size: 11px; font-weight: 850; letter-spacing: 1.4px; }
+.batch-video-panel > header h2 { margin: 8px 0; }
+.batch-video-panel > header p { margin: 0; color: #9ba9c0; }
+.batch-video-panel__notice { display: grid; grid-template-columns: auto 1fr; gap: 16px; align-items: center; margin: 20px 0; padding: 15px 17px; border: 1px solid #4dbfa733; border-radius: 13px; background: #13312f66; }
+.batch-video-panel__notice strong { color: #75d7bc; white-space: nowrap; }
+.batch-video-panel__notice span { color: #adbacd; font-size: 13px; line-height: 1.55; }
 .batch-video-panel__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .batch-video-panel fieldset, .batch-video-panel label { display: grid; gap: 8px; }
 .batch-video-panel fieldset label { display: flex; align-items: center; gap: 8px; }
+.batch-video-panel fieldset label span { display: grid; gap: 3px; }
+.batch-video-panel fieldset label small { color: #7989a3; font-size: 11px; }
+.batch-video-panel__summary { margin: 16px 0 8px; color: #aab7cc; }
+.batch-video-panel__primary-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+.batch-video-panel__primary-actions button:first-child { background: linear-gradient(135deg, #7657e8, #526fe1); color: #fff; }
+.batch-video-panel__helper { color: #a5b1c4; font-size: 12px; }
+.batch-video-panel__advanced-recovery { margin: 14px 0; padding: 13px 15px; border: 1px solid #ffffff12; border-radius: 12px; background: #0b162a; }
+.batch-video-panel__advanced-recovery summary, .batch-video-panel__technical-ids summary { color: #a9b5c9; font-weight: 750; cursor: pointer; }
+.batch-video-panel__advanced-recovery > div { display: grid; grid-template-columns: minmax(220px, 1fr) auto; gap: 10px; align-items: end; margin-top: 14px; }
+.batch-video-panel__advanced-recovery small { display: block; margin-top: 10px; color: #7e8da6; line-height: 1.5; }
+.batch-video-panel__current { margin-top: 18px; padding: 20px; border: 1px solid #5b79df44; border-radius: 15px; background: #0b172b; }
+.batch-video-panel__current > header { display: flex; justify-content: space-between; gap: 24px; align-items: center; }
+.batch-video-panel__current > header h3 { margin: 4px 0 0; }
+.batch-video-panel__current > header > div:last-child { display: grid; gap: 4px; text-align: right; }
+.batch-video-panel__current > header strong { color: #71d5b8; }
+.batch-video-panel__current > header small { color: #7f8da5; }
 .batch-video-panel__actions { display: flex; gap: 10px; margin: 14px 0; }
+.batch-video-panel__danger:not(:disabled) { border-color: #ef7a8055; color: #ffabb0; }
 .batch-video-panel table { width: 100%; border-collapse: collapse; }
 .batch-video-panel th, .batch-video-panel td { padding: 9px; border-bottom: 1px solid #ffffff18; text-align: left; }
+.batch-video-panel__technical-ids { margin-top: 15px; padding-top: 12px; border-top: 1px solid #ffffff12; }
+.batch-video-panel__technical-ids p, .batch-video-panel__technical-ids li { color: #7f8da5; font-size: 12px; }
+@media (max-width: 760px) {
+  .batch-video-panel__grid { grid-template-columns: 1fr; }
+  .batch-video-panel__notice { grid-template-columns: 1fr; }
+  .batch-video-panel__advanced-recovery > div { grid-template-columns: 1fr; }
+  .batch-video-panel__current > header { align-items: flex-start; flex-direction: column; }
+  .batch-video-panel__current > header > div:last-child { text-align: left; }
+}
 .video-blueprint-hero { min-height: 330px; display: grid; grid-template-columns: minmax(0, .82fr) minmax(420px, 1.18fr); gap: 42px; align-items: center; padding: 42px 46px; overflow: hidden; background: radial-gradient(circle at 85% 22%, #6b59d750, transparent 28%), radial-gradient(circle at 65% 90%, #3f8db038, transparent 30%), linear-gradient(120deg, #101d36, #17284c 62%, #30255c); border: 1px solid #ffffff14; border-radius: 22px; }
 .video-blueprint-hero > div:first-child > span { color: #a39af8; font-size: 12px; font-weight: 850; letter-spacing: 2px; }
 .video-blueprint-hero h1 { margin: 10px 0 10px; color: #fff; font-size: clamp(42px, 3.4vw, 52px); letter-spacing: -1.4px; }

@@ -53,6 +53,9 @@ export interface BatchVideoJob {
   downstream_provider_cost_status: string;
   qwen_script_call_quota: number;
   qwen_script_calls_reserved: number;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
 }
 
 export interface BatchVideoVariant {

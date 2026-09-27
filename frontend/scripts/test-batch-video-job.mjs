@@ -220,16 +220,18 @@ try {
   );
   const batchStateSource = await fs.readFile(stateFile, "utf8");
   for (const expected of [
-    "orchestration_only",
     "downstreamCostLabel",
-    "按精确Batch ID恢复",
-    "预检并创建全新批次",
+    "加载所选商品最近批次",
+    "创建全新脚本批次",
+    "高级：按脚本批次编号加载",
+    "不是商品编号、平台任务编号、脚本版本编号或成片生产批次编号",
     "reuse_identical: false",
     "createBatchWorkflow",
     "recoverExactBatchWorkflow",
     "controlBatchWorkflow",
     "pollBatchSerial",
     "Backend连接中断",
+    "window.confirm",
   ]) {
     assert.ok(panel.includes(expected));
     staticAssertions += 1;
@@ -244,7 +246,7 @@ try {
     /batchVideoJobsEnabled\s*=\s*import\.meta\.env\.PROD\s*\|\|/,
   );
   staticAssertions += 4;
-  for (const forbidden of ["latest", "pinterest", "wanx", "ffmpeg"]) {
+  for (const forbidden of ["pinterest", "wanx", "ffmpeg"]) {
     assert.ok(!panel.toLowerCase().includes(forbidden));
     staticAssertions += 1;
   }
@@ -254,9 +256,12 @@ try {
   assert.ok(batchApiSource.includes("/qwen-scripts"));
   assert.ok(!batchStateSource.toLowerCase().includes("qwen"));
   assert.ok(panel.includes("socialpilot.scriptBatch."));
-  assert.ok(panel.includes("普通用户无需逐个平台填写脚本"));
+  assert.ok(panel.includes("普通使用无需记忆任何编号"));
   assert.ok(panel.includes('READY_FOR_SCRIPT: "等待生成脚本"'));
-  assert.ok(panel.includes("脚本尚未创建"));
+  assert.ok(panel.includes("尚未生成"));
+  assert.ok(panel.includes("getProductVideoWorkflowContext"));
+  assert.ok(!panel.includes("按ID恢复旧批次"));
+  assert.ok(!panel.includes('aria-label="精确Batch ID"'));
   assert.ok(!panel.includes("高级手工编辑"));
   assert.ok(!panel.includes("VideoScriptVersionPanel"));
   assert.ok(
