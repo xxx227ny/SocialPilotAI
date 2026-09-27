@@ -177,6 +177,7 @@ def test_exception_after_submission_boundary_is_submit_unknown_and_not_retried(
     assert job.status == "SUBMIT_UNKNOWN"
     assert job.uncertain is True
     assert job.safe_error_code == "HANDLER_EXECUTION_UNCERTAIN"
+    assert job.safe_error_details == {"exception_type": "RuntimeError"}
     assert job.attempts[0].provider_call_count == 1
     assert job.attempts[0].external_submission_possible is True
     assert "fake provider response" not in str(job.safe_error_details)
@@ -613,5 +614,5 @@ def test_unsafe_handler_error_details_are_never_persisted(
     assert result.status == WorkerRunStatus.FAILED
     job = get_job(worker_sessions, job_id)
     assert job.safe_error_code == "HANDLER_EXECUTION_FAILED"
-    assert job.safe_error_details is None
+    assert job.safe_error_details == {"exception_type": "ValueError"}
     assert "not-stored" not in str(job.attempts[0].safe_error_details)

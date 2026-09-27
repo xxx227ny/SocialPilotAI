@@ -183,6 +183,19 @@ try {
   );
   assert.equal(
     state.productionBatchRecoverable(
+      { status: "FAILED" },
+      [
+        {
+          status: "FAILED",
+          safe_error_code: "PRODUCTION_VOICEOVER_SUBMIT_UNKNOWN",
+          stage_state_json: { voiceover_uncertain_replacement_count: 1 },
+        },
+      ],
+    ),
+    false,
+  );
+  assert.equal(
+    state.productionBatchRecoverable(
       { status: "PARTIAL_FAILED" },
       [
         { status: "SUCCEEDED", stage_state_json: {} },

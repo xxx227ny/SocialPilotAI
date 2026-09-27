@@ -79,9 +79,11 @@ class VoiceoverGenerateV1Handler:
                 },
                 provider_submission_state="RESPONSE_RECEIVED",
             )
-        except TtsSubmissionUnknown:
+        except TtsSubmissionUnknown as exc:
             return HandlerResult.submit_unknown(
-                "QWEN_TTS_RESULT_UNKNOWN", provider_name=self.provider.provider_name
+                "QWEN_TTS_RESULT_UNKNOWN",
+                provider_name=self.provider.provider_name,
+                safe_error_details={"category": exc.category},
             )
         except TtsExplicitFailure as exc:
             return HandlerResult.failed(

@@ -1623,7 +1623,8 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
     const hasUncertainVoiceover = production.items.some(
       (item) =>
         item.status === "FAILED" &&
-        item.safe_error_code === "PRODUCTION_VOICEOVER_SUBMIT_UNKNOWN",
+        item.safe_error_code === "PRODUCTION_VOICEOVER_SUBMIT_UNKNOWN" &&
+        Number(item.stage_state_json.voiceover_uncertain_replacement_count ?? 0) < 1,
     );
     const hasTimelineVoiceover = production.items.some(
       (item) =>
@@ -2297,7 +2298,10 @@ export function RealProductVideoPanel({ product }: { product: Product }) {
                 <small>{productionProgress(item)}%</small>
                 {item.safe_error_code && (
                   <p role="alert">
-                    {productionFailureMessage(item.safe_error_code)}
+                    {item.safe_error_code === "PRODUCTION_VOICEOVER_SUBMIT_UNKNOWN" &&
+                    Number(item.stage_state_json.voiceover_uncertain_replacement_count ?? 0) >= 1
+                      ? "千问配音结果连续两次未能确认，本批次的人工替换次数已用完。系统不会再次提交以避免重复扣费；请先核对千问用量记录，再决定是否新建生产批次。"
+                      : productionFailureMessage(item.safe_error_code)}
                   </p>
                 )}
                 {item.final_video_artifact_id && item.subtitle_artifact_id && (

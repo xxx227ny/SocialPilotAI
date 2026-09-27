@@ -190,12 +190,18 @@ class ExecutionWorker:
                 if external_possible
                 else HandlerResult.failed("WORKER_STOPPED")
             )
-        except Exception:
+        except Exception as exc:
             _, external_possible = context.provider_state()
             result = (
-                HandlerResult.submit_unknown("HANDLER_EXECUTION_UNCERTAIN")
+                HandlerResult.submit_unknown(
+                    "HANDLER_EXECUTION_UNCERTAIN",
+                    safe_error_details={"exception_type": type(exc).__name__},
+                )
                 if external_possible
-                else HandlerResult.failed("HANDLER_EXECUTION_FAILED")
+                else HandlerResult.failed(
+                    "HANDLER_EXECUTION_FAILED",
+                    safe_error_details={"exception_type": type(exc).__name__},
+                )
             )
         finally:
             if credential_token is not None:

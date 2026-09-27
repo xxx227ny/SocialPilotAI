@@ -102,6 +102,9 @@ export function productionBatchRecoverable(
         if (item.safe_error_code === "PRODUCTION_VOICEOVER_EXCEEDS_TIMELINE") {
           return Number(item.stage_state_json.voiceover_timeline_retry_count ?? 0) < 1;
         }
+        if (item.safe_error_code === "PRODUCTION_VOICEOVER_SUBMIT_UNKNOWN") {
+          return Number(item.stage_state_json?.voiceover_uncertain_replacement_count ?? 0) < 1;
+        }
         return [
           "PRODUCTION_HAPPYHORSE_REFRESH_FAILED",
           "PRODUCTION_HAPPYHORSE_REFRESH_RETRYABLE",
@@ -110,7 +113,6 @@ export function productionBatchRecoverable(
           "PRODUCTION_WANX_VIDEO_SUBMIT_FAILED",
           "PRODUCTION_WANX_VIDEO_RESULT_INVALID",
           "PRODUCTION_VOICEOVER_FAILED",
-          "PRODUCTION_VOICEOVER_SUBMIT_UNKNOWN",
         ].includes(item.safe_error_code ?? "");
       },
     )

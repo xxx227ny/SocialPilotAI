@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import time
 import wave
 from typing import Protocol
 from urllib.parse import urlsplit
@@ -21,7 +22,9 @@ class TtsExplicitFailure(RuntimeError):
 
 
 class TtsSubmissionUnknown(RuntimeError):
-    pass
+    def __init__(self, message: str, *, category: str) -> None:
+        super().__init__(message)
+        self.category = category
 
 
 class TtsProvider(Protocol):
@@ -78,10 +81,14 @@ class QwenAudioTtsProvider:
             raise TtsExplicitFailure(
                 "Qwen TTS connection failed", category="connection_failed"
             ) from exc
-        except httpx.TimeoutException as exc:
-            raise TtsSubmissionUnknown("Qwen TTS completion is unknown") from exc
+        except httpx.HTTPError as exc:
+            raise TtsSubmissionUnknown(
+                "Qwen TTS completion is unknown", category="request_transport_error"
+            ) from exc
         if response.status_code == 408 or response.status_code >= 500:
-            raise TtsSubmissionUnknown("Qwen TTS completion is unknown")
+            raise TtsSubmissionUnknown(
+                "Qwen TTS completion is unknown", category="provider_transient_response"
+            )
         if response.is_error:
             category = {
                 401: "credentials_rejected",
@@ -100,16 +107,38 @@ class QwenAudioTtsProvider:
             raise TtsExplicitFailure(
                 "Qwen TTS response is invalid", category="invalid_response"
             )
-        try:
-            with httpx.Client(
-                timeout=self.settings.qwen_tts_timeout,
-                transport=self.download_transport,
-            ) as client:
-                audio_response = client.get(audio_url)
-        except httpx.HTTPError as exc:
-            raise TtsSubmissionUnknown("Qwen TTS audio delivery failed") from exc
-        if audio_response.is_error:
-            raise TtsSubmissionUnknown("Qwen TTS audio delivery failed")
+        # The synthesis POST may already be billable. Retrying this GET is safe;
+        # retrying the POST would risk generating and billing a second time.
+        with httpx.Client(
+            timeout=self.settings.qwen_tts_timeout,
+            transport=self.download_transport,
+        ) as client:
+            for attempt in range(3):
+                try:
+                    audio_response = client.get(audio_url)
+                except httpx.HTTPError as exc:
+                    if attempt == 2:
+                        raise TtsSubmissionUnknown(
+                            "Qwen TTS audio delivery failed",
+                            category="audio_download_error",
+                        ) from exc
+                else:
+                    if not audio_response.is_error:
+                        break
+                    if (
+                        audio_response.status_code < 500
+                        and audio_response.status_code != 408
+                    ):
+                        raise TtsSubmissionUnknown(
+                            "Qwen TTS audio delivery was rejected",
+                            category="audio_download_rejected",
+                        )
+                    if attempt == 2:
+                        raise TtsSubmissionUnknown(
+                            "Qwen TTS audio delivery failed",
+                            category="audio_download_response",
+                        )
+                time.sleep(0.25 * (attempt + 1))
         return self._canonical_stereo_wav(audio_response.content)
 
     def validate_request(

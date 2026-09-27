@@ -6,7 +6,11 @@ import httpx
 
 from app.core.config import Settings
 from app.providers.wanx_image_provider import WanxImageProvider
-from app.services.tts_provider import QwenAudioTtsProvider, TtsExplicitFailure
+from app.services.tts_provider import (
+    QwenAudioTtsProvider,
+    TtsExplicitFailure,
+    TtsSubmissionUnknown,
+)
 
 
 def _mono_wav() -> bytes:
@@ -90,6 +94,61 @@ def test_qwen_tts_rejects_plus_flash_voice_before_network() -> None:
     else:
         raise AssertionError("Expected incompatible voice to be rejected")
     assert calls == 0
+
+
+def test_qwen_tts_transport_failure_is_categorized_without_retry() -> None:
+    calls = 0
+
+    def broken(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        raise httpx.RemoteProtocolError("provider connection closed", request=request)
+
+    provider = QwenAudioTtsProvider(
+        Settings(qwen_api_key="fake-token-plan-key"),
+        transport=httpx.MockTransport(broken),
+    )
+    try:
+        provider.generate(text="你好", language="zh-CN", voice="longanlingxin", rate=1)
+    except TtsSubmissionUnknown as exc:
+        assert exc.category == "request_transport_error"
+    else:
+        raise AssertionError("Expected transport failure to be marked uncertain")
+    assert calls == 1
+
+
+def test_qwen_tts_retries_only_audio_download_after_successful_synthesis() -> None:
+    calls = {"generation": 0, "download": 0}
+
+    def generate(_: httpx.Request) -> httpx.Response:
+        calls["generation"] += 1
+        return httpx.Response(
+            200,
+            json={
+                "output": {
+                    "audio": {
+                        "url": "https://dashscope-result-bj.oss-cn-beijing.aliyuncs.com/audio.wav"
+                    }
+                }
+            },
+        )
+
+    def download(_: httpx.Request) -> httpx.Response:
+        calls["download"] += 1
+        if calls["download"] == 1:
+            return httpx.Response(503)
+        return httpx.Response(200, content=_mono_wav())
+
+    provider = QwenAudioTtsProvider(
+        Settings(qwen_api_key="fake-token-plan-key"),
+        transport=httpx.MockTransport(generate),
+        download_transport=httpx.MockTransport(download),
+    )
+    result = provider.generate(
+        text="你好", language="zh-CN", voice="longanlingxin", rate=1
+    )
+    assert result.startswith(b"RIFF")
+    assert calls == {"generation": 1, "download": 2}
 
 
 def test_wanx_image_uses_token_plan_once_without_leaking_bearer() -> None:
