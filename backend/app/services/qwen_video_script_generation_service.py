@@ -60,15 +60,32 @@ def normalize_timed_four_act_narration(
 
 
 def select_timed_narration(
-    output: QwenScriptProviderOutput, *, min_words: int = 1, max_words: int = 32
+    output: QwenScriptProviderOutput,
+    *,
+    min_words: int = 1,
+    max_words: int | None = 32,
 ) -> str:
-    """Return every scene utterance, or reject a script that cannot fit."""
+    """Return every scene utterance after the language-specific timing check.
+
+    ``max_words`` only applies to whitespace-delimited languages. Chinese timing is
+    validated with spoken units by ``validate_timed_four_act_contract`` and must
+    pass ``None`` here so embedded Latin product terms cannot trigger a second,
+    contradictory English word-budget rejection.
+    """
     scenes = sorted(output.scenes, key=lambda item: item.sequence)
-    if not scenes or min_words < 1 or max_words < min_words:
+    if (
+        not scenes
+        or min_words < 1
+        or (max_words is not None and max_words < min_words)
+    ):
         raise AppError("Qwen script has no usable narration", 422)
     narration = " ".join(scene.narration.strip() for scene in scenes)
     word_count = len(narration.split())
-    if not narration or not min_words <= word_count <= max_words:
+    if (
+        not narration
+        or word_count < min_words
+        or (max_words is not None and word_count > max_words)
+    ):
         raise AppError("Qwen narration cannot fit the 15-second budget", 422)
     return narration
 
@@ -158,7 +175,11 @@ class QwenVideoScriptGenerationService:
         english = language == "en" or language.startswith("en-")
         output = normalize_timed_four_act_narration(output, english=english)
         validate_timed_four_act_contract(output, english=english)
-        select_timed_narration(output, min_words=24 if english else 1)
+        select_timed_narration(
+            output,
+            min_words=24 if english else 1,
+            max_words=32 if english else None,
+        )
         return QwenScriptGenerationResult(
             output=output,
             prompt_digest=hashlib.sha256(prompt.encode()).hexdigest(),

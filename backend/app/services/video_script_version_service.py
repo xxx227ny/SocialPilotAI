@@ -23,7 +23,10 @@ from app.schemas.video_script_version import (
     VideoScriptDraftRequest,
     VideoScriptVersionRead,
 )
-from app.services.qwen_video_script_generation_service import select_timed_narration
+from app.services.qwen_video_script_generation_service import (
+    select_timed_narration,
+    validate_timed_four_act_contract,
+)
 from app.services.video_script_preflight import (
     VideoScriptPreflightService,
     stable_digest,
@@ -200,7 +203,14 @@ class VideoScriptVersionService:
                 term = " ".join(str(forbidden).split()).casefold()
                 if term and term in content_text:
                     raise AppError("Script contains a BrandKit forbidden term", 422)
-        full_narration = select_timed_narration(output)
+        language = checked.language.strip().lower()
+        english = language == "en" or language.startswith("en-")
+        validate_timed_four_act_contract(output, english=english)
+        full_narration = select_timed_narration(
+            output,
+            min_words=24 if english else 1,
+            max_words=32 if english else None,
+        )
         persisted_scenes = [
             scene.model_dump(mode="json") | {"subtitle_draft": scene.narration}
             for scene in output.scenes

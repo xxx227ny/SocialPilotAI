@@ -29,6 +29,7 @@ from app.schemas.video_script_version import (
     QwenScriptProviderOutput,
 )
 from app.services.qwen_video_script_generation_service import (
+    QwenVideoScriptGenerationService,
     normalize_timed_four_act_narration,
     select_timed_narration,
     validate_timed_four_act_contract,
@@ -214,6 +215,32 @@ def test_overlong_provider_narration_is_deterministically_fitted_to_scenes() -> 
     ]
     assert all(scene.subtitle_draft == scene.narration for scene in normalized.scenes)
     validate_timed_four_act_contract(normalized, english=False)
+
+
+def test_chinese_narration_with_spaced_latin_terms_is_not_rejected_as_english() -> None:
+    output = QwenScriptProviderOutput.model_validate_json(VALID_RESPONSE)
+    narrations = (
+        "Glow Nest 桌 灯 一 触 即 亮 专 注 开 始",
+        "调 节 亮 度 与 色 温 同 时 为 手 机 提 供 无 线 充 电",
+        "折 叠 灯 臂 节 省 桌 面 空 间 保 持 工 作 区 整 洁",
+        "立 即 了 解 Glow Nest 智 能 桌 灯",
+    )
+    for scene, narration in zip(output.scenes, narrations, strict=True):
+        scene.narration = narration
+        scene.subtitle_draft = narration
+
+    validate_timed_four_act_contract(output, english=False)
+
+    narration = select_timed_narration(output, max_words=None)
+
+    assert "Glow Nest" in narration
+    assert len(narration.split()) > 32
+
+    generated = QwenVideoScriptGenerationService(
+        FakeQwen(response=output.model_dump_json())
+    ).generate({"language": "zh-CN"})
+
+    assert generated.output.scenes[0].narration == narrations[0]
 
 
 def enqueue(session, variant, strategy, settings, key: str):
